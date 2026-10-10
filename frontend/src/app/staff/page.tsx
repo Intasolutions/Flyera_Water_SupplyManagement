@@ -298,7 +298,7 @@ export default function StaffPage() {
                 <select value={newAssignedVehicle} onChange={e => setNewAssignedVehicle(e.target.value)} className="w-full border border-gray-200 rounded-xl p-3.5 bg-white text-slate-800 font-medium outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all appearance-none cursor-pointer">
                   <option value="">-- Select Vehicle --</option>
                   {vehicles.map(v => (
-                    <option key={v.id} value={v.id}>{v.name} ({v.registration_number})</option>
+                    <option key={v.id} value={v.id}>{v.model || 'Vehicle'} ({v.plate_number})</option>
                   ))}
                 </select>
                 <p className="text-xs text-slate-500 mt-1">This vehicle will be permanently linked to this Glass Driver for all collections.</p>

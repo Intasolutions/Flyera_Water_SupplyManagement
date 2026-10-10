@@ -169,6 +169,7 @@ export default function ClientsPage() {
               </div>
             )}
           </div>
+        </div>
 
         {/* Add Client Modal */}
         <Modal

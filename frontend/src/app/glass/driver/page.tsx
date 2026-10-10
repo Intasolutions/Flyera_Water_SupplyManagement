@@ -71,7 +71,7 @@ export default function GlassDriverPage() {
       id: Date.now().toString(),
       driverId: currentUser?.id || "unknown", 
       driverName: currentUser?.name || "Unknown Driver", 
-      vehicle: currentVehicle ? `${currentVehicle.name} (${currentVehicle.registration_number})` : "Unassigned Vehicle",
+      vehicle: currentVehicle ? `${currentVehicle.model || 'Vehicle'} (${currentVehicle.plate_number})` : "Unassigned Vehicle",
       property: finalPropertyName,
       location: finalLocation,
       phone: finalPhone,
@@ -102,7 +102,7 @@ export default function GlassDriverPage() {
         </h1>
         <div className="flex items-center gap-3 mt-3">
           <div className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold border border-white/10 text-emerald-50">
-            🚚 {currentVehicle ? `${currentVehicle.name} (${currentVehicle.registration_number})` : "Unassigned"}
+            🚚 {currentVehicle ? `${currentVehicle.model || 'Vehicle'} (${currentVehicle.plate_number})` : "Unassigned"}
           </div>
           <div className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold border border-white/10 text-emerald-50">
             👤 {currentUser?.name || "Loading..."}

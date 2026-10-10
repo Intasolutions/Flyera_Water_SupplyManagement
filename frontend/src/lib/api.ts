@@ -124,6 +124,7 @@ export interface User {
   phone: string | null;
   address?: string | null;
   id_proof_url?: string | null;
+  assigned_vehicle_id?: string | null;
   created_at: string;
   updated_at: string;
 }
