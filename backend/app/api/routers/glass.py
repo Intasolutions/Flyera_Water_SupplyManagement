@@ -11,88 +11,49 @@ from app.api import deps
 router = APIRouter()
 
 def ensure_initial_data(db: Session):
-    """Ensures inventory items exist and seeds realistic sample data if empty."""
-    # Ensure all 3 inventory types exist
-    inventory_defaults = {
-        "unseparated": 6.7,
-        "white": 8.5,
-        "mixed": 12.0
-    }
-    for inv_type, default_tons in inventory_defaults.items():
+    """Ensures inventory types exist with 0.0 tons initialized if missing, and purges auto-seeded mock data."""
+    for inv_type in ["unseparated", "white", "mixed"]:
         inv = db.query(models.GlassInventory).filter(models.GlassInventory.type == inv_type).first()
         if not inv:
-            inv = models.GlassInventory(type=inv_type, tons=default_tons)
+            inv = models.GlassInventory(type=inv_type, tons=0.0)
             db.add(inv)
             db.commit()
 
-    # If collections are empty, seed sample collections
-    total_collections = db.query(models.GlassCollection).count()
-    if total_collections == 0:
-        # Find any driver or admin
-        driver = db.query(models.User).filter(models.User.role.in_(["DRIVER", "GLASS_DRIVER", "ADMIN"])).first()
-        driver_id = driver.id if driver else None
-
-        sample_collections = [
-            models.GlassCollection(
-                driver_id=driver_id,
-                vehicle="MH 12 AB 1234",
-                property="Sunshine Resort",
-                location="Kandivali West",
-                phone="9876543210",
-                tons_collected=2.5,
-                payment_amount=500.0,
-                status="dropped_at_godown",
-                date=datetime.utcnow()
-            ),
-            models.GlassCollection(
-                driver_id=driver_id,
-                vehicle="MH 12 CD 5678",
-                property="Tech Park Horizon",
-                location="Powai Central",
-                phone="9823456789",
-                tons_collected=4.2,
-                payment_amount=0.0,
-                status="dropped_at_godown",
-                date=datetime.utcnow()
-            ),
-            models.GlassCollection(
-                driver_id=driver_id,
-                vehicle="MH 12 AB 1234",
-                property="Grand Ocean Hotel",
-                location="Juhu Tara Rd",
-                phone="9812345678",
-                tons_collected=1.8,
-                payment_amount=350.0,
-                status="collected",
-                date=datetime.utcnow()
-            ),
-        ]
-        for sc in sample_collections:
-            db.add(sc)
+    # Automatically clean up legacy auto-seeded mock entries if present
+    demo_props = ["Sunshine Resort", "Tech Park Horizon", "Grand Ocean Hotel"]
+    demo_colls = db.query(models.GlassCollection).filter(models.GlassCollection.property.in_(demo_props)).all()
+    if demo_colls:
+        for dc in demo_colls:
+            db.delete(dc)
         db.commit()
 
-    # If vendor pickups are empty, seed sample pickups
-    total_pickups = db.query(models.GlassVendorPickup).count()
-    if total_pickups == 0:
-        sample_pickups = [
-            models.GlassVendorPickup(
-                vendor_name="EcoRecycle Mills Pvt Ltd",
-                type="white",
-                tons=5.0,
-                price_per_ton=4500.0,
-                date=datetime.utcnow()
-            ),
-            models.GlassVendorPickup(
-                vendor_name="Maharashtra Cullet Processors",
-                type="mixed",
-                tons=7.5,
-                price_per_ton=3200.0,
-                date=datetime.utcnow()
-            )
-        ]
-        for sp in sample_pickups:
-            db.add(sp)
+    demo_vendors = ["EcoRecycle Mills Pvt Ltd", "Maharashtra Cullet Processors"]
+    demo_pickups = db.query(models.GlassVendorPickup).filter(models.GlassVendorPickup.vendor_name.in_(demo_vendors)).all()
+    if demo_pickups:
+        for dp in demo_pickups:
+            db.delete(dp)
         db.commit()
+
+    # If all remaining collections and pickups are 0, reset any legacy mock inventory balances to 0.0
+    remaining_colls = db.query(models.GlassCollection).count()
+    remaining_pickups = db.query(models.GlassVendorPickup).count()
+    if remaining_colls == 0 and remaining_pickups == 0:
+        for inv in db.query(models.GlassInventory).all():
+            if inv.tons in [6.7, 8.5, 12.0, 27.2]:
+                inv.tons = 0.0
+        db.commit()
+
+
+@router.post("/reset-data")
+def reset_glass_data(db: Session = Depends(get_db)):
+    """Utility endpoint to wipe test/mock glass data and reset inventory to 0.0."""
+    db.query(models.GlassCollection).delete()
+    db.query(models.GlassVendorPickup).delete()
+    db.query(models.GlassSeparation).delete()
+    for inv in db.query(models.GlassInventory).all():
+        inv.tons = 0.0
+    db.commit()
+    return {"status": "success", "message": "All glass data reset to 0.0"}
 
 
 # --- Dashboard Stats ---
