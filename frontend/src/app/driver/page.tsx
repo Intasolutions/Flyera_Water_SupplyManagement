@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useStore } from "@/lib/StoreContext";
 import { 
   getClients, 
@@ -30,7 +30,10 @@ import {
   Route as RouteIcon,
   Truck,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Crosshair,
+  RefreshCw,
+  ExternalLink
 } from "lucide-react";
 
 export default function DriverApp() {
@@ -59,7 +62,11 @@ export default function DriverApp() {
   const [newClientOptIn, setNewClientOptIn] = useState(true);
   const [isAddingClient, setIsAddingClient] = useState(false);
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [gpsStatus, setGpsStatus] = useState<string>("Acquiring GPS location...");
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<string>("Ready to acquire GPS");
+  const [isLocating, setIsLocating] = useState<boolean>(false);
+  const watchIdRef = useRef<number | null>(null);
+  const bestAccuracyRef = useRef<number>(999999);
   
   const [vehicleDisplay, setVehicleDisplay] = useState("No Vehicle Assigned");
   const [routeDisplay, setRouteDisplay] = useState("No Route");
@@ -175,26 +182,110 @@ export default function DriverApp() {
     setActiveClient(null);
   };
 
+  const startGpsAcquisition = () => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+
+    if (!("geolocation" in navigator)) {
+      setGpsStatus("Geolocation not supported by device");
+      return;
+    }
+
+    setIsLocating(true);
+    setGpsStatus("Locking GPS satellites (refining accuracy)...");
+    bestAccuracyRef.current = 999999;
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        const roundedAcc = Math.round(accuracy);
+
+        if (accuracy < bestAccuracyRef.current) {
+          bestAccuracyRef.current = accuracy;
+          setGpsLocation({ lat: latitude, lng: longitude });
+          setGpsAccuracy(roundedAcc);
+
+          if (accuracy <= 15) {
+            setGpsStatus(`GPS Locked (±${roundedAcc}m High Precision)`);
+          } else {
+            setGpsStatus(`Refining fix: ±${roundedAcc}m (waiting for satellite lock...)`);
+          }
+
+          // Reverse geocode if address is currently blank
+          fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`)
+            .then(res => res.json())
+            .then(data => {
+              if (data && data.address) {
+                const parts = [
+                  data.address.road || data.address.pedestrian,
+                  data.address.suburb || data.address.neighbourhood || data.address.residential,
+                  data.address.city || data.address.town || data.address.county
+                ].filter(Boolean);
+                const resolved = parts.join(", ") || data.display_name;
+                if (resolved) {
+                  setNewClientAddress(prev => prev || resolved);
+                }
+              }
+            })
+            .catch(() => {});
+        }
+
+        // Tightly locked to within 10 meters: clear watch to save battery
+        if (accuracy <= 10 && watchIdRef.current !== null) {
+          navigator.geolocation.clearWatch(watchIdRef.current);
+          watchIdRef.current = null;
+          setIsLocating(false);
+          setGpsStatus(`GPS Locked (±${roundedAcc}m High Precision)`);
+        }
+      },
+      (error) => {
+        console.warn("Geolocation watch error:", error);
+        setIsLocating(false);
+        if (error.code === 1) {
+          setGpsStatus("Location permission denied. Please allow GPS access.");
+        } else if (error.code === 3) {
+          setGpsStatus("GPS acquisition timed out. Tap 'Refetch' to retry.");
+        } else {
+          setGpsStatus("Could not acquire accurate GPS. Tap 'Refetch'.");
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 25000,
+        maximumAge: 0
+      }
+    );
+
+    // Stop active watch after 12s if not already stopped
+    setTimeout(() => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+        setIsLocating(false);
+      }
+    }, 12000);
+  };
+
   useEffect(() => {
     if (isAddClientOpen) {
       setGpsLocation(null);
-      setGpsStatus("Acquiring GPS location...");
-      if ("geolocation" in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            setGpsLocation({ lat: position.coords.latitude, lng: position.coords.longitude });
-            setGpsStatus(`GPS Locked (${position.coords.latitude.toFixed(4)}, ${position.coords.longitude.toFixed(4)})`);
-          },
-          (error) => {
-            console.warn("Geolocation error", error);
-            setGpsStatus("GPS not available (will proceed with address)");
-          },
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-        );
-      } else {
-        setGpsStatus("Geolocation not supported by device");
+      setGpsAccuracy(null);
+      startGpsAcquisition();
+    } else {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+        setIsLocating(false);
       }
     }
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    };
   }, [isAddClientOpen]);
 
   const handleAddClient = async (e: React.FormEvent) => {
@@ -580,12 +671,64 @@ export default function DriverApp() {
       {/* Add Client Modal */}
       <Modal isOpen={isAddClientOpen} onClose={() => setIsAddClientOpen(false)} title="Register Client on Route">
         <form onSubmit={handleAddClient} className="space-y-4">
-          <div className="p-3 rounded-2xl border border-slate-200/80 bg-slate-50/80 flex items-center gap-3">
-            <MapPin className="w-5 h-5 text-primary shrink-0" />
-            <div>
-              <p className="text-xs font-black text-slate-800">{gpsStatus}</p>
-              <p className="text-[11px] text-slate-400 font-medium">Pin will be saved to your current location</p>
+          <div className="p-3.5 rounded-2xl border border-slate-200/90 bg-slate-50/90 space-y-2.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2.5">
+                <div className={`p-2 rounded-xl shrink-0 ${
+                  gpsAccuracy !== null && gpsAccuracy <= 15
+                    ? "bg-emerald-100 text-emerald-700"
+                    : isLocating
+                    ? "bg-sky-100 text-sky-700 animate-pulse"
+                    : "bg-amber-100 text-amber-700"
+                }`}>
+                  <Crosshair className={`w-4 h-4 ${isLocating ? "animate-spin" : ""}`} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-black text-slate-800">
+                      {gpsLocation ? `${gpsLocation.lat.toFixed(6)}, ${gpsLocation.lng.toFixed(6)}` : "Detecting GPS..."}
+                    </span>
+                    {gpsAccuracy !== null && (
+                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
+                        gpsAccuracy <= 15
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-amber-100 text-amber-800"
+                      }`}>
+                        ±{gpsAccuracy}m
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-medium">{gpsStatus}</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={startGpsAcquisition}
+                disabled={isLocating}
+                className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all flex items-center gap-1 active:scale-95 disabled:opacity-50 shrink-0"
+                title="Refetch High-Accuracy GPS"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLocating ? "animate-spin text-primary" : ""}`} />
+                <span className="text-[11px]">Refetch</span>
+              </button>
             </div>
+
+            {gpsLocation && (
+              <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
+                <span className="text-emerald-700 font-bold flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> High Precision Confirmed
+                </span>
+                <a
+                  href={`https://www.google.com/maps?q=${gpsLocation.lat},${gpsLocation.lng}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-bold text-sky-600 hover:text-sky-700 flex items-center gap-1 hover:underline"
+                >
+                  <ExternalLink className="w-3 h-3" /> Verify on Maps
+                </a>
+              </div>
+            )}
           </div>
 
           <div>

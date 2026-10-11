@@ -24,7 +24,9 @@ import {
   Layers, 
   PlusCircle, 
   Warehouse,
-  ChevronRight
+  ChevronRight,
+  MapPin,
+  ExternalLink
 } from "lucide-react";
 
 export default function GlassDashboardPage() {
@@ -511,6 +513,23 @@ export default function GlassDashboardPage() {
                           <span>•</span>
                           <span>{collDate.toLocaleDateString()}</span>
                         </p>
+                        {collection.location && (
+                          <a
+                            href={`https://www.google.com/maps?q=${
+                              collection.latitude && collection.longitude 
+                                ? `${collection.latitude},${collection.longitude}` 
+                                : encodeURIComponent(collection.location)
+                            }`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-xs text-sky-600 hover:text-sky-700 font-bold flex items-center gap-1 mt-1 hover:underline"
+                            title="View collection location in Google Maps"
+                          >
+                            <MapPin className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                            <span>{collection.location}</span>
+                            <ExternalLink className="w-3 h-3 text-sky-400" />
+                          </a>
+                        )}
                       </div>
 
                       <div className="text-left sm:text-right flex sm:flex-col justify-between items-center sm:items-end">

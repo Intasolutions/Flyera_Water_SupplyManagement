@@ -1,8 +1,22 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useStore, GlassCollection } from "@/lib/StoreContext";
-import { Recycle, CheckCircle, IndianRupee, UserPlus, Users, Truck, Sparkles, MapPin, ArrowRight } from "lucide-react";
+import { 
+  Recycle, 
+  CheckCircle, 
+  IndianRupee, 
+  UserPlus, 
+  Users, 
+  Truck, 
+  Sparkles, 
+  MapPin, 
+  ArrowRight,
+  Crosshair,
+  RefreshCw,
+  ExternalLink,
+  CheckCircle2
+} from "lucide-react";
 import { 
   getCurrentUser, 
   getVehicles, 
@@ -11,7 +25,8 @@ import {
   createGlassCollection,
   dropoffGlassCollection,
   dropoffAllGlass,
-  getGlassCollections
+  getGlassCollections,
+  createClient
 } from "@/lib/api";
 import { toast } from "react-hot-toast";
 
@@ -58,6 +73,109 @@ export default function GlassDriverPage() {
     }).catch(console.error);
   }, []);
   
+  // GPS State
+  const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<string>("Ready to acquire GPS");
+  const [isLocating, setIsLocating] = useState<boolean>(false);
+  const watchIdRef = useRef<number | null>(null);
+  const bestAccuracyRef = useRef<number>(999999);
+
+  const startGpsAcquisition = () => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+
+    if (!("geolocation" in navigator)) {
+      setGpsStatus("Geolocation not supported by device");
+      return;
+    }
+
+    setIsLocating(true);
+    setGpsStatus("Locking GPS satellites (refining accuracy)...");
+    bestAccuracyRef.current = 999999;
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude, accuracy } = position.coords;
+        const roundedAcc = Math.round(accuracy);
+
+        if (accuracy < bestAccuracyRef.current) {
+          bestAccuracyRef.current = accuracy;
+          setGpsLocation({ lat: latitude, lng: longitude });
+          setGpsAccuracy(roundedAcc);
+
+          if (accuracy <= 15) {
+            setGpsStatus(`GPS Locked (±${roundedAcc}m High Precision)`);
+          } else {
+            setGpsStatus(`Refining fix: ±${roundedAcc}m (waiting for satellite lock...)`);
+          }
+
+          // Reverse geocode to auto-fill address if not filled yet
+          fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`)
+            .then(res => res.json())
+            .then(data => {
+              if (data && data.address) {
+                const parts = [
+                  data.address.road || data.address.pedestrian,
+                  data.address.suburb || data.address.neighbourhood || data.address.residential,
+                  data.address.city || data.address.town || data.address.county
+                ].filter(Boolean);
+                const resolved = parts.join(", ") || data.display_name;
+                if (resolved) {
+                  setNewLocation(prev => prev || resolved);
+                }
+              }
+            })
+            .catch(() => {});
+        }
+
+        // High accuracy satellite fix: save battery
+        if (accuracy <= 10 && watchIdRef.current !== null) {
+          navigator.geolocation.clearWatch(watchIdRef.current);
+          watchIdRef.current = null;
+          setIsLocating(false);
+          setGpsStatus(`GPS Locked (±${roundedAcc}m High Precision)`);
+        }
+      },
+      (error) => {
+        console.warn("Geolocation watch error:", error);
+        setIsLocating(false);
+        if (error.code === 1) {
+          setGpsStatus("Location permission denied. Please allow GPS.");
+        } else if (error.code === 3) {
+          setGpsStatus("GPS acquisition timed out. Tap 'Refetch' to retry.");
+        } else {
+          setGpsStatus("Could not acquire accurate GPS. Tap 'Refetch'.");
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 25000,
+        maximumAge: 0
+      }
+    );
+
+    setTimeout(() => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+        setIsLocating(false);
+      }
+    }, 12000);
+  };
+
+  useEffect(() => {
+    startGpsAcquisition();
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+    };
+  }, []);
+
   // New Client Form Fields
   const [newClientName, setNewClientName] = useState("");
   const [newLocation, setNewLocation] = useState("");
@@ -76,27 +194,39 @@ export default function GlassDriverPage() {
     let finalPhone = "";
 
     if (isNewClient) {
-      if (!newClientName || !newLocation || !newPhone) return;
+      if (!newClientName) {
+        toast.error("Please enter property / client name");
+        return;
+      }
       finalPropertyName = newClientName;
-      finalLocation = newLocation;
+      finalLocation = newLocation || (gpsLocation ? `${gpsLocation.lat.toFixed(6)}, ${gpsLocation.lng.toFixed(6)}` : "");
       finalPhone = newPhone;
 
       addClient({
         id: Date.now().toString(),
         name: newClientName,
-        address: newLocation,
+        address: finalLocation,
         phone: newPhone,
         tier: "Standard",
         points: 0,
         optIn: false,
         history: "New Glass Client"
       });
+
+      createClient({
+        name: newClientName,
+        address: finalLocation,
+        phone: newPhone,
+        tier: "Standard",
+        latitude: gpsLocation?.lat,
+        longitude: gpsLocation?.lng
+      }).catch(err => console.warn("Failed to create client in backend:", err));
     } else {
       if (!selectedClientId) return;
       const client = clients.find(c => c.id === selectedClientId);
       if (!client) return;
       finalPropertyName = client.name;
-      finalLocation = client.address;
+      finalLocation = client.address || (gpsLocation ? `${gpsLocation.lat.toFixed(6)}, ${gpsLocation.lng.toFixed(6)}` : "");
       finalPhone = client.phone;
     }
 
@@ -110,6 +240,8 @@ export default function GlassDriverPage() {
       vehicle: currentVehicle ? `${currentVehicle.model || 'Vehicle'} (${currentVehicle.plate_number})` : "Unassigned Vehicle",
       property: finalPropertyName,
       location: finalLocation,
+      latitude: gpsLocation?.lat,
+      longitude: gpsLocation?.lng,
       phone: finalPhone,
       tonsCollected: tonsNum,
       paymentAmount: paymentNum,
@@ -124,6 +256,8 @@ export default function GlassDriverPage() {
       vehicle: currentVehicle ? `${currentVehicle.model || 'Vehicle'} (${currentVehicle.plate_number})` : "Unassigned Vehicle",
       property: finalPropertyName,
       location: finalLocation,
+      latitude: gpsLocation?.lat,
+      longitude: gpsLocation?.lng,
       phone: finalPhone,
       tons_collected: tonsNum,
       payment_amount: paymentNum
@@ -228,6 +362,66 @@ export default function GlassDriverPage() {
           </div>
 
           <form onSubmit={handleAddCollection} className="space-y-4">
+            {/* Live Auto-GPS Acquisition Card */}
+            <div className="p-3.5 rounded-2xl border border-emerald-200/80 bg-emerald-50/50 space-y-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className={`p-2 rounded-xl shrink-0 ${
+                    gpsAccuracy !== null && gpsAccuracy <= 15
+                      ? "bg-emerald-100 text-emerald-700"
+                      : isLocating
+                      ? "bg-sky-100 text-sky-700 animate-pulse"
+                      : "bg-amber-100 text-amber-700"
+                  }`}>
+                    <Crosshair className={`w-4 h-4 ${isLocating ? "animate-spin" : ""}`} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-black text-slate-800">
+                        {gpsLocation ? `${gpsLocation.lat.toFixed(6)}, ${gpsLocation.lng.toFixed(6)}` : "Detecting live GPS..."}
+                      </span>
+                      {gpsAccuracy !== null && (
+                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
+                          gpsAccuracy <= 15
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-amber-100 text-amber-800"
+                        }`}>
+                          ±{gpsAccuracy}m precision
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">{gpsStatus}</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={startGpsAcquisition}
+                  disabled={isLocating}
+                  className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all flex items-center gap-1 active:scale-95 disabled:opacity-50 shrink-0 shadow-2xs"
+                  title="Refetch High-Accuracy GPS"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLocating ? "animate-spin text-emerald-600" : ""}`} />
+                  <span className="text-[11px]">Refetch</span>
+                </button>
+              </div>
+
+              {gpsLocation && (
+                <div className="pt-2 border-t border-emerald-100 flex items-center justify-between text-[11px]">
+                  <span className="text-emerald-700 font-bold flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Coordinates Auto-Saved on Submission
+                  </span>
+                  <a
+                    href={`https://www.google.com/maps?q=${gpsLocation.lat},${gpsLocation.lng}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-bold text-sky-600 hover:text-sky-700 flex items-center gap-1 hover:underline"
+                  >
+                    <ExternalLink className="w-3 h-3" /> Preview Pin on Maps
+                  </a>
+                </div>
+              )}
+            </div>
             {!isNewClient ? (
               <div>
                 <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 block">
@@ -264,16 +458,30 @@ export default function GlassDriverPage() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
-                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 block">
-                      Address
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                        Address / Pickup Location
+                      </label>
+                      {gpsLocation && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (gpsLocation) {
+                              setNewLocation(`${gpsLocation.lat.toFixed(6)}, ${gpsLocation.lng.toFixed(6)}`);
+                            }
+                          }}
+                          className="text-[10px] font-bold text-emerald-600 hover:text-emerald-700 flex items-center gap-1"
+                        >
+                          <Crosshair className="w-3 h-3" /> Use GPS Pin
+                        </button>
+                      )}
+                    </div>
                     <input
                       type="text"
-                      required
                       value={newLocation}
                       onChange={e => setNewLocation(e.target.value)}
                       className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 outline-none text-slate-800 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all font-semibold text-sm shadow-xs"
-                      placeholder="e.g. 102 Beach Road"
+                      placeholder={gpsLocation ? `e.g. ${gpsLocation.lat.toFixed(4)}, ${gpsLocation.lng.toFixed(4)} or Street Address` : "e.g. 102 Beach Road"}
                     />
                   </div>
                   <div>
@@ -367,9 +575,18 @@ export default function GlassDriverPage() {
                   <div>
                     <p className="font-black text-slate-800 text-sm">{c.property}</p>
                     {c.location && (
-                      <p className="text-xs text-slate-400 font-medium flex items-center gap-1 mt-0.5">
-                        <MapPin className="w-3 h-3 text-slate-400 shrink-0" /> {c.location}
-                      </p>
+                      <a
+                        href={`https://www.google.com/maps?q=${
+                          c.latitude && c.longitude ? `${c.latitude},${c.longitude}` : encodeURIComponent(c.location)
+                        }`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-slate-500 hover:text-emerald-700 font-medium flex items-center gap-1 mt-0.5 hover:underline"
+                        title="Open collection location in Google Maps"
+                      >
+                        <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> {c.location}
+                        <ExternalLink className="w-3 h-3 text-slate-400" />
+                      </a>
                     )}
                     <div className="flex gap-2 mt-2">
                       <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-md">

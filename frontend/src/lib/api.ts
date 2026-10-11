@@ -320,6 +320,8 @@ export interface GlassCollection {
   vehicle: string;
   property: string;
   location?: string;
+  latitude?: number;
+  longitude?: number;
   phone?: string;
   tons_collected?: number;
   tonsCollected?: number;

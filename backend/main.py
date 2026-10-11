@@ -8,6 +8,19 @@ from app.api.routers import users, clients, vehicles, inventory, routes, auth, a
 # Create all tables in the database (simple alternative to migrations for now)
 Base.metadata.create_all(bind=engine)
 
+# Auto-migrate any new columns safely for SQLite / Postgres
+try:
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        for col in ["latitude REAL", "longitude REAL"]:
+            try:
+                conn.execute(text(f"ALTER TABLE glass_collections ADD COLUMN {col}"))
+                conn.commit()
+            except Exception:
+                pass
+except Exception as e:
+    print("Database migration check note:", e)
+
 app = FastAPI(title="Water Supply API", redirect_slashes=False)
 
 # Configure CORS so the frontend can communicate with the backend

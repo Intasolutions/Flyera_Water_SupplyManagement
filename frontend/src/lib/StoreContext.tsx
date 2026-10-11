@@ -67,6 +67,8 @@ export type GlassCollection = {
   vehicle: string;
   property: string;
   location?: string;
+  latitude?: number;
+  longitude?: number;
   phone?: string;
   tonsCollected: number;
   tons_collected?: number;

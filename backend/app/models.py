@@ -192,6 +192,8 @@ class GlassCollection(Base):
     vehicle = Column(String, nullable=False)
     property = Column(String, nullable=False)
     location = Column(String, nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
     phone = Column(String, nullable=True)
     tons_collected = Column(Float, nullable=False)
     payment_amount = Column(Float, default=0.0)

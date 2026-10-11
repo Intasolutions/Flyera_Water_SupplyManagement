@@ -248,6 +248,8 @@ class GlassCollectionBase(BaseModel):
     vehicle: str
     property: str
     location: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     phone: Optional[str] = None
     tons_collected: float
     payment_amount: float = 0.0
