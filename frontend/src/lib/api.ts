@@ -1,4 +1,10 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api';
+// Use relative '/api' in the browser so Next.js rewrites can proxy requests securely
+// without browser Mixed Content (HTTPS -> HTTP) or CORS issues.
+const API_BASE_URL = typeof window !== 'undefined'
+  ? (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('127.0.0.1') && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')
+      ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')
+      : '/api')
+  : (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api');
 
 /**
  * Generic fetcher to handle JSON responses and errors uniformly.
@@ -18,11 +24,19 @@ async function fetcher<T>(endpoint: string, options?: RequestInit): Promise<T> {
     }
   }
 
-  const response = await fetch(url, {
-    cache: 'no-store', // Prevent aggressive browser caching
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      cache: 'no-store', // Prevent aggressive browser caching
+      ...options,
+      headers,
+    });
+  } catch (netErr: any) {
+    if (netErr.message === "Load failed" || netErr.message === "Failed to fetch") {
+      throw new Error("Unable to connect to backend server. Please check server status or connection.");
+    }
+    throw netErr;
+  }
 
   if (!response.ok) {
     let errorMessage = 'An error occurred while fetching data.';
@@ -271,10 +285,19 @@ export const login = (username: string, password: string) => {
     body: formData.toString()
   }).then(async res => {
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Login failed");
+      let detail = "Login failed";
+      try {
+        const err = await res.json();
+        detail = err.detail || detail;
+      } catch (e) {}
+      throw new Error(detail);
     }
     return res.json();
+  }).catch((err: any) => {
+    if (err.message === "Load failed" || err.message === "Failed to fetch") {
+      throw new Error("Unable to connect to backend server. Please check backend connection or server status.");
+    }
+    throw err;
   });
 };
 

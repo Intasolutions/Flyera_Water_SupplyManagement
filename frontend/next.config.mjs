@@ -11,6 +11,16 @@ const withPWA = withPWAInit({
 const nextConfig = {
   reactStrictMode: true,
   turbopack: {},
+  async rewrites() {
+    const backendUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+    const cleanBackendUrl = backendUrl.replace(/\/api\/?$/, '');
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${cleanBackendUrl}/api/:path*`,
+      },
+    ];
+  },
 };
 
 export default withPWA(nextConfig);
