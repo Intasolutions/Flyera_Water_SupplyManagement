@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { getGlassCollections, getGlassInventoryList, getGlassVendorPickups } from "@/lib/api";
 
 export type Client = {
   id: string;
@@ -61,12 +62,16 @@ export type GlassCollection = {
   id: string;
   driverId: string;
   driverName: string;
+  driver_id?: string;
+  driver_name?: string;
   vehicle: string;
   property: string;
   location?: string;
   phone?: string;
   tonsCollected: number;
+  tons_collected?: number;
   paymentAmount: number; // manual entry, 0 for free
+  payment_amount?: number;
   status: "collected" | "dropped_at_godown" | "separated";
   date: string;
 };
@@ -83,8 +88,11 @@ export type GlassSeparation = {
 export type GlassVendorPickup = {
   id: string;
   vendorName: string;
+  vendor_name?: string;
   type: "white" | "mixed";
   tons: number;
+  pricePerTon?: number;
+  price_per_ton?: number;
   date: string;
 };
 
@@ -203,6 +211,46 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (savedBusiness) setActiveBusiness(savedBusiness as AppBusiness);
     
     setIsLoaded(true);
+
+    // Sync live glass data from backend if server is active
+    Promise.all([
+      getGlassCollections().catch(() => null),
+      getGlassInventoryList().catch(() => null),
+      getGlassVendorPickups().catch(() => null)
+    ]).then(([colls, inv, pickups]) => {
+      if (colls && colls.length > 0) {
+        setGlassCollections(colls.map((c: any) => ({
+          id: c.id,
+          driverId: c.driver_id || c.driverId || "",
+          driverName: c.driver_name || c.driverName || "Driver",
+          vehicle: c.vehicle || "",
+          property: c.property || "",
+          location: c.location,
+          phone: c.phone,
+          tonsCollected: c.tons_collected ?? c.tonsCollected ?? 0,
+          paymentAmount: c.payment_amount ?? c.paymentAmount ?? 0,
+          status: c.status || "collected",
+          date: c.date || new Date().toISOString()
+        })));
+      }
+      if (inv && inv.length > 0) {
+        setGlassInventory(inv.map((i: any) => ({
+          id: i.id,
+          type: i.type,
+          tons: i.tons
+        })));
+      }
+      if (pickups && pickups.length > 0) {
+        setGlassVendorPickups(pickups.map((p: any) => ({
+          id: p.id,
+          vendorName: p.vendor_name || p.vendorName || "Vendor",
+          type: p.type,
+          tons: p.tons,
+          pricePerTon: p.price_per_ton ?? p.pricePerTon ?? 0,
+          date: p.date || new Date().toISOString()
+        })));
+      }
+    }).catch(() => {});
   }, []);
 
   // Save to localStorage whenever state changes

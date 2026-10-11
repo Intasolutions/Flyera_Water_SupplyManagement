@@ -279,3 +279,124 @@ export const login = (username: string, password: string) => {
 };
 
 export const getCurrentUser = () => fetcher<User>('/auth/me');
+
+// --- Glass Business API ---
+export interface GlassInventory {
+  id: string;
+  type: "unseparated" | "white" | "mixed";
+  tons: number;
+  updated_at?: string;
+}
+
+export interface GlassCollection {
+  id: string;
+  driver_id?: string;
+  driverId?: string;
+  driver_name?: string;
+  driverName?: string;
+  vehicle: string;
+  property: string;
+  location?: string;
+  phone?: string;
+  tons_collected?: number;
+  tonsCollected?: number;
+  payment_amount?: number;
+  paymentAmount?: number;
+  status: "collected" | "dropped_at_godown" | "separated";
+  date: string;
+}
+
+export interface GlassVendorPickup {
+  id: string;
+  vendor_name?: string;
+  vendorName?: string;
+  type: "white" | "mixed";
+  tons: number;
+  price_per_ton?: number;
+  pricePerTon?: number;
+  date: string;
+}
+
+export interface GlassStats {
+  totalCollectedTons: number;
+  total_collected_tons?: number;
+  totalPaid: number;
+  total_paid?: number;
+  unseparatedTons: number;
+  unseparated_tons?: number;
+  whiteTons: number;
+  white_tons?: number;
+  mixedTons: number;
+  mixed_tons?: number;
+  totalPickupTons: number;
+  total_pickup_tons?: number;
+  totalPickupRevenue: number;
+  total_pickup_revenue?: number;
+  inTransitTons: number;
+  in_transit_tons?: number;
+  inTransitCount: number;
+  recentPickups: GlassVendorPickup[];
+  recentCollections: GlassCollection[];
+}
+
+export const getGlassStats = (startDate?: string, endDate?: string) => {
+  let url = '/glass/stats';
+  if (startDate && endDate) {
+    url += `?start_date=${startDate}&end_date=${endDate}`;
+  }
+  return fetcher<GlassStats>(url);
+};
+
+export const getGlassCollections = (status?: string, startDate?: string, endDate?: string) => {
+  const params = new URLSearchParams();
+  if (status) params.append('status', status);
+  if (startDate) params.append('start_date', startDate);
+  if (endDate) params.append('end_date', endDate);
+  const q = params.toString();
+  return fetcher<GlassCollection[]>(`/glass/collections${q ? `?${q}` : ''}`);
+};
+
+export const createGlassCollection = (data: Partial<GlassCollection>) =>
+  fetcher<GlassCollection>('/glass/collect', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const dropoffGlassCollection = (id: string) =>
+  fetcher<GlassCollection>(`/glass/dropoff/${id}`, {
+    method: 'POST',
+  });
+
+export const dropoffAllGlass = (driverId?: string) =>
+  fetcher<{ message: string; count: number; totalTons?: number }>('/glass/dropoff-all', {
+    method: 'POST',
+    body: JSON.stringify({ driver_id: driverId }),
+  });
+
+export const separateGlassStock = (data: {
+  collection_id?: string | null;
+  tons_separated: number;
+  white_tons: number;
+  mixed_tons: number;
+  staff_id?: string;
+}) =>
+  fetcher<any>('/glass/separate', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const getGlassInventoryList = () => fetcher<GlassInventory[]>('/glass/inventory');
+
+export const createGlassVendorPickup = (data: {
+  vendor_name: string;
+  type: "white" | "mixed";
+  tons: number;
+  price_per_ton?: number;
+}) =>
+  fetcher<GlassVendorPickup>('/glass/vendor-pickup', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const getGlassVendorPickups = () => fetcher<GlassVendorPickup[]>('/glass/vendor-pickups');
+

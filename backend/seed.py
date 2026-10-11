@@ -69,9 +69,9 @@ def seed_database():
 
         # 4. Create Inventory Types
         inventory_data = [
-            InventoryTypeCreate(name="20L Mineral Water Bottle", price=80.0, points_value=1),
-            InventoryTypeCreate(name="5L Water Jar", price=35.0, points_value=0),
-            InventoryTypeCreate(name="Paper Cups (100 pack)", price=50.0, points_value=0),
+            InventoryTypeCreate(name="20L Mineral Water Bottle", price=80.0, wholesale_price=65.0, premium_price=60.0, points_value=1),
+            InventoryTypeCreate(name="5L Water Jar", price=35.0, wholesale_price=28.0, premium_price=25.0, points_value=0),
+            InventoryTypeCreate(name="Paper Cups (100 pack)", price=50.0, wholesale_price=42.0, premium_price=38.0, points_value=0),
         ]
         inventory_types = [create_inventory_type(db, i) for i in inventory_data]
         print(f"Created {len(inventory_types)} inventory items.")

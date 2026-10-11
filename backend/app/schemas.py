@@ -243,7 +243,8 @@ class GlassInventoryResponse(GlassInventoryBase):
         from_attributes = True
 
 class GlassCollectionBase(BaseModel):
-    driver_id: str
+    driver_id: Optional[str] = None
+    driver_name: Optional[str] = None
     vehicle: str
     property: str
     location: Optional[str] = None
@@ -257,6 +258,9 @@ class GlassCollectionCreate(GlassCollectionBase):
 class GlassCollectionUpdateStatus(BaseModel):
     status: str
 
+class GlassDropoffAllRequest(BaseModel):
+    driver_id: Optional[str] = None
+
 class GlassCollectionResponse(GlassCollectionBase):
     id: str
     status: str
@@ -266,7 +270,7 @@ class GlassCollectionResponse(GlassCollectionBase):
         from_attributes = True
 
 class GlassSeparationBase(BaseModel):
-    staff_id: str
+    staff_id: Optional[str] = None
     collection_id: Optional[str] = None
     tons_separated: float
     white_tons: float

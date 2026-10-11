@@ -1,32 +1,54 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Sidebar } from "@/components/ui/Sidebar";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { StatCard } from "@/components/ui/StatCard";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { Users, Search, Filter, Phone, Plus, UserCheck, ShieldAlert, Truck, UserPlus, User as UserIcon } from "lucide-react";
+import { 
+  Users, 
+  Search, 
+  Filter, 
+  Phone, 
+  Plus, 
+  UserCheck, 
+  ShieldAlert, 
+  Truck, 
+  UserPlus, 
+  User as UserIcon,
+  RefreshCw,
+  Edit2,
+  Trash2,
+  Shield,
+  Recycle,
+  CheckCircle2
+} from "lucide-react";
 import { getUsers, createUser, updateUser, deleteUser, getVehicles, User, Vehicle } from "@/lib/api";
 import { toast } from "react-hot-toast";
 import { useConfirm } from "@/lib/useConfirm";
 
 export default function StaffPage() {
   const [staff, setStaff] = useState<User[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const confirm = useConfirm();
 
+  // Form states
   const [newName, setNewName] = useState("");
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newPhone, setNewPhone] = useState("");
-  const [newRole, setNewRole] = useState("DRIVER"); // "ADMIN", "DRIVER", "HELPER"
+  const [newRole, setNewRole] = useState("DRIVER");
   const [newAddress, setNewAddress] = useState("");
   const [newIdProofUrl, setNewIdProofUrl] = useState("");
   const [newAssignedVehicle, setNewAssignedVehicle] = useState("");
   const [uploading, setUploading] = useState(false);
-
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
 
   useEffect(() => {
     fetchStaff();
@@ -36,9 +58,9 @@ export default function StaffPage() {
   const fetchVehicles = async () => {
     try {
       const data = await getVehicles();
-      setVehicles(data);
+      setVehicles(data || []);
     } catch (e) {
-      console.error(e);
+      console.error("Failed to load vehicles:", e);
     }
   };
 
@@ -46,88 +68,56 @@ export default function StaffPage() {
     try {
       setLoading(true);
       const data = await getUsers();
-      setStaff(data);
+      setStaff(data || []);
     } catch (error) {
       console.error("Failed to fetch staff:", error);
+      toast.error("Failed to load staff roster");
     } finally {
       setLoading(false);
     }
   };
 
   const handleSaveStaff = async () => {
-    if (newName && newRole && (editId || newPassword)) {
-      try {
-        const payload: any = {
-          name: newName,
-          role: newRole,
-          phone: newPhone || null,
-          username: newUsername || null,
-          address: newAddress || null,
-          id_proof_url: newIdProofUrl || null,
-          assigned_vehicle_id: newRole === "GLASS_DRIVER" ? (newAssignedVehicle || null) : null,
-        };
-        
-        if (editId) {
-          await updateUser(editId, payload);
-        } else {
-          payload.password = newPassword;
-          await createUser(payload);
-        }
-        
-        await fetchStaff();
-        setModalOpen(false);
-        setEditId(null);
-        setNewName("");
-        setNewUsername("");
-        setNewPassword("");
-        setNewPhone("");
-        setNewRole("DRIVER");
-        setNewAddress("");
-        setNewIdProofUrl("");
-        setNewAssignedVehicle("");
-        toast.success(editId ? "Staff member updated successfully!" : "Staff member created successfully!");
-      } catch (error: any) {
-        console.error("Failed to save staff:", error);
-        toast.error(error.message || "Failed to save staff member.");
+    if (!newName.trim()) {
+      toast.error("Please enter a staff name");
+      return;
+    }
+
+    if (!editId && !newPassword) {
+      toast.error("Please provide a password for new account");
+      return;
+    }
+
+    try {
+      const payload: any = {
+        name: newName.trim(),
+        role: newRole,
+        phone: newPhone.trim() || null,
+        username: newUsername.trim() || null,
+        address: newAddress.trim() || null,
+        id_proof_url: newIdProofUrl || null,
+        assigned_vehicle_id: newRole === "GLASS_DRIVER" || newRole === "DRIVER" ? (newAssignedVehicle || null) : null,
+      };
+      
+      if (editId) {
+        await updateUser(editId, payload);
+        toast.success("Staff profile updated!");
+      } else {
+        payload.password = newPassword;
+        await createUser(payload);
+        toast.success("New staff member registered!");
       }
-    } else {
-      toast.error("Please fill required fields (Name, Role, Password for new staff)");
+      
+      await fetchStaff();
+      setModalOpen(false);
+      resetForm();
+    } catch (error: any) {
+      console.error("Failed to save staff:", error);
+      toast.error(error.message || "Failed to save staff member");
     }
   };
 
-  const handleDeleteStaff = async (id: string) => {
-    const isConfirmed = await confirm({
-      title: "Delete Staff",
-      message: "Are you sure you want to delete this staff member? This will remove their access.",
-      confirmText: "Delete",
-      cancelText: "Cancel"
-    });
-    
-    if (isConfirmed) {
-      try {
-        await deleteUser(id);
-        await fetchStaff();
-        toast.success("Staff member deleted successfully.");
-      } catch (error: any) {
-        console.error("Failed to delete staff:", error);
-        toast.error(error.message || "Failed to delete staff member.");
-      }
-    }
-  };
-
-  const handleEditClick = (s: User) => {
-    setEditId(s.id);
-    setNewName(s.name);
-    setNewUsername(s.username || "");
-    setNewPhone(s.phone || "");
-    setNewRole(s.role);
-    setNewAddress(s.address || "");
-    setNewIdProofUrl(s.id_proof_url || "");
-    setNewAssignedVehicle(s.assigned_vehicle_id || "");
-    setModalOpen(true);
-  };
-
-  const handleAddClick = () => {
+  const resetForm = () => {
     setEditId(null);
     setNewName("");
     setNewUsername("");
@@ -137,7 +127,44 @@ export default function StaffPage() {
     setNewAddress("");
     setNewIdProofUrl("");
     setNewAssignedVehicle("");
+  };
+
+  const handleEditClick = (s: User) => {
+    setEditId(s.id);
+    setNewName(s.name);
+    setNewUsername(s.username || "");
+    setNewPassword("");
+    setNewPhone(s.phone || "");
+    setNewRole(s.role);
+    setNewAddress(s.address || "");
+    setNewIdProofUrl(s.id_proof_url || "");
+    setNewAssignedVehicle(s.assigned_vehicle_id || "");
     setModalOpen(true);
+  };
+
+  const handleAddClick = () => {
+    resetForm();
+    setModalOpen(true);
+  };
+
+  const handleDeleteStaff = async (id: string, name: string) => {
+    const isConfirmed = await confirm({
+      title: "Remove Staff Member",
+      message: `Are you sure you want to remove "${name}" from the roster? This action cannot be undone.`,
+      confirmText: "Delete",
+      cancelText: "Cancel"
+    });
+    
+    if (isConfirmed) {
+      try {
+        await deleteUser(id);
+        await fetchStaff();
+        toast.success("Staff member removed.");
+      } catch (error: any) {
+        console.error("Failed to delete staff:", error);
+        toast.error(error.message || "Failed to delete staff member");
+      }
+    }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -165,163 +192,316 @@ export default function StaffPage() {
     }
   };
 
-  const totalDrivers = staff.filter(s => s.role === "DRIVER").length;
-  const totalHelpers = staff.filter(s => s.role === "HELPER").length;
-  const onLeave = 0; // Placeholder until attendance is implemented
+  // Filter dynamically
+  const filteredStaff = useMemo(() => {
+    return staff.filter(s => {
+      const matchesSearch = 
+        (s.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (s.username || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (s.phone || "").toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchesRole = 
+        roleFilter === "all" || s.role.toUpperCase() === roleFilter.toUpperCase();
+
+      return matchesSearch && matchesRole;
+    });
+  }, [staff, searchQuery, roleFilter]);
+
+  const totalHeadcount = staff.length;
+  const totalDrivers = staff.filter(s => s.role.toUpperCase() === "DRIVER").length;
+  const totalHelpers = staff.filter(s => s.role.toUpperCase() === "HELPER").length;
+  const totalGlass = staff.filter(s => s.role.toUpperCase().includes("GLASS")).length;
 
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
       
-      <main className="flex-1 ml-0 md:ml-64 p-4 md:p-8 pt-16 md:pt-8 transition-all relative">
-        <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-text mb-1">Staff Management</h1>
-            <p className="text-text-muted">Manage your drivers, helpers, and warehouse team.</p>
-          </div>
-          <Button onClick={handleAddClick} icon={<Plus className="w-5 h-5" />}>
-            Add Staff
-          </Button>
-        </header>
+      <main className="flex-1 ml-0 md:ml-72 p-4 sm:p-6 md:p-10 lg:p-12 pt-20 md:pt-10 pb-24 md:pb-12 transition-all max-w-7xl">
+        <PageHeader 
+          title="Staff & Personnel" 
+          subtitle="Manage delivery drivers, route helpers, warehouse operators, and credentials."
+          badge={`${totalHeadcount} Active Personnel`}
+          badgeColor="blue"
+          actions={
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => fetchStaff()}
+                title="Refresh staff"
+                className="p-2.5 bg-white border border-gray-200 hover:border-primary rounded-xl shadow-sm text-text-muted hover:text-primary transition-all active:scale-95"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-primary" : ""}`} />
+              </button>
+              <Button 
+                onClick={handleAddClick} 
+                icon={<Plus className="w-4 h-4" />}
+                className="shadow-md"
+              >
+                Add Staff Member
+              </Button>
+            </div>
+          }
+        />
 
-        {/* Global Staff Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm flex items-center gap-4">
-            <div className="w-14 h-14 bg-blue-50 rounded-full flex items-center justify-center">
-              <Users className="w-7 h-7 text-blue-600" />
+        {/* Top KPI Metrics Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <StatCard 
+            title="Total Team" 
+            value={totalHeadcount} 
+            trend="Active accounts"
+            icon={<Users className="w-5 h-5 text-blue-600" />}
+            badge="Team"
+            color="blue"
+          />
+          <StatCard 
+            title="Water Drivers" 
+            value={totalDrivers} 
+            trend="Assigned to delivery routes"
+            icon={<Truck className="w-5 h-5 text-emerald-600" />}
+            badge="Drivers"
+            color="emerald"
+          />
+          <StatCard 
+            title="Route Helpers" 
+            value={totalHelpers} 
+            trend="Assisting delivery crews"
+            icon={<UserCheck className="w-5 h-5 text-cyan-600" />}
+            badge="Helpers"
+            color="cyan"
+          />
+          <StatCard 
+            title="Glass Personnel" 
+            value={totalGlass} 
+            trend="Collections & godown"
+            icon={<Recycle className="w-5 h-5 text-purple-600" />}
+            badge="Recycling"
+            color="purple"
+          />
+        </div>
+
+        {/* Search & Filter Toolbar */}
+        <div className="glass-panel p-4 md:p-5 rounded-3xl mb-8 border border-black/5 shadow-sm">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="relative w-full md:w-96">
+              <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-text-muted" />
+              <input 
+                type="text" 
+                placeholder="Search staff by name, phone, or username..." 
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-surface border border-gray-200 rounded-xl outline-none text-text text-sm font-medium focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all shadow-sm"
+              />
             </div>
-            <div>
-              <h3 className="text-text-muted font-medium">Total Drivers</h3>
-              <p className="text-3xl font-bold text-text">{totalDrivers}</p>
-            </div>
-          </div>
-          <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm flex items-center gap-4">
-            <div className="w-14 h-14 bg-emerald-50 rounded-full flex items-center justify-center">
-              <UserCheck className="w-7 h-7 text-emerald-600" />
-            </div>
-            <div>
-              <h3 className="text-text-muted font-medium">Total Helpers</h3>
-              <p className="text-3xl font-bold text-text">{totalHelpers}</p>
-            </div>
-          </div>
-          <div className="bg-white p-6 rounded-2xl border border-black/5 shadow-sm flex items-center gap-4">
-            <div className="w-14 h-14 bg-amber-50 rounded-full flex items-center justify-center">
-              <ShieldAlert className="w-7 h-7 text-amber-600" />
-            </div>
-            <div>
-              <h3 className="text-text-muted font-medium">On Leave Today</h3>
-              <p className="text-3xl font-bold text-text">{onLeave}</p>
+
+            <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
+              <div className="flex bg-surface border border-gray-200 rounded-xl p-1 shadow-sm text-xs font-bold">
+                <button
+                  onClick={() => setRoleFilter("all")}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                    roleFilter === "all" ? "bg-white shadow text-primary font-black" : "text-text-muted hover:text-text"
+                  }`}
+                >
+                  All ({totalHeadcount})
+                </button>
+                <button
+                  onClick={() => setRoleFilter("DRIVER")}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                    roleFilter === "DRIVER" ? "bg-white shadow text-blue-600 font-black" : "text-text-muted hover:text-text"
+                  }`}
+                >
+                  Drivers ({totalDrivers})
+                </button>
+                <button
+                  onClick={() => setRoleFilter("HELPER")}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                    roleFilter === "HELPER" ? "bg-white shadow text-cyan-600 font-black" : "text-text-muted hover:text-text"
+                  }`}
+                >
+                  Helpers ({totalHelpers})
+                </button>
+                <button
+                  onClick={() => setRoleFilter("GLASS_DRIVER")}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                    roleFilter === "GLASS_DRIVER" ? "bg-white shadow text-purple-600 font-black" : "text-text-muted hover:text-text"
+                  }`}
+                >
+                  Glass ({totalGlass})
+                </button>
+                <button
+                  onClick={() => setRoleFilter("ADMIN")}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                    roleFilter === "ADMIN" ? "bg-white shadow text-amber-600 font-black" : "text-text-muted hover:text-text"
+                  }`}
+                >
+                  Admin
+                </button>
+              </div>
+
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="text-xs font-bold text-primary hover:underline px-2 py-1 shrink-0"
+                >
+                  Clear
+                </button>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-black/5 shadow-sm overflow-hidden">
-          <div className="p-4 md:p-6 border-b border-black/5 flex flex-col md:flex-row justify-between gap-4">
-            <div className="flex gap-2 w-full md:w-auto">
-              <div className="relative flex-1 md:w-80">
-                <Search className="w-5 h-5 absolute left-3 top-2.5 text-text-muted" />
-                <input 
-                  type="text" 
-                  placeholder="Search staff..." 
-                  className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 text-text font-medium"
-                />
+        {/* Staff Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredStaff.map(s => {
+            const assignedVeh = vehicles.find(v => v.id === s.assigned_vehicle_id);
+            return (
+              <StaffCard 
+                key={s.id} 
+                staff={s} 
+                assignedVehiclePlate={assignedVeh?.plate_number}
+                onEdit={() => handleEditClick(s)} 
+                onDelete={() => handleDeleteStaff(s.id, s.name)} 
+              />
+            );
+          })}
+
+          {filteredStaff.length === 0 && !loading && (
+            <div className="col-span-full p-12 text-center bg-surface/60 rounded-3xl border border-dashed border-gray-200">
+              <Users className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+              <h3 className="text-base font-bold text-text">No staff members found</h3>
+              <p className="text-text-muted text-sm mt-1 max-w-sm mx-auto">
+                {searchQuery || roleFilter !== "all"
+                  ? "No staff match your current filter criteria."
+                  : "Start onboarding drivers and helpers to assign deliveries."}
+              </p>
+              <div className="mt-4">
+                <Button onClick={handleAddClick} icon={<Plus className="w-4 h-4" />} size="sm">
+                  Add Staff Member
+                </Button>
               </div>
-              <Button variant="outline" className="px-3" icon={<Filter className="w-5 h-5" />} />
             </div>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {staff.map(s => (
-              <StaffCard key={s.id} {...s} onEdit={() => handleEditClick(s)} onDelete={() => handleDeleteStaff(s.id)} />
-            ))}
-            {staff.length === 0 && (
-              <div className="col-span-full py-12 text-center text-text-muted bg-white border border-gray-100 rounded-2xl shadow-sm">
-                No staff members found.
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
-        {/* Add Staff Modal */}
+        {/* Add / Edit Modal */}
         <Modal
           isOpen={modalOpen}
           onClose={() => setModalOpen(false)}
-          title={editId ? "Edit Staff Member" : "Add Staff Member"}
+          title={editId ? "Update Staff Profile" : "Register Staff Member"}
+          subtitle={editId ? "Modify roles, contact number, or vehicle link." : "Create credentials and roles for fleet operators."}
           width="2xl"
           actions={
-            <div className="flex gap-4 w-full">
-              <Button variant="secondary" onClick={() => setModalOpen(false)} fullWidth>Cancel</Button>
+            <div className="flex gap-3 w-full">
+              <Button variant="secondary" onClick={() => setModalOpen(false)} fullWidth>
+                Cancel
+              </Button>
               <Button variant="primary" onClick={handleSaveStaff} fullWidth>
-                {editId ? "Update Staff" : "Save Staff"}
+                {editId ? "Save Profile" : "Create Account"}
               </Button>
             </div>
           }
         >
-          <div className="space-y-5">
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-1.5">Full Name *</label>
-              <input type="text" placeholder="e.g. Ramesh Kumar" value={newName} onChange={e => setNewName(e.target.value)} className="w-full border border-gray-200 rounded-xl p-3.5 bg-white text-slate-800 font-medium outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all" />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1.5">Username</label>
-                <input type="text" placeholder="e.g. ramesh.kumar" value={newUsername} onChange={e => setNewUsername(e.target.value)} className="w-full border border-gray-200 rounded-xl p-3.5 bg-white text-slate-800 font-medium outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all" />
-              </div>
-              {!editId && (
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1.5">Password *</label>
-                  <input type="password" placeholder="••••••••" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full border border-gray-200 rounded-xl p-3.5 bg-white text-slate-800 font-medium outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all" />
-                </div>
-              )}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1.5">Phone Number</label>
-                <input type="text" placeholder="+91 XXXXX XXXXX" value={newPhone} onChange={e => setNewPhone(e.target.value)} className="w-full border border-gray-200 rounded-xl p-3.5 bg-white text-slate-800 font-medium outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all" />
+                <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
+                  Full Name
+                </label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Ramesh Kumar" 
+                  value={newName} 
+                  onChange={e => setNewName(e.target.value)} 
+                  className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium" 
+                />
               </div>
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1.5">Role *</label>
-                <select value={newRole} onChange={e => setNewRole(e.target.value)} className="w-full border border-gray-200 rounded-xl p-3.5 bg-white text-slate-800 font-medium outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all appearance-none cursor-pointer">
-                  <option value="DRIVER">Water Driver</option>
-                  <option value="HELPER">Water Helper</option>
-                  <option value="WATER_STAFF">Water Supply Admin</option>
-                  <option value="GLASS_DRIVER">Glass Driver</option>
-                  <option value="GLASS_STAFF">Glass Admin</option>
-                  <option value="ADMIN">Master Admin</option>
+                <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
+                  Role
+                </label>
+                <select 
+                  value={newRole} 
+                  onChange={e => setNewRole(e.target.value)} 
+                  className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium appearance-none cursor-pointer"
+                >
+                  <option value="DRIVER">Delivery Driver (Water)</option>
+                  <option value="HELPER">Route Helper (Water)</option>
+                  <option value="GLASS_DRIVER">Collection Driver (Glass)</option>
+                  <option value="GLASS_STAFF">Godown Worker (Glass)</option>
+                  <option value="ADMIN">Administrator</option>
                 </select>
               </div>
             </div>
-            
-            {newRole === "GLASS_DRIVER" && (
-              <div className="animate-in fade-in slide-in-from-top-2">
-                <label className="block text-sm font-bold text-slate-700 mb-1.5">Assigned Vehicle *</label>
-                <select value={newAssignedVehicle} onChange={e => setNewAssignedVehicle(e.target.value)} className="w-full border border-gray-200 rounded-xl p-3.5 bg-white text-slate-800 font-medium outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all appearance-none cursor-pointer">
-                  <option value="">-- Select Vehicle --</option>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
+                  Login Username
+                </label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. ramesh_driver" 
+                  value={newUsername} 
+                  onChange={e => setNewUsername(e.target.value)} 
+                  className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium" 
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
+                  Password {editId ? "(Leave blank to keep unchanged)" : ""}
+                </label>
+                <input 
+                  type="password" 
+                  placeholder={editId ? "••••••••" : "Choose password"} 
+                  value={newPassword} 
+                  onChange={e => setNewPassword(e.target.value)} 
+                  className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium" 
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
+                  Phone Number
+                </label>
+                <input 
+                  type="text" 
+                  placeholder="+91 98765 43210" 
+                  value={newPhone} 
+                  onChange={e => setNewPhone(e.target.value)} 
+                  className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium" 
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
+                  Assign Vehicle (For Drivers)
+                </label>
+                <select 
+                  value={newAssignedVehicle} 
+                  onChange={e => setNewAssignedVehicle(e.target.value)} 
+                  className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium appearance-none cursor-pointer"
+                >
+                  <option value="">No Vehicle Assigned</option>
                   {vehicles.map(v => (
-                    <option key={v.id} value={v.id}>{v.model || 'Vehicle'} ({v.plate_number})</option>
+                    <option key={v.id} value={v.id}>
+                      {v.plate_number} ({v.model || "Truck"})
+                    </option>
                   ))}
                 </select>
-                <p className="text-xs text-slate-500 mt-1">This vehicle will be permanently linked to this Glass Driver for all collections.</p>
               </div>
-            )}
-            
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-1.5">Address</label>
-              <textarea rows={2} placeholder="Full address" value={newAddress} onChange={e => setNewAddress(e.target.value)} className="w-full border border-gray-200 rounded-xl p-3.5 bg-white text-slate-800 font-medium outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all resize-none"></textarea>
             </div>
+
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-1.5">ID Proof (Aadhar / PAN)</label>
-              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                <label className="cursor-pointer bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold py-2.5 px-5 rounded-xl border border-gray-200 transition-colors shadow-sm flex-shrink-0">
-                  {uploading ? "Uploading..." : "Upload Document"}
-                  <input type="file" accept="image/*,.pdf" className="hidden" onChange={handleFileUpload} disabled={uploading} />
-                </label>
-                {newIdProofUrl && (
-                  <a href={`http://127.0.0.1:8000${newIdProofUrl}`} target="_blank" rel="noreferrer" className="text-primary hover:text-blue-700 text-sm font-bold bg-primary/5 px-4 py-2.5 rounded-xl border border-primary/10 transition-colors">
-                    View Uploaded Document
-                  </a>
-                )}
-              </div>
+              <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
+                Residential Address
+              </label>
+              <input 
+                type="text" 
+                placeholder="Full residential address" 
+                value={newAddress} 
+                onChange={e => setNewAddress(e.target.value)} 
+                className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text font-medium focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all" 
+              />
             </div>
           </div>
         </Modal>
@@ -330,68 +510,97 @@ export default function StaffPage() {
   );
 }
 
-function StaffCard({ name, phone, role, status = "Available", assignment = "-", onEdit, onDelete }: any) {
-  const getStatusStyle = (s: string) => {
-    if (s === "On Route") return "bg-blue-50 text-blue-700 border-blue-100 flex items-center gap-1.5";
-    if (s === "Available" || s === "On Duty") return "bg-emerald-50 text-emerald-700 border-emerald-100 flex items-center gap-1.5";
-    return "bg-slate-100 text-slate-600 border-slate-200 flex items-center gap-1.5";
-  };
+function StaffCard({ 
+  staff, 
+  assignedVehiclePlate, 
+  onEdit, 
+  onDelete 
+}: { 
+  staff: User; 
+  assignedVehiclePlate?: string; 
+  onEdit: () => void; 
+  onDelete: () => void; 
+}) {
+  const roleConfig = {
+    DRIVER: { label: "Water Driver", bg: "bg-blue-50 text-blue-700 border-blue-100", icon: Truck },
+    HELPER: { label: "Route Helper", bg: "bg-cyan-50 text-cyan-700 border-cyan-100", icon: UserCheck },
+    GLASS_DRIVER: { label: "Glass Driver", bg: "bg-purple-50 text-purple-700 border-purple-100", icon: Recycle },
+    GLASS_STAFF: { label: "Godown Worker", bg: "bg-emerald-50 text-emerald-700 border-emerald-100", icon: Recycle },
+    ADMIN: { label: "Administrator", bg: "bg-amber-50 text-amber-700 border-amber-100", icon: Shield }
+  }[staff.role.toUpperCase()] || { label: staff.role, bg: "bg-gray-50 text-gray-700 border-gray-100", icon: UserIcon };
 
-  const getStatusIndicator = (s: string) => {
-    if (s === "On Route") return <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />;
-    if (s === "Available" || s === "On Duty") return <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />;
-    return <div className="w-1.5 h-1.5 rounded-full bg-slate-400" />;
-  };
+  const RoleIconComponent = roleConfig.icon;
 
-  const getRoleIcon = (r: string) => {
-    if (r.includes("DRIVER")) return <Truck className="w-5 h-5 text-indigo-500" />;
-    if (r.includes("HELPER")) return <UserPlus className="w-5 h-5 text-indigo-500" />;
-    if (r.includes("STAFF")) return <UserCheck className="w-5 h-5 text-indigo-500" />;
-    return <UserIcon className="w-5 h-5 text-indigo-500" />;
-  };
+  const initials = staff.name
+    .split(" ")
+    .map(p => p[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow p-5 flex flex-col h-full relative overflow-hidden group">
-      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-400 to-purple-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-      
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex gap-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100/50 flex items-center justify-center shrink-0">
-            {getRoleIcon(role)}
-          </div>
-          <div>
-            <h3 className="font-bold text-lg text-slate-800 tracking-tight leading-tight mb-1">{name}</h3>
-            <div className="flex items-center text-slate-500 text-sm font-medium gap-1.5">
-              <Phone className="w-3 h-3 text-slate-400" />
-              {phone || "No phone"}
+    <div className="glass-panel p-5 rounded-3xl hover:shadow-md transition-all border border-black/5 flex flex-col justify-between group relative overflow-hidden">
+      <div>
+        <div className="flex justify-between items-start mb-3 gap-2">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-sky-600 to-blue-500 text-white font-black text-sm flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+              {initials}
+            </div>
+            <div>
+              <h3 className="font-extrabold text-base text-text tracking-tight group-hover:text-primary transition-colors">
+                {staff.name}
+              </h3>
+              <p className="text-xs text-text-muted font-medium mt-0.5">
+                @{staff.username || "no-login"}
+              </p>
             </div>
           </div>
+
+          <span className={`text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-1 rounded-md border ${roleConfig.bg}`}>
+            {roleConfig.label}
+          </span>
+        </div>
+
+        <div className="space-y-2 py-3 border-y border-black/5 my-3 text-xs">
+          <div className="flex items-center gap-2 text-text-muted">
+            <Phone className="w-3.5 h-3.5 text-text-muted" />
+            <span className="font-semibold text-text">{staff.phone || "No phone listed"}</span>
+          </div>
+
+          {assignedVehiclePlate ? (
+            <div className="flex items-center gap-2 pt-1">
+              <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-0.5 rounded-lg">
+                <Truck className="w-3.5 h-3.5 text-emerald-600" />
+                Vehicle: {assignedVehiclePlate}
+              </span>
+            </div>
+          ) : (
+            <p className="text-[11px] text-text-muted italic">
+              No vehicle dedicated
+            </p>
+          )}
         </div>
       </div>
 
-      <div className="space-y-3 flex-1 mb-4">
-        <div className="grid grid-cols-2 gap-2">
-          <div className="bg-slate-50 rounded-xl p-2 border border-slate-100/50">
-            <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block mb-0.5">Role</span>
-            <span className="text-sm font-bold text-slate-700">{role.replace(/_/g, ' ')}</span>
-          </div>
-          <div className="bg-slate-50 rounded-xl p-2 border border-slate-100/50 flex flex-col justify-center">
-            <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block mb-1">Status</span>
-            <span className={`px-2 py-0.5 rounded-lg border text-xs font-bold w-fit ${getStatusStyle(status)}`}>
-              {getStatusIndicator(status)} {status}
-            </span>
-          </div>
-        </div>
-        
-        <div className="bg-slate-50 rounded-xl p-3 border border-slate-100/50">
-          <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400 block mb-1">Current Assignment</span>
-          <span className="text-sm font-medium text-slate-600 line-clamp-1">{assignment}</span>
-        </div>
-      </div>
-
-      <div className="flex gap-2 pt-4 border-t border-slate-100 mt-auto">
-        <Button variant="secondary" size="sm" onClick={onEdit} className="flex-1">Edit</Button>
-        <Button variant="danger" size="sm" onClick={onDelete} className="flex-1">Delete</Button>
+      <div className="flex gap-2 pt-1">
+        <Button 
+          variant="secondary" 
+          size="sm" 
+          onClick={onEdit} 
+          icon={<Edit2 className="w-3.5 h-3.5" />}
+          className="flex-1"
+        >
+          Edit
+        </Button>
+        <Button 
+          variant="danger" 
+          size="sm" 
+          onClick={onDelete} 
+          icon={<Trash2 className="w-3.5 h-3.5" />}
+          className="flex-1"
+        >
+          Delete
+        </Button>
       </div>
     </div>
   );

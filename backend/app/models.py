@@ -188,7 +188,7 @@ class GlassCollection(Base):
     __tablename__ = "glass_collections"
     
     id = Column(String, primary_key=True, default=generate_uuid)
-    driver_id = Column(String, ForeignKey("users.id"), nullable=False)
+    driver_id = Column(String, ForeignKey("users.id"), nullable=True)
     vehicle = Column(String, nullable=False)
     property = Column(String, nullable=False)
     location = Column(String, nullable=True)
@@ -204,7 +204,7 @@ class GlassSeparation(Base):
     __tablename__ = "glass_separations"
     
     id = Column(String, primary_key=True, default=generate_uuid)
-    staff_id = Column(String, ForeignKey("users.id"), nullable=False)
+    staff_id = Column(String, ForeignKey("users.id"), nullable=True)
     collection_id = Column(String, ForeignKey("glass_collections.id"), nullable=True) # Optional, can separate bulk
     tons_separated = Column(Float, nullable=False)
     white_tons = Column(Float, nullable=False)

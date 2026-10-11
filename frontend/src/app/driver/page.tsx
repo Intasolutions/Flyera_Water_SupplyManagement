@@ -2,28 +2,49 @@
 
 import { useState, useEffect } from "react";
 import { useStore } from "@/lib/StoreContext";
-import { getClients, Client as ApiClient, getAssignments, getRoutes, createDelivery, getInventoryTypes, getCurrentUser, getVehicles, createClient } from "@/lib/api";
+import { 
+  getClients, 
+  Client as ApiClient, 
+  getAssignments, 
+  getRoutes, 
+  createDelivery, 
+  getInventoryTypes, 
+  getCurrentUser, 
+  getVehicles, 
+  createClient 
+} from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { toast } from "react-hot-toast";
-import { useConfirm } from "@/lib/useConfirm";
 import { 
-  MapPin, Phone, Package, CheckCircle2, IndianRupee, Minus, Plus, QrCode, AlertTriangle, Navigation, Route
+  MapPin, 
+  Phone, 
+  Package, 
+  CheckCircle2, 
+  IndianRupee, 
+  Minus, 
+  Plus, 
+  QrCode, 
+  AlertTriangle, 
+  Navigation, 
+  Route as RouteIcon,
+  Truck,
+  Sparkles,
+  ArrowRight
 } from "lucide-react";
 
 export default function DriverApp() {
-  const { completeDelivery, assignments: mockAssignments } = useStore();
+  const { completeDelivery } = useStore();
   const [clients, setClients] = useState<ApiClient[]>([]);
   const [activeClient, setActiveClient] = useState<string | null>(null);
   
   const [step, setStep] = useState(1); // 1: Delivery Details, 2: Payment
   
   // Maps inventory_type_id -> { full, empty, damaged }
-  const [deliveryItems, setDeliveryItems] = useState<Record<string, { full: number, empty: number, damaged: number }>>({});
+  const [deliveryItems, setDeliveryItems] = useState<Record<string, { full: number; empty: number; damaged: number }>>({});
   const [selectedInventoryId, setSelectedInventoryId] = useState<string>("");
   const [activeAllocations, setActiveAllocations] = useState<any[]>([]);
 
-  // Mock initial stock (in a full app, this would be fetched from the Assignment API)
   const [initialStock, setInitialStock] = useState(0);
   const [currentStock, setCurrentStock] = useState(0);
   const [assignedRouteId, setAssignedRouteId] = useState<string | null>(null);
@@ -37,25 +58,29 @@ export default function DriverApp() {
   const [newClientTier, setNewClientTier] = useState("Standard");
   const [newClientOptIn, setNewClientOptIn] = useState(true);
   const [isAddingClient, setIsAddingClient] = useState(false);
-  const [gpsLocation, setGpsLocation] = useState<{lat: number, lng: number} | null>(null);
-  const [gpsStatus, setGpsStatus] = useState<string>("Waiting for GPS...");
+  const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [gpsStatus, setGpsStatus] = useState<string>("Acquiring GPS location...");
   
   const [vehicleDisplay, setVehicleDisplay] = useState("No Vehicle Assigned");
   const [routeDisplay, setRouteDisplay] = useState("No Route");
   const [assignmentStatus, setAssignmentStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    // Fetch assignments, clients, routes and inventory in parallel
-    Promise.all([getAssignments(), getClients(), getRoutes(), getInventoryTypes(), getCurrentUser(), getVehicles()])
+    Promise.all([
+      getAssignments(), 
+      getClients(), 
+      getRoutes(), 
+      getInventoryTypes(), 
+      getCurrentUser(), 
+      getVehicles()
+    ])
       .then(([assignments, allClients, allRoutes, invTypes, user, allVehicles]) => {
-        setInventoryTypes(invTypes);
+        setInventoryTypes(invTypes || []);
         
         // Find assignment for current driver
         let active = assignments.find(a => a.status === "ACTIVE" && a.driver_id === user.id);
-        
-        // Fallback to PENDING if not ACTIVE yet
         if (!active) {
-            active = assignments.find(a => a.status === "PENDING" && a.driver_id === user.id);
+          active = assignments.find(a => a.status === "PENDING" && a.driver_id === user.id);
         }
 
         if (active) {
@@ -69,7 +94,7 @@ export default function DriverApp() {
           if (matchedRoute) setRouteDisplay(matchedRoute.name);
           if (matchedVehicle) setVehicleDisplay(matchedVehicle.plate_number);
 
-          // Filter clients by the assigned route and sync deliveries
+          // Filter clients by assigned route
           const routeClients = allClients.filter(c => c.route_id === active.route_id);
           const mappedClients = routeClients.map(c => {
             const delivery = (active as any).deliveries?.find((d: any) => d.client_id === c.id);
@@ -89,7 +114,6 @@ export default function DriverApp() {
             setCurrentStock(total - totalDelivered);
           }
         } else {
-          // No active or pending assignment found for this driver
           setAssignmentStatus("UNASSIGNED");
           setClients([]);
           setInitialStock(0);
@@ -97,7 +121,7 @@ export default function DriverApp() {
         }
       })
       .catch(console.error);
-  }, []); // REMOVED mockAssignments dependency so it stops flickering!
+  }, []);
 
   const handleStartDelivery = (id: string) => {
     setActiveClient(id);
@@ -136,18 +160,17 @@ export default function DriverApp() {
           console.error("Failed to sync delivery to backend", e);
         }
       } else {
-        // Fallback for mock demo without real assignment
         completeDelivery("mock_assignment_id", activeClient, itemsPayload[0]?.delivered_full || 0, totalAmount, method);
       }
       
       const totalFullDelivered = itemsPayload.reduce((sum, item) => sum + item.delivered_full, 0);
 
-      // Update local state to immediately show completion checkmark and reduce stock
       setClients(prev => prev.map(c => 
         c.id === activeClient ? { ...c, isCompleted: true, deliveredCount: totalFullDelivered } as any : c
       ));
       
       setCurrentStock(prev => Math.max(0, prev - totalFullDelivered));
+      toast.success("Delivery completed successfully!");
     }
     setActiveClient(null);
   };
@@ -155,7 +178,7 @@ export default function DriverApp() {
   useEffect(() => {
     if (isAddClientOpen) {
       setGpsLocation(null);
-      setGpsStatus("Locating you...");
+      setGpsStatus("Acquiring GPS location...");
       if ("geolocation" in navigator) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
@@ -164,12 +187,12 @@ export default function DriverApp() {
           },
           (error) => {
             console.warn("Geolocation error", error);
-            setGpsStatus("GPS Failed (Will save without map pin)");
+            setGpsStatus("GPS not available (will proceed with address)");
           },
           { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
         );
       } else {
-        setGpsStatus("GPS not supported by browser");
+        setGpsStatus("Geolocation not supported by device");
       }
     }
   }, [isAddClientOpen]);
@@ -199,7 +222,7 @@ export default function DriverApp() {
       setNewClientAddress("");
       setNewClientTier("Standard");
       setNewClientOptIn(true);
-      toast.success("Client added successfully!");
+      toast.success("Client added and saved to route!");
     } catch (err) {
       console.error("Failed to create client", err);
       toast.error("Failed to add client. Try again.");
@@ -224,7 +247,7 @@ export default function DriverApp() {
   const totalFullDelivered = Object.values(deliveryItems).reduce((sum, item) => sum + item.full, 0);
 
   const currentDelivery = deliveryItems[selectedInventoryId] || { full: 0, empty: 0, damaged: 0 };
-  const updateCurrentDelivery = (field: 'full' | 'empty' | 'damaged', value: number) => {
+  const updateCurrentDelivery = (field: "full" | "empty" | "damaged", value: number) => {
     setDeliveryItems(prev => ({
       ...prev,
       [selectedInventoryId]: {
@@ -235,388 +258,433 @@ export default function DriverApp() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-text p-4 md:p-8 relative">
-      <header className="flex justify-between items-center mb-6 pt-2">
+    <div className="min-h-screen bg-[#FDFBF7] text-slate-900 p-4 md:p-8 relative">
+      {/* Mobile-Friendly Frosted Header */}
+      <header className="glass-panel p-4 md:p-6 mb-6 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-primary">Driver Interface</h1>
-          <p className="text-sm text-text-muted font-medium flex items-center gap-2">
-            {vehicleDisplay} • {routeDisplay}
-            {assignmentStatus === 'PENDING' && (
-              <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-sky-500 animate-pulse" />
+            <h1 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight">Driver Co-Pilot</h1>
+            <span className="text-xs font-black uppercase tracking-wider bg-sky-50 text-sky-800 border border-sky-200 px-2.5 py-1 rounded-lg">
+              Water Run
+            </span>
+          </div>
+          <p className="text-xs sm:text-sm font-semibold text-slate-600 flex items-center gap-2">
+            <span className="font-black text-slate-900">{vehicleDisplay}</span>
+            <span>•</span>
+            <span className="font-bold text-slate-700">{routeDisplay}</span>
+            {assignmentStatus === "PENDING" && (
+              <span className="bg-amber-100 text-amber-900 text-xs px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider">
                 Pending Dispatch
               </span>
             )}
           </p>
         </div>
-        <div className="bg-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm border border-black/5 flex items-center gap-2">
-          <Package className="w-5 h-5 text-primary" />
-          <span>Stock: {currentStock}/{initialStock}</span>
+
+        <div className="flex items-center gap-3 self-stretch sm:self-auto">
+          <div className="bg-white/90 border border-slate-200/80 px-4 py-2.5 rounded-2xl text-xs font-black shadow-xs flex items-center gap-2 flex-1 sm:flex-initial justify-center">
+            <Package className="w-4 h-4 text-primary" />
+            <span className="text-slate-800">
+              Van Stock: <span className="text-primary text-sm font-black">{currentStock}</span>/{initialStock}
+            </span>
+          </div>
         </div>
       </header>
 
-      {/* TABLET SPLIT SCREEN LAYOUT */}
-      {assignmentStatus === 'UNASSIGNED' ? (
-        <div className="flex flex-col items-center justify-center pt-24 pb-12 animate-in fade-in zoom-in duration-500 text-center px-4">
-          <div className="relative mb-8 mt-12">
-            <div className="absolute inset-0 bg-primary/10 rounded-full blur-2xl animate-pulse"></div>
-            <div className="w-32 h-32 bg-white rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.06)] flex items-center justify-center relative z-10 border border-black/5 mx-auto">
-              <MapPin className="w-14 h-14 text-primary opacity-20 absolute" />
-              <MapPin className="w-14 h-14 text-primary translate-y-[-10px] animate-bounce" />
-            </div>
+      {/* Main Content Area */}
+      {assignmentStatus === "UNASSIGNED" ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center px-4 glass-panel max-w-lg mx-auto">
+          <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center text-primary mb-4">
+            <Truck className="w-10 h-10 animate-bounce" />
           </div>
-          <h2 className="text-3xl font-black text-slate-800 mb-3">No Route Assigned</h2>
-          <p className="text-slate-500 font-medium text-lg max-w-sm">
-            You currently have no active route. Sit back and relax while the dispatcher assigns your next journey.
+          <h2 className="text-2xl font-black text-slate-800 mb-2">No Active Route Assigned</h2>
+          <p className="text-slate-500 font-medium text-sm max-w-sm mb-4 leading-relaxed">
+            You currently have no scheduled delivery route. Please wait for the hub dispatcher to assign your vehicle.
           </p>
         </div>
       ) : (
-      <div className="flex flex-col md:flex-row gap-6 animate-in fade-in duration-300">
-        
-        {/* Left Side: Route List */}
-        <div className={`flex-1 ${activeClient ? 'hidden md:block' : 'block'}`}>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="font-bold text-lg flex items-center gap-2">
-              <MapPin className="text-primary w-5 h-5" /> Today's Stops
-            </h2>
-            <div className="flex gap-2">
-              <button onClick={() => setIsAddClientOpen(true)} className="text-sm font-bold text-emerald-700 bg-emerald-50 px-3 md:px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-emerald-100 transition-colors active:scale-95 border border-emerald-200">
-                <Plus className="w-4 h-4" /> <span className="hidden sm:inline">Add Client</span>
-              </button>
-              <button className="text-sm font-bold text-primary bg-primary/10 px-3 md:px-4 py-2 rounded-xl flex items-center gap-2 hover:bg-primary/20 transition-colors active:scale-95">
-                <Route className="w-4 h-4" /> <span className="hidden sm:inline">Optimize</span>
-              </button>
+        <div className="flex flex-col md:flex-row gap-6 max-w-6xl mx-auto">
+          {/* Left Side: Route Stops */}
+          <div className={`flex-1 ${activeClient ? "hidden md:block" : "block"}`}>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="font-black text-base text-slate-800 flex items-center gap-2">
+                <MapPin className="text-primary w-4 h-4" /> Today&apos;s Route Stops
+              </h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setIsAddClientOpen(true)}
+                  className="text-xs font-black text-emerald-700 bg-emerald-50 px-3 py-2 rounded-xl flex items-center gap-1.5 hover:bg-emerald-100 transition-all border border-emerald-200 active:scale-95 shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" /> <span>Add Client</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Daily Work Summary Card */}
+            <div className="glass-card p-5 mb-5 bg-gradient-to-br from-slate-900 to-slate-800 text-white border-0 shadow-md">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-300">
+                  Daily Route Progress
+                </span>
+                <span className="text-xs font-black bg-white/10 px-2.5 py-1 rounded-lg text-emerald-300">
+                  Live Sync
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-white/5 p-3 rounded-2xl border border-white/5">
+                  <p className="text-2xl sm:text-3xl font-black">{clients.filter(c => (c as any).isCompleted).length}</p>
+                  <p className="text-xs sm:text-sm text-slate-200 font-bold">Stops Completed</p>
+                </div>
+                <div className="bg-white/5 p-3 rounded-2xl border border-white/5">
+                  <p className="text-2xl sm:text-3xl font-black">
+                    {clients.reduce((acc, c) => acc + ((c as any).deliveredCount || 0), 0)}
+                  </p>
+                  <p className="text-xs sm:text-sm text-slate-200 font-bold">Bottles Handed Off</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Stops Directory */}
+            <div className="space-y-3.5">
+              {clients.map(c => {
+                const isCompleted = (c as any).isCompleted;
+                return (
+                  <div
+                    key={c.id}
+                    className={`glass-card p-4 transition-all duration-300 ${
+                      isCompleted
+                        ? "border-emerald-200/60 bg-emerald-50/20 opacity-70"
+                        : activeClient === c.id
+                        ? "border-primary ring-2 ring-primary/20 shadow-md"
+                        : "border-slate-100 hover:border-slate-200"
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h3 className={`font-black text-base ${isCompleted ? "text-emerald-800" : "text-slate-800"}`}>
+                          {c.name}
+                        </h3>
+                        <p className="text-xs sm:text-sm text-slate-600 font-semibold flex items-center gap-1.5 mt-1">
+                          <MapPin className="w-4 h-4 text-slate-500 shrink-0" /> {c.address || "Local address"}
+                        </p>
+                      </div>
+                      {isCompleted && (
+                        <span className="flex items-center gap-1 text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-100/80 px-2.5 py-1 rounded-lg">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Done
+                        </span>
+                      )}
+                    </div>
+
+                    {!isCompleted && (
+                      <div className="flex gap-2 mt-3 pt-3 border-t border-slate-100">
+                        {c.phone && (
+                          <a
+                            href={`tel:${c.phone}`}
+                            className="flex-1 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black flex items-center justify-center gap-1 text-slate-700 hover:bg-slate-100 transition-all"
+                          >
+                            <Phone className="w-3.5 h-3.5" /> Call
+                          </a>
+                        )}
+                        <a
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${
+                            c.latitude && c.longitude ? `${c.latitude},${c.longitude}` : encodeURIComponent(c.address || c.name || "")
+                          }`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-[1.2] py-2 bg-sky-50 border border-sky-100 rounded-xl text-xs font-black flex items-center justify-center gap-1 text-sky-700 hover:bg-sky-100 transition-all"
+                        >
+                          <Navigation className="w-3.5 h-3.5" /> Maps
+                        </a>
+                        <button
+                          onClick={() => handleStartDelivery(c.id)}
+                          className={`flex-[1.5] py-2 rounded-xl text-xs font-black transition-all ${
+                            activeClient === c.id
+                              ? "bg-primary text-white shadow-xs"
+                              : "bg-primary/10 text-primary hover:bg-primary/20"
+                          }`}
+                        >
+                          {activeClient === c.id ? "Delivering..." : "Deliver"}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* Daily Work Summary Box */}
-          <div className="bg-gradient-to-r from-blue-600 to-blue-800 rounded-3xl p-5 text-white mb-6 shadow-[0_8px_20px_rgba(37,99,235,0.2)]">
-            <h3 className="font-bold text-sm text-blue-100 uppercase tracking-wider mb-4">Daily Work Summary</h3>
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <p className="text-3xl font-black">{clients.filter(c => (c as any).isCompleted).length}</p>
-                <p className="text-sm text-blue-200 font-medium">Completed Stops</p>
-              </div>
-              <div className="w-px bg-white/20"></div>
-              <div className="flex-1">
-                <p className="text-3xl font-black">
-                  {clients.reduce((acc, c) => acc + ((c as any).deliveredCount || 0), 0)}
-                </p>
-                <p className="text-sm text-blue-200 font-medium">Bottles Delivered</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {clients.map(c => {
-              const isCompleted = (c as any).isCompleted;
-              return (
-                <div key={c.id} className={`bg-white p-5 rounded-3xl border shadow-sm transition-all ${isCompleted ? 'border-emerald-200 bg-emerald-50/30 opacity-60' : activeClient === c.id ? 'border-primary shadow-md shadow-primary/10' : 'border-black/5 hover:border-primary/30'}`}>
-                  <div className="flex justify-between items-start mb-3">
+          {/* Right Side: Active Delivery Station */}
+          {activeClient && clientDetails && (
+            <div className="flex-1 md:max-w-md lg:max-w-lg md:sticky top-8 self-start">
+              {step === 1 && (
+                <div className="glass-panel p-6 shadow-md border-slate-100">
+                  <div className="flex justify-between items-center mb-5 pb-3 border-b border-slate-100">
                     <div>
-                      <h3 className={`font-bold text-lg ${isCompleted ? 'text-emerald-700' : 'text-text'}`}>{c.name}</h3>
-                      <p className="text-xs text-text-muted font-medium flex items-center gap-1 mt-1">
-                        <MapPin className="w-3 h-3" /> {c.address}
-                      </p>
+                      <span className="text-xs font-black uppercase tracking-wider text-primary bg-primary/10 px-2.5 py-1 rounded-lg mb-1 inline-block">
+                        Active Stop
+                      </span>
+                      <h2 className="text-xl sm:text-2xl font-black text-slate-900">{clientDetails.name}</h2>
                     </div>
-                    {isCompleted && <CheckCircle2 className="w-7 h-7 text-emerald-500" />}
+                    <button
+                      onClick={() => setActiveClient(null)}
+                      className="md:hidden text-xs font-black text-slate-500 hover:text-slate-800 px-2.5 py-1"
+                    >
+                      Close
+                    </button>
                   </div>
-                  {!isCompleted && (
-                    <div className="flex gap-2 mt-4">
-                      <button className="flex-1 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold flex items-center justify-center gap-1 hover:bg-gray-100 text-text transition-colors">
-                        <Phone className="w-4 h-4" /> <span className="hidden sm:inline">Call</span>
-                      </button>
-                      <a href={`https://www.google.com/maps/dir/?api=1&destination=${c.latitude && c.longitude ? `${c.latitude},${c.longitude}` : encodeURIComponent(c.address || c.name || "")}`} target="_blank" rel="noreferrer" className="flex-[1.5] py-2 bg-blue-50 border border-blue-200 rounded-xl text-sm font-semibold flex items-center justify-center gap-1 hover:bg-blue-100 text-blue-700 transition-colors">
-                        <Navigation className="w-4 h-4" /> Navigate
-                      </a>
-                      <button 
-                        onClick={() => handleStartDelivery(c.id)}
-                        className={`flex-[1.5] py-2 rounded-xl text-sm font-bold transition-colors ${activeClient === c.id ? 'bg-primary text-white shadow-sm' : 'bg-primary/10 text-primary hover:bg-primary/20'}`}
-                      >
-                        {activeClient === c.id ? 'Selected' : 'Deliver'}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
 
-        {/* Right Side: Active Delivery Details */}
-        {activeClient && clientDetails && (
-          <div className="flex-1 md:max-w-md lg:max-w-lg md:sticky top-8 self-start">
-            
-            {step === 1 && (
-              <div className="bg-white p-6 rounded-3xl shadow-lg border border-black/5 animate-in fade-in slide-in-from-bottom-4 duration-300">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold">{clientDetails.name}</h2>
-                  <button onClick={() => setActiveClient(null)} className="md:hidden text-text-muted">Close</button>
-                </div>
-
-                {/* Client History & Plan */}
-                <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-2xl mb-6">
-                  <div className="flex justify-between items-start">
+                  {/* Client Info Pill */}
+                  <div className="bg-sky-50/70 border border-sky-100 p-3.5 rounded-2xl mb-5 flex justify-between items-center text-xs sm:text-sm">
                     <div>
-                      <p className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Billing Plan</p>
-                      <p className="text-sm font-medium text-slate-700">{clientDetails.tier || 'Standard'}</p>
+                      <span className="text-xs font-black uppercase tracking-wider text-sky-800 block mb-0.5">Tier</span>
+                      <span className="font-black text-slate-900">{clientDetails.tier || "Standard"}</span>
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1 text-right">Loyalty Points</p>
-                      <p className="text-sm font-medium text-slate-700 text-right">{clientDetails.loyalty_points} Pts</p>
+                    <div className="text-right">
+                      <span className="text-xs font-black uppercase tracking-wider text-sky-800 block mb-0.5">Reward Points</span>
+                      <span className="font-black text-slate-900">{clientDetails.loyalty_points || 0} Pts</span>
                     </div>
                   </div>
-                </div>
-                
-                {activeAllocations.length > 0 && (
-                  <div className="mb-6">
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Select Product to Deliver</label>
-                    <div className="relative">
-                      <Package className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-primary pointer-events-none" />
-                      <select 
+
+                  {/* Product Selector */}
+                  {activeAllocations.length > 0 && (
+                    <div className="mb-5">
+                      <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
+                        Delivering Product
+                      </label>
+                      <select
                         value={selectedInventoryId}
-                        onChange={(e) => setSelectedInventoryId(e.target.value)}
-                        className="w-full border border-gray-200 py-3 pl-10 pr-4 rounded-xl bg-white font-bold text-text focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none appearance-none cursor-pointer"
+                        onChange={e => setSelectedInventoryId(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-bold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 text-sm cursor-pointer shadow-xs"
                       >
                         {activeAllocations.map(alloc => {
                           const inv = inventoryTypes.find(i => i.id === alloc.inventory_type_id);
                           return (
                             <option key={alloc.inventory_type_id} value={alloc.inventory_type_id}>
-                              {inv?.name || "Unknown Product"} (Stock: {alloc.allocated_count})
+                              {inv?.name || "Product"} (In Van: {alloc.allocated_count})
                             </option>
                           );
                         })}
                       </select>
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">▼</div>
+                    </div>
+                  )}
+
+                  {/* Quantity Steppers */}
+                  <div className="space-y-4 mb-6">
+                    <div className="flex justify-between items-center bg-white p-3 rounded-2xl border border-slate-100 shadow-xs">
+                      <div>
+                        <p className="font-black text-sm text-sky-700">Full Handed Over</p>
+                        <p className="text-[11px] text-slate-400 font-medium">Bottles delivered</p>
+                      </div>
+                      <Counter value={currentDelivery.full} setValue={val => updateCurrentDelivery("full", val)} />
+                    </div>
+
+                    <div className="flex justify-between items-center bg-white p-3 rounded-2xl border border-slate-100 shadow-xs">
+                      <div>
+                        <p className="font-black text-sm text-emerald-700">Empty Collected</p>
+                        <p className="text-[11px] text-slate-400 font-medium">Empty return retrieved</p>
+                      </div>
+                      <Counter value={currentDelivery.empty} setValue={val => updateCurrentDelivery("empty", val)} />
+                    </div>
+
+                    <div className="flex justify-between items-center bg-white p-3 rounded-2xl border border-slate-100 shadow-xs">
+                      <div>
+                        <p className="font-black text-sm text-rose-600">Damaged / Cullet</p>
+                        <p className="text-[11px] text-slate-400 font-medium">Cracked or lost cans</p>
+                      </div>
+                      <Counter value={currentDelivery.damaged} setValue={val => updateCurrentDelivery("damaged", val)} />
                     </div>
                   </div>
-                )}
 
-                {/* Selected Items Summary */}
-                {Object.entries(deliveryItems).some(([_, counts]) => counts.full > 0 || counts.empty > 0) && (
-                  <div className="mb-6 bg-slate-50 border border-slate-200 rounded-xl p-3 animate-in fade-in duration-300">
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Cart Summary</p>
-                    <div className="space-y-2">
-                      {Object.entries(deliveryItems).map(([invId, counts]) => {
-                        if (counts.full === 0 && counts.empty === 0) return null;
-                        const inv = inventoryTypes.find(i => i.id === invId);
-                        return (
-                          <div key={invId} className="flex justify-between items-center text-sm font-medium bg-white p-2 rounded-lg border border-slate-100 shadow-sm">
-                            <span className="text-slate-800">{inv?.name}</span>
-                            <div className="flex gap-3 text-xs">
-                              {counts.full > 0 && <span className="text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded">{counts.full} Full</span>}
-                              {counts.empty > 0 && <span className="text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded">{counts.empty} Empty</span>}
-                            </div>
-                          </div>
-                        );
-                      })}
+                  {/* Bill & Actions */}
+                  <div className="pt-4 border-t border-slate-100 space-y-3">
+                    <div className="flex justify-between items-center mb-2 px-1">
+                      <span className="text-slate-400 text-xs font-black uppercase tracking-wider">Subtotal Due</span>
+                      <span className="text-3xl font-black text-slate-800">₹{totalAmount}</span>
                     </div>
-                  </div>
-                )}
 
-                <div className="space-y-6">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="font-bold text-lg text-blue-600">Full Given</p>
-                      <p className="text-xs text-text-muted font-medium">Bottles delivered</p>
-                    </div>
-                    <Counter value={currentDelivery.full} setValue={(val) => updateCurrentDelivery('full', val)} />
-                  </div>
-                  
-                  <div className="h-px bg-gray-100 w-full" />
-
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="font-bold text-lg text-emerald-600">Empty Taken</p>
-                      <p className="text-xs text-text-muted font-medium">Bottles retrieved</p>
-                    </div>
-                    <Counter value={currentDelivery.empty} setValue={(val) => updateCurrentDelivery('empty', val)} />
-                  </div>
-
-                  <div className="h-px bg-gray-100 w-full" />
-
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <p className="font-bold text-lg text-red-500">Damaged/Missing</p>
-                      <p className="text-xs text-text-muted font-medium">Report broken cans</p>
-                    </div>
-                    <Counter value={currentDelivery.damaged} setValue={(val) => updateCurrentDelivery('damaged', val)} />
+                    <Button
+                      variant="primary"
+                      fullWidth
+                      className="py-3.5 text-base font-black shadow-md"
+                      onClick={() => setStep(2)}
+                      disabled={!Object.values(deliveryItems).some(c => c.full > 0 || c.empty > 0)}
+                    >
+                      Proceed to Collect ₹{totalAmount}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      fullWidth
+                      onClick={() => {
+                        setDeliveryItems({});
+                        handlePayment("Skipped");
+                      }}
+                    >
+                      Skip (Customer Not Available)
+                    </Button>
                   </div>
                 </div>
+              )}
 
-                <div className="mt-8 pt-6 border-t border-gray-100 space-y-3">
-                  <div className="flex justify-between items-center mb-4 px-2">
-                    <span className="text-text-muted font-medium">Total Amount</span>
-                    <span className="text-4xl font-black text-text">₹{totalAmount}</span>
+              {step === 2 && (
+                <div className="glass-panel p-6 shadow-md border-slate-100 text-center">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">
+                    Collect Payment
+                  </span>
+                  <h2 className="text-4xl font-black text-slate-800 mb-1">₹{totalAmount}</h2>
+                  <p className="text-slate-500 font-bold text-xs mb-4">{clientDetails.name}</p>
+
+                  <div className="grid grid-cols-2 gap-3 mb-6">
+                    <button
+                      onClick={() => handlePayment("Cash")}
+                      className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col items-center gap-2 hover:border-emerald-500 hover:bg-emerald-50/20 active:scale-95 transition-all"
+                    >
+                      <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center">
+                        <IndianRupee className="w-6 h-6" />
+                      </div>
+                      <span className="font-black text-slate-800 text-sm">Cash</span>
+                    </button>
+
+                    <button
+                      onClick={() => handlePayment("Razorpay QR")}
+                      className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col items-center gap-2 hover:border-sky-500 hover:bg-sky-50/20 active:scale-95 transition-all"
+                    >
+                      <div className="w-12 h-12 bg-sky-100 text-sky-700 rounded-2xl flex items-center justify-center">
+                        <QrCode className="w-6 h-6" />
+                      </div>
+                      <span className="font-black text-slate-800 text-sm">UPI / QR</span>
+                    </button>
                   </div>
-                  <Button 
-                    variant="primary"
-                    fullWidth
-                    className="py-4 text-lg"
-                    onClick={() => setStep(2)}
-                    disabled={!Object.values(deliveryItems).some(c => c.full > 0 || c.empty > 0)}
+
+                  <button
+                    onClick={() => setStep(1)}
+                    className="text-xs font-black uppercase tracking-wider text-slate-400 hover:text-slate-600 transition-colors"
                   >
-                    Proceed to Payment
-                  </Button>
-                  <Button 
-                    variant="outline"
-                    fullWidth
-                    onClick={() => {
-                      setDeliveryItems({});
-                      handlePayment("Skipped");
-                    }}
-                  >
-                    Skip (Not needed today)
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {step === 2 && (
-              <div className="bg-white p-6 md:p-8 rounded-3xl shadow-lg border border-black/5 text-center animate-in fade-in slide-in-from-right-8 duration-300">
-                <h2 className="text-5xl font-black mb-3 text-text">₹{totalAmount}</h2>
-                <p className="text-text-muted font-medium">{clientDetails.name}</p>
-                <div className="mt-6 mb-8 inline-block bg-amber-50 text-amber-600 border border-amber-200 px-4 py-2 rounded-full text-sm font-bold shadow-sm">
-                  + {totalFullDelivered * 5} Loyalty Points Earned!
-                </div>
-
-                <div className="grid grid-cols-2 gap-4 w-full mb-6">
-                  <button onClick={() => handlePayment("Cash")} className="bg-gray-50 p-6 rounded-3xl flex flex-col items-center gap-4 border border-black/5 active:scale-95 hover:border-emerald-500/50 hover:bg-emerald-50/30 transition-all">
-                    <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center">
-                      <IndianRupee className="w-7 h-7 text-emerald-600" />
-                    </div>
-                    <span className="font-bold text-text">Cash</span>
-                  </button>
-                  
-                  <button onClick={() => handlePayment("Razorpay QR")} className="bg-gray-50 p-6 rounded-3xl flex flex-col items-center gap-4 border border-black/5 active:scale-95 hover:border-blue-500/50 hover:bg-blue-50/30 transition-all">
-                    <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center">
-                      <QrCode className="w-7 h-7 text-blue-600" />
-                    </div>
-                    <span className="font-bold text-text">Razorpay QR</span>
+                    ← Back to quantities
                   </button>
                 </div>
-
-                <button onClick={() => setStep(1)} className="text-text-muted font-medium hover:text-text transition-colors py-2 px-6">
-                  Back
-                </button>
-              </div>
-            )}
-
-          </div>
-        )}
-        
-        {/* Placeholder if nothing selected on Tablet */}
-        {!activeClient && (
-          <div className="hidden md:flex flex-1 items-center justify-center bg-white/50 rounded-3xl border border-black/5 border-dashed">
-            <div className="text-center">
-              <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-lg font-medium text-text-muted">Select a route stop to begin delivery.</p>
+              )}
             </div>
-          </div>
-        )}
-      </div>
+          )}
+
+          {!activeClient && (
+            <div className="hidden md:flex flex-1 items-center justify-center glass-panel border-dashed border-slate-200 min-h-[300px]">
+              <div className="text-center p-8">
+                <Package className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <p className="text-sm font-bold text-slate-500">Select a stop from the left column to begin delivery.</p>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Add Client Modal */}
-      <Modal isOpen={isAddClientOpen} onClose={() => setIsAddClientOpen(false)} title="Add New Client">
-        <form onSubmit={handleAddClient} className="space-y-5">
-          <div className={`p-3 rounded-xl border flex items-center gap-3 transition-colors ${gpsLocation ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
-            <MapPin className={`w-5 h-5 shrink-0 ${gpsLocation ? 'text-emerald-500' : 'text-amber-500 animate-pulse'}`} />
+      <Modal isOpen={isAddClientOpen} onClose={() => setIsAddClientOpen(false)} title="Register Client on Route">
+        <form onSubmit={handleAddClient} className="space-y-4">
+          <div className="p-3 rounded-2xl border border-slate-200/80 bg-slate-50/80 flex items-center gap-3">
+            <MapPin className="w-5 h-5 text-primary shrink-0" />
             <div>
-              <p className="text-sm font-bold">{gpsStatus}</p>
-              <p className="text-xs opacity-80 mt-0.5">
-                {gpsLocation ? "This location will be saved for the client's map pin." : "Please wait while we acquire your GPS signal."}
-              </p>
+              <p className="text-xs font-black text-slate-800">{gpsStatus}</p>
+              <p className="text-[11px] text-slate-400 font-medium">Pin will be saved to your current location</p>
             </div>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-bold text-text mb-1">Store / Client Name *</label>
-              <input 
-                type="text" 
-                required
-                value={newClientName}
-                onChange={(e) => setNewClientName(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-primary transition-all font-medium" 
-                placeholder="E.g. Fresh Bites Cafe"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-bold text-text mb-1">Phone Number (Optional)</label>
-              <input 
-                type="tel" 
-                value={newClientPhone}
-                onChange={(e) => setNewClientPhone(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-primary transition-all font-medium" 
-                placeholder="10 digit mobile number"
-              />
-            </div>
-          </div>
-          
+
           <div>
-            <label className="block text-sm font-bold text-text mb-1">Full Address (Optional)</label>
-            <input 
-              type="text" 
-              value={newClientAddress}
-              onChange={(e) => setNewClientAddress(e.target.value)}
-              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-primary transition-all font-medium" 
-              placeholder="e.g. Shop 42, Main Road, Block C"
+            <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
+              Client / Store Name *
+            </label>
+            <input
+              type="text"
+              required
+              value={newClientName}
+              onChange={e => setNewClientName(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 text-sm"
+              placeholder="e.g. Cafe Blue Express"
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-bold text-text mb-1">Pricing Tier</label>
-              <select 
-                value={newClientTier}
-                onChange={(e) => setNewClientTier(e.target.value)}
-                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-primary transition-all font-medium cursor-pointer"
-              >
-                <option value="Standard">Standard (₹80/20L)</option>
-                <option value="Wholesale">Wholesale (₹65/20L)</option>
-              </select>
-            </div>
-            <div className="flex items-center gap-3 pt-6">
-              <input 
-                type="checkbox" 
-                checked={newClientOptIn}
-                onChange={(e) => setNewClientOptIn(e.target.checked)}
-                className="w-5 h-5 rounded border-gray-300 text-primary focus:ring-primary cursor-pointer"
+              <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
+                Phone Number
+              </label>
+              <input
+                type="tel"
+                value={newClientPhone}
+                onChange={e => setNewClientPhone(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 text-sm"
+                placeholder="+91 98765 43210"
               />
-              <span className="font-bold text-sm text-text select-none cursor-pointer" onClick={() => setNewClientOptIn(!newClientOptIn)}>
-                Opt-in to Loyalty
-              </span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
+                Pricing Tier
+              </label>
+              {(() => {
+                const mainBottle = inventoryTypes.find((i: any) => i.name.toLowerCase().includes("20l")) || inventoryTypes[0];
+                return (
+                  <select
+                    value={newClientTier}
+                    onChange={e => setNewClientTier(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 text-sm cursor-pointer"
+                  >
+                    <option value="Standard">
+                      Standard Rate {mainBottle ? `(₹${mainBottle.price} on 20L)` : "(Retail)"}
+                    </option>
+                    <option value="Wholesale">
+                      Wholesale Discount {mainBottle ? `(₹${mainBottle.wholesale_price} on 20L)` : "(Bulk)"}
+                    </option>
+                    <option value="Premium">
+                      Premium VIP Contract {mainBottle ? `(₹${mainBottle.premium_price} on 20L)` : "(VIP)"}
+                    </option>
+                  </select>
+                );
+              })()}
             </div>
           </div>
 
-          <div className="flex gap-3 pt-4 border-t border-gray-100 mt-2">
-            <Button variant="secondary" onClick={() => setIsAddClientOpen(false)} type="button" fullWidth>Cancel</Button>
+          <div>
+            <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
+              Address / Landmark
+            </label>
+            <input
+              type="text"
+              value={newClientAddress}
+              onChange={e => setNewClientAddress(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 text-sm"
+              placeholder="Shop #12, Phase 1"
+            />
+          </div>
+
+          <div className="flex gap-3 pt-3 border-t border-slate-100">
+            <Button variant="secondary" onClick={() => setIsAddClientOpen(false)} type="button" fullWidth>
+              Cancel
+            </Button>
             <Button variant="primary" type="submit" fullWidth disabled={isAddingClient || !newClientName}>
-              {isAddingClient ? 'Saving Client...' : 'Save Client & GPS'}
+              {isAddingClient ? "Saving..." : "Save Client"}
             </Button>
           </div>
         </form>
       </Modal>
-
     </div>
   );
 }
 
-function Counter({ value, setValue }: { value: number, setValue: (v: number) => void }) {
+function Counter({ value, setValue }: { value: number; setValue: (v: number) => void }) {
   return (
-    <div className="flex items-center gap-4 bg-gray-50 p-1.5 rounded-2xl border border-gray-100">
-      <button 
+    <div className="flex items-center gap-3 bg-slate-50 p-1 rounded-2xl border border-slate-100">
+      <button
         onClick={() => setValue(Math.max(0, value - 1))}
-        className="w-10 h-10 flex items-center justify-center rounded-xl bg-white shadow-sm border border-gray-100 hover:bg-gray-50 active:scale-95 transition-all text-text"
+        className="w-9 h-9 flex items-center justify-center rounded-xl bg-white shadow-xs border border-slate-200/80 hover:bg-slate-50 active:scale-95 transition-all text-slate-800"
       >
-        <Minus className="w-5 h-5" />
+        <Minus className="w-4 h-4" />
       </button>
-      <span className="w-6 text-center font-black text-xl text-text">{value}</span>
-      <button 
+      <span className="w-6 text-center font-black text-lg text-slate-800">{value}</span>
+      <button
         onClick={() => setValue(value + 1)}
-        className="w-10 h-10 flex items-center justify-center rounded-xl bg-primary shadow-sm shadow-primary/20 text-white hover:bg-blue-700 active:scale-95 transition-all"
+        className="w-9 h-9 flex items-center justify-center rounded-xl bg-primary text-white shadow-xs hover:bg-sky-600 active:scale-95 transition-all"
       >
-        <Plus className="w-5 h-5" />
+        <Plus className="w-4 h-4" />
       </button>
     </div>
   );
