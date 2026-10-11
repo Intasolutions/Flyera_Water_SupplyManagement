@@ -22,7 +22,9 @@ import {
   Trash2,
   Shield,
   Recycle,
-  CheckCircle2
+  CheckCircle2,
+  Eye,
+  EyeOff
 } from "lucide-react";
 import { getUsers, createUser, updateUser, deleteUser, getVehicles, User, Vehicle } from "@/lib/api";
 import { toast } from "react-hot-toast";
@@ -43,6 +45,7 @@ export default function StaffPage() {
   const [newName, setNewName] = useState("");
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [newPhone, setNewPhone] = useState("");
   const [newRole, setNewRole] = useState("DRIVER");
   const [newAddress, setNewAddress] = useState("");
@@ -448,13 +451,27 @@ export default function StaffPage() {
                 <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
                   Password {editId ? "(Leave blank to keep unchanged)" : ""}
                 </label>
-                <input 
-                  type="password" 
-                  placeholder={editId ? "••••••••" : "Choose password"} 
-                  value={newPassword} 
-                  onChange={e => setNewPassword(e.target.value)} 
-                  className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium" 
-                />
+                <div className="relative">
+                  <input 
+                    type={showPassword ? "text" : "password"} 
+                    placeholder={editId ? "••••••••" : "Choose password"} 
+                    value={newPassword} 
+                    onChange={e => setNewPassword(e.target.value)} 
+                    className="w-full bg-surface border border-gray-200 rounded-xl pl-4 pr-11 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium" 
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-text-muted hover:text-text transition-colors focus:outline-none"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
 
