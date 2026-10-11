@@ -27,6 +27,9 @@ export default function LoginPage() {
       localStorage.setItem("access_token", authRes.access_token);
       
       const user = await getCurrentUser();
+      try {
+        localStorage.setItem("flyera_user", JSON.stringify(user));
+      } catch (e) {}
       
       let mappedRole: AppRole = "Owner";
       if (user.role === "ADMIN") mappedRole = "Owner";

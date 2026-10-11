@@ -63,24 +63,14 @@ export function ThermalReceiptModal({
   onNextStop
 }: ThermalReceiptModalProps) {
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
-  const [customUpiId, setCustomUpiId] = useState<string>(data.upiId || "flyera@okhdfcbank");
-  const [isEditingUpi, setIsEditingUpi] = useState<boolean>(false);
-  const [tempUpi, setTempUpi] = useState<string>(data.upiId || "flyera@okhdfcbank");
   const receiptRef = useRef<HTMLDivElement>(null);
+  const activeUpiId = data.upiId || "flyera@okhdfcbank";
 
-  // Sync UPI ID if prop changes
-  useEffect(() => {
-    if (data.upiId) {
-      setCustomUpiId(data.upiId);
-      setTempUpi(data.upiId);
-    }
-  }, [data.upiId]);
-
-  // Generate dynamic NPCI UPI URI and QR code
+  // Generate dynamic NPCI UPI URI and QR code strictly using Admin configured UPI ID
   useEffect(() => {
     const note = encodeURIComponent(`${data.receiptNo} - ${data.clientName}`);
     const company = encodeURIComponent(data.companyName || "Flyera Logistics");
-    const upiUri = `upi://pay?pa=${customUpiId}&pn=${company}&am=${data.totalAmount.toFixed(2)}&tn=${note}&cu=INR`;
+    const upiUri = `upi://pay?pa=${activeUpiId}&pn=${company}&am=${data.totalAmount.toFixed(2)}&tn=${note}&cu=INR`;
 
     QRCode.toDataURL(upiUri, {
       width: 260,
@@ -95,7 +85,7 @@ export function ThermalReceiptModal({
       .catch(err => {
         console.error("QR Generation error:", err);
       });
-  }, [customUpiId, data.totalAmount, data.receiptNo, data.clientName, data.companyName]);
+  }, [activeUpiId, data.totalAmount, data.receiptNo, data.clientName, data.companyName]);
 
   if (!isOpen) return null;
 
@@ -113,7 +103,7 @@ export function ThermalReceiptModal({
       `--------------------------------`,
       `Receipt No: *${data.receiptNo}*`,
       `Date: ${data.date}`,
-      `Vehicle: ${data.vehiclePlate} | Route: ${data.routeName}`,
+      `Vehicle: ${data.vehiclePlate} | Route: ${data.routeName} | Driver: *${data.driverName}*`,
       `Customer: *${data.clientName}*`,
       `--------------------------------`,
       ...data.items.map(item => `• ${item.name} x ${item.qty} @ ₹${item.rate} = ₹${item.amount}`),
@@ -227,47 +217,15 @@ export function ThermalReceiptModal({
                   </p>
                 </div>
 
-                {/* Dynamic UPI ID Badge & Quick Edit */}
+                {/* Admin Configured Merchant UPI ID Badge (Locked for Drivers) */}
                 <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 flex items-center justify-between text-xs max-w-sm mx-auto">
                   <div className="flex items-center gap-1.5 overflow-hidden">
-                    <span className="text-[10px] font-black uppercase text-slate-400">Receiving VPA:</span>
-                    {isEditingUpi ? (
-                      <input
-                        type="text"
-                        value={tempUpi}
-                        onChange={e => setTempUpi(e.target.value)}
-                        className="border border-sky-300 rounded px-1.5 py-0.5 font-bold text-slate-800 text-xs outline-none bg-white"
-                      />
-                    ) : (
-                      <span className="font-bold text-slate-800 font-mono truncate">{customUpiId}</span>
-                    )}
+                    <span className="text-[10px] font-black uppercase text-slate-500">🔒 Merchant VPA:</span>
+                    <span className="font-bold text-slate-800 font-mono truncate">{activeUpiId}</span>
                   </div>
-                  <div>
-                    {isEditingUpi ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (tempUpi.trim()) setCustomUpiId(tempUpi.trim());
-                          setIsEditingUpi(false);
-                          toast.success("UPI ID updated!");
-                        }}
-                        className="px-2 py-1 bg-emerald-600 text-white rounded text-[10px] font-bold"
-                      >
-                        <Check className="w-3 h-3" />
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTempUpi(customUpiId);
-                          setIsEditingUpi(true);
-                        }}
-                        className="text-[11px] font-bold text-sky-600 hover:text-sky-700 flex items-center gap-0.5"
-                      >
-                        <Edit2 className="w-3 h-3" /> Change
-                      </button>
-                    )}
-                  </div>
+                  <span className="text-[10px] font-black text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-md">
+                    Admin Verified
+                  </span>
                 </div>
 
                 {/* Quick Print QR Slip Button */}
@@ -351,6 +309,10 @@ export function ThermalReceiptModal({
                   <div className="flex justify-between">
                     <span>INV: {data.receiptNo}</span>
                     <span>{data.paymentMethod}</span>
+                  </div>
+                  <div className="flex justify-between text-slate-500">
+                    <span>DRIVER: {data.driverName}</span>
+                    <span>{data.vehiclePlate}</span>
                   </div>
                   <div className="flex justify-between font-bold text-slate-900 pt-1">
                     <span>TOTAL PAID:</span>
@@ -454,7 +416,7 @@ export function ThermalReceiptModal({
               alt="UPI QR Code" 
               style={{ width: "160px", height: "160px", margin: "0 auto", display: "block" }} 
             />
-            <div style={{ fontSize: "9px" }}>UPI ID: {customUpiId}</div>
+            <div style={{ fontSize: "9px" }}>UPI ID: {activeUpiId}</div>
             <div style={{ fontSize: "9px" }}>Scan to Pay / Verify</div>
           </div>
         )}

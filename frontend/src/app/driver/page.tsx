@@ -13,7 +13,9 @@ import {
   getVehicles, 
   createClient,
   updateClient,
-  getSettings
+  getSettings,
+  getUsers,
+  User as UserType
 } from "@/lib/api";
 import { ThermalReceiptModal, ReceiptData } from "@/components/ThermalReceiptModal";
 import { Button } from "@/components/ui/Button";
@@ -37,7 +39,8 @@ import {
   Crosshair,
   RefreshCw,
   ExternalLink,
-  Upload
+  Upload,
+  User as UserIcon
 } from "lucide-react";
 
 export default function DriverApp() {
@@ -178,21 +181,42 @@ export default function DriverApp() {
     );
   };
   
+  const [driverName, setDriverName] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("flyera_user");
+        if (cached) {
+          const u = JSON.parse(cached);
+          if (u.name) return u.name;
+          if (u.username) return u.username;
+        }
+      } catch (e) {}
+    }
+    return "Driver";
+  });
+  const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [vehicleDisplay, setVehicleDisplay] = useState("No Vehicle Assigned");
   const [routeDisplay, setRouteDisplay] = useState("No Route");
   const [assignmentStatus, setAssignmentStatus] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
-      getAssignments(), 
-      getClients(), 
-      getRoutes(), 
-      getInventoryTypes(), 
-      getCurrentUser(), 
-      getVehicles(),
-      getSettings().catch(() => null)
+      getAssignments().catch(() => []), 
+      getClients().catch(() => []), 
+      getRoutes().catch(() => []), 
+      getInventoryTypes().catch(() => []), 
+      getCurrentUser().catch(() => {
+        try {
+          const cached = localStorage.getItem("flyera_user");
+          if (cached) return JSON.parse(cached);
+        } catch (e) {}
+        return null;
+      }), 
+      getVehicles().catch(() => []),
+      getSettings().catch(() => null),
+      getUsers().catch(() => [])
     ])
-      .then(([assignments, allClients, allRoutes, invTypes, user, allVehicles, settings]) => {
+      .then(([assignments, allClients, allRoutes, invTypes, user, allVehicles, settings, allUsers]) => {
         setInventoryTypes(invTypes || []);
         if (settings) {
           setSystemSettings(settings);
@@ -203,26 +227,47 @@ export default function DriverApp() {
             if (cached) setSystemSettings(JSON.parse(cached));
           } catch (e) {}
         }
+
+        if (user) {
+          setCurrentUser(user);
+          const resolvedName = user.name || user.username;
+          if (resolvedName) {
+            setDriverName(resolvedName);
+            try { localStorage.setItem("flyera_user", JSON.stringify(user)); } catch (e) {}
+          }
+        }
         
         // Find assignment for current driver
-        let active = assignments.find(a => a.status === "ACTIVE" && a.driver_id === user.id);
-        if (!active) {
-          active = assignments.find(a => a.status === "PENDING" && a.driver_id === user.id);
+        const currentUserId = user?.id;
+        let active = assignments.find((a: any) => a.status === "ACTIVE" && (!currentUserId || a.driver_id === currentUserId));
+        if (!active && currentUserId) {
+          active = assignments.find((a: any) => a.status === "PENDING" && a.driver_id === currentUserId);
+        }
+        if (!active && assignments.length > 0) {
+          active = assignments.find((a: any) => a.status === "ACTIVE") || assignments.find((a: any) => a.status === "PENDING") || assignments[0];
         }
 
         if (active) {
+          // If logged-in user name wasn't set, resolve driver name from assignment's driver_id
+          if ((!user || !user.name) && active.driver_id && allUsers && allUsers.length > 0) {
+            const matchedStaff = (allUsers as any[]).find(u => u.id === active.driver_id);
+            if (matchedStaff?.name) {
+              setDriverName(matchedStaff.name);
+            }
+          }
+
           setAssignedRouteId(active.route_id);
           setActiveAssignmentId(active.id);
           setAssignmentStatus(active.status);
           
-          const matchedRoute = allRoutes.find(r => r.id === active.route_id);
-          const matchedVehicle = allVehicles.find(v => v.id === active.vehicle_id);
+          const matchedRoute = (allRoutes as any[]).find(r => r.id === active.route_id);
+          const matchedVehicle = (allVehicles as any[]).find(v => v.id === active.vehicle_id);
           
           if (matchedRoute) setRouteDisplay(matchedRoute.name);
           if (matchedVehicle) setVehicleDisplay(matchedVehicle.plate_number);
 
           // Filter clients by assigned route
-          const routeClients = allClients.filter(c => c.route_id === active.route_id);
+          const routeClients = (allClients as any[]).filter(c => c.route_id === active.route_id);
           const mappedClients = routeClients.map(c => {
             const delivery = (active as any).deliveries?.find((d: any) => d.client_id === c.id);
             if (delivery) {
@@ -235,7 +280,7 @@ export default function DriverApp() {
           
           if (active.allocations && active.allocations.length > 0) {
             setActiveAllocations(active.allocations);
-            const total = active.allocations.reduce((sum, alloc) => sum + alloc.allocated_count, 0);
+            const total = active.allocations.reduce((sum: number, alloc: any) => sum + alloc.allocated_count, 0);
             const totalDelivered = (active as any).deliveries?.reduce((sum: number, d: any) => sum + (d.items?.reduce((itemSum: number, item: any) => itemSum + (item.delivered_full || 0), 0) || 0), 0) || 0;
             setInitialStock(total);
             setCurrentStock(total - totalDelivered);
@@ -336,7 +381,7 @@ export default function DriverApp() {
       address: systemSettings.central_address || "Plot 42, Hinjewadi Industrial Zone Phase 2, Pune",
       vehiclePlate: vehicleDisplay,
       routeName: routeDisplay,
-      driverName: "Driver",
+      driverName: driverName && driverName !== "Driver" ? driverName : (currentUser?.name || currentUser?.username || "Driver"),
       clientName: clientDetails?.name || "Customer",
       clientPhone: clientDetails?.phone || "",
       clientAddress: clientDetails?.address || "",
@@ -572,9 +617,14 @@ export default function DriverApp() {
               Water Run
             </span>
           </div>
-          <p className="text-xs sm:text-sm font-semibold text-slate-600 flex items-center gap-2">
+          <p className="text-xs sm:text-sm font-semibold text-slate-600 flex flex-wrap items-center gap-2">
+            <span className="font-black text-slate-900 bg-white/90 border border-slate-200/90 px-2.5 py-1 rounded-xl text-xs shadow-2xs flex items-center gap-1.5">
+              <UserIcon className="w-3.5 h-3.5 text-sky-600" />
+              <span>{driverName}</span>
+            </span>
+            <span className="text-slate-400">•</span>
             <span className="font-black text-slate-900">{vehicleDisplay}</span>
-            <span>•</span>
+            <span className="text-slate-400">•</span>
             <span className="font-bold text-slate-700">{routeDisplay}</span>
             {assignmentStatus === "PENDING" && (
               <span className="bg-amber-100 text-amber-900 text-xs px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider">
