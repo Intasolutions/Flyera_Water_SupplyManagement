@@ -425,3 +425,12 @@ export const createGlassVendorPickup = (data: {
 
 export const getGlassVendorPickups = () => fetcher<GlassVendorPickup[]>('/glass/vendor-pickups');
 
+// --- System Settings ---
+export const getSettings = () => fetcher<Record<string, any>>('/settings');
+export const updateSettings = (data: Record<string, any>) =>
+  fetcher<Record<string, any>>('/settings', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+

@@ -226,3 +226,11 @@ class GlassVendorPickup(Base):
     price_per_ton = Column(Float, nullable=False, default=0.0)
     date = Column(DateTime, default=datetime.utcnow)
 
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+
+    key = Column(String, primary_key=True)
+    value = Column(String, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+

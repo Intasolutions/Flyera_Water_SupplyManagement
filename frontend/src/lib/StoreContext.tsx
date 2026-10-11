@@ -12,6 +12,8 @@ export type Client = {
   points: number;
   optIn: boolean;
   history: string;
+  latitude?: number;
+  longitude?: number;
 };
 
 export type Inventory = {

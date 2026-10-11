@@ -22,7 +22,10 @@ import {
   UserCheck,
   Navigation,
   ExternalLink,
-  CheckCircle2
+  CheckCircle2,
+  Upload,
+  HelpCircle,
+  Link2
 } from "lucide-react";
 import { getClients, createClient, updateClient, deleteClient, Client, getRoutes, Route, getInventoryTypes, InventoryType } from "@/lib/api";
 import { toast } from "react-hot-toast";
@@ -51,6 +54,9 @@ export default function ClientsPage() {
   const [newLatitude, setNewLatitude] = useState<number | null>(null);
   const [newLongitude, setNewLongitude] = useState<number | null>(null);
   const [isLocating, setIsLocating] = useState(false);
+  const [locationInput, setLocationInput] = useState("");
+  const [showGuidance, setShowGuidance] = useState(false);
+  const [locationMethod, setLocationMethod] = useState<"link" | "gps" | "manual">("link");
 
   useEffect(() => {
     fetchData();
@@ -99,6 +105,64 @@ export default function ClientsPage() {
     );
   };
 
+  const parseLocationText = (text: string) => {
+    if (!text || !text.trim()) {
+      toast.error("Please paste a Google Maps link or coordinates");
+      return;
+    }
+
+    const trimmed = text.trim();
+
+    // Regex 1: Google Maps query format: q=19.076090,72.877390 or ll=... or daddr=...
+    const urlQueryMatch = trimmed.match(/[?&](?:q|ll|destination|daddr)=(-?\d{1,3}\.\d+)[,\s]+(-?\d{1,3}\.\d+)/);
+
+    // Regex 2: Google Maps path format: @19.076090,72.877390
+    const urlPathMatch = trimmed.match(/@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/);
+
+    // Regex 3: Direct coordinates: "19.076090, 72.877390" or "19.076090 72.877390"
+    const coordMatch = trimmed.match(/(-?\d{1,3}\.\d+)[,\s]+(-?\d{1,3}\.\d+)/);
+
+    let lat: number | null = null;
+    let lng: number | null = null;
+
+    if (urlQueryMatch) {
+      lat = parseFloat(urlQueryMatch[1]);
+      lng = parseFloat(urlQueryMatch[2]);
+    } else if (urlPathMatch) {
+      lat = parseFloat(urlPathMatch[1]);
+      lng = parseFloat(urlPathMatch[2]);
+    } else if (coordMatch) {
+      lat = parseFloat(coordMatch[1]);
+      lng = parseFloat(coordMatch[2]);
+    }
+
+    if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) {
+      setNewLatitude(parseFloat(lat.toFixed(6)));
+      setNewLongitude(parseFloat(lng.toFixed(6)));
+      toast.success(`Location pinned: ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+
+      // Reverse geocode to resolve address if address is blank
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.address) {
+            const parts = [
+              data.address.road || data.address.pedestrian,
+              data.address.suburb || data.address.neighbourhood || data.address.residential,
+              data.address.city || data.address.town || data.address.county
+            ].filter(Boolean);
+            const resolved = parts.join(", ") || data.display_name;
+            if (resolved) {
+              setNewAddress(prev => prev || resolved);
+            }
+          }
+        })
+        .catch(() => {});
+    } else {
+      toast.error("Could not find coordinates. Please paste standard coordinates or a Google Maps link.");
+    }
+  };
+
   const handleSaveClient = async () => {
     if (!newName.trim()) {
       toast.error("Please enter a client name");
@@ -144,6 +208,8 @@ export default function ClientsPage() {
     setNewRouteId("");
     setNewLatitude(null);
     setNewLongitude(null);
+    setLocationInput("");
+    setShowGuidance(false);
   };
 
   const handleEditClick = (c: Client) => {
@@ -156,6 +222,7 @@ export default function ClientsPage() {
     setNewRouteId(c.route_id || "");
     setNewLatitude(c.latitude ?? null);
     setNewLongitude(c.longitude ?? null);
+    setLocationInput(c.latitude && c.longitude ? `${c.latitude}, ${c.longitude}` : "");
     setModalOpen(true);
   };
 
@@ -412,78 +479,225 @@ export default function ClientsPage() {
               />
             </div>
 
-            {/* GPS Location Capture Section */}
-            <div className="p-4 bg-emerald-50/60 rounded-2xl border border-emerald-200/80 space-y-3">
+            {/* Upload Client Location Feature with Guidance */}
+            <div className="p-4 bg-gradient-to-br from-emerald-50/80 to-teal-50/60 rounded-2xl border border-emerald-200/90 shadow-xs space-y-3.5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5">
-                  <div className="p-2 bg-emerald-500 text-white rounded-xl shadow-xs">
+                  <div className="p-2.5 bg-emerald-600 text-white rounded-xl shadow-xs">
                     <Navigation className="w-4 h-4" />
                   </div>
                   <div>
-                    <label className="text-xs font-black text-slate-800 block">
-                      GPS Delivery Location
-                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-black text-slate-800 block">
+                        Client Delivery Location
+                      </label>
+                      <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">
+                        GPS & Maps
+                      </span>
+                    </div>
                     <p className="text-[11px] text-slate-500 font-medium">
-                      Capture live GPS or enter coordinates for driver navigation
+                      Upload from WhatsApp/Google Maps or detect live GPS
                     </p>
                   </div>
                 </div>
 
+                {/* Method selector pills */}
+                <div className="flex bg-white/80 p-1 rounded-xl border border-emerald-200/60 self-start sm:self-auto shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => setLocationMethod("link")}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                      locationMethod === "link"
+                        ? "bg-emerald-600 text-white shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Paste Link
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLocationMethod("gps")}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                      locationMethod === "gps"
+                        ? "bg-emerald-600 text-white shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Live GPS
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLocationMethod("manual")}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                      locationMethod === "manual"
+                        ? "bg-emerald-600 text-white shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Coordinates
+                  </button>
+                </div>
+              </div>
+
+              {/* Guidance Toggle Button */}
+              <div className="flex items-center justify-between text-xs bg-white/80 p-2.5 rounded-xl border border-emerald-100">
+                <span className="text-slate-700 font-bold flex items-center gap-1.5 text-[11px]">
+                  <HelpCircle className="w-3.5 h-3.5 text-emerald-600" />
+                  Need customer&apos;s location from WhatsApp?
+                </span>
                 <button
                   type="button"
-                  onClick={handleGetLocation}
-                  disabled={isLocating}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer shrink-0"
+                  onClick={() => setShowGuidance(prev => !prev)}
+                  className="text-[11px] font-black text-emerald-700 hover:text-emerald-800 underline flex items-center gap-1"
                 >
-                  <MapPin className={`w-3.5 h-3.5 ${isLocating ? "animate-bounce" : ""}`} />
-                  {isLocating ? "Capturing GPS..." : "📍 Get Current Location"}
+                  {showGuidance ? "Hide Guidance" : "View Step-by-Step Guide"}
                 </button>
               </div>
 
-              {/* Coordinates Inputs */}
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
-                    Latitude
-                  </span>
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder="e.g. 19.076090"
-                    value={newLatitude ?? ""}
-                    onChange={e => setNewLatitude(e.target.value ? parseFloat(e.target.value) : null)}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 shadow-2xs"
-                  />
+              {/* Step-by-Step Guidance Panel */}
+              {showGuidance && (
+                <div className="p-3.5 bg-white rounded-xl border border-emerald-200/80 shadow-xs space-y-2 text-xs text-slate-700 animate-fade-in">
+                  <p className="font-black text-slate-800 flex items-center gap-1 text-[11px] uppercase tracking-wider text-emerald-700">
+                    📖 Step-by-Step Guidance:
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-[11px]">
+                    <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                      <span className="font-black text-emerald-700 block mb-0.5">1. In WhatsApp:</span>
+                      <span>Ask the customer to tap 📎 &gt; <b>Location</b> &gt; <b>Share current location</b>.</span>
+                    </div>
+                    <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                      <span className="font-black text-emerald-700 block mb-0.5">2. Copy Pin Link:</span>
+                      <span>Tap the shared pin to open in Google Maps, then tap <b>Share</b> &gt; <b>Copy link</b>.</span>
+                    </div>
+                    <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-100">
+                      <span className="font-black text-emerald-700 block mb-0.5">3. Paste & Upload:</span>
+                      <span>Paste the link in the box below and tap <b>Upload & Pin</b>. Done!</span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
-                    Longitude
-                  </span>
-                  <input
-                    type="number"
-                    step="any"
-                    placeholder="e.g. 72.877390"
-                    value={newLongitude ?? ""}
-                    onChange={e => setNewLongitude(e.target.value ? parseFloat(e.target.value) : null)}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 shadow-2xs"
-                  />
-                </div>
-              </div>
+              )}
 
+              {/* Method 1: Paste Google Maps / WhatsApp Location Link */}
+              {locationMethod === "link" && (
+                <div className="space-y-2 pt-1">
+                  <label className="text-[11px] font-black uppercase tracking-wider text-slate-600 block">
+                    Paste Google Maps Link / WhatsApp Location / Coordinates
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={locationInput}
+                      onChange={e => setLocationInput(e.target.value)}
+                      placeholder="e.g. https://maps.app.goo.gl/... or 19.0760, 72.8774"
+                      className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 shadow-2xs"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => parseLocationText(locationInput)}
+                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all active:scale-95 shrink-0 flex items-center gap-1.5"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Upload & Pin</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Method 2: Detect Live GPS */}
+              {locationMethod === "gps" && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-200/80">
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">On-Site GPS Detection</p>
+                      <p className="text-[11px] text-slate-500">Detect device satellite coordinates</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleGetLocation}
+                      disabled={isLocating}
+                      className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1.5 disabled:opacity-50"
+                    >
+                      <MapPin className={`w-3.5 h-3.5 ${isLocating ? "animate-bounce" : ""}`} />
+                      <span>{isLocating ? "Acquiring GPS..." : "📍 Detect GPS"}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Method 3: Direct Coordinate Inputs */}
+              {(locationMethod === "manual" || (newLatitude && newLongitude)) && (
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                      Latitude
+                    </span>
+                    <input
+                      type="number"
+                      step="any"
+                      placeholder="e.g. 19.076090"
+                      value={newLatitude ?? ""}
+                      onChange={e => setNewLatitude(e.target.value ? parseFloat(e.target.value) : null)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 shadow-2xs"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                      Longitude
+                    </span>
+                    <input
+                      type="number"
+                      step="any"
+                      placeholder="e.g. 72.877390"
+                      value={newLongitude ?? ""}
+                      onChange={e => setNewLongitude(e.target.value ? parseFloat(e.target.value) : null)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 shadow-2xs"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Pin Status & Interactive Embedded Google Maps Preview */}
               {newLatitude && newLongitude ? (
-                <div className="flex items-center justify-between text-xs pt-1 border-t border-emerald-200/60 mt-1">
-                  <span className="text-emerald-700 font-bold flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    Pinned: {newLatitude}, {newLongitude}
-                  </span>
-                  <a
-                    href={`https://www.google.com/maps?q=${newLatitude},${newLongitude}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline font-bold flex items-center gap-1"
-                  >
-                    Preview in Google Maps <ExternalLink className="w-3 h-3" />
-                  </a>
+                <div className="pt-2 border-t border-emerald-200/80 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-emerald-800 font-black flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      Pinned: {newLatitude.toFixed(6)}, {newLongitude.toFixed(6)}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewLatitude(null);
+                          setNewLongitude(null);
+                          setLocationInput("");
+                        }}
+                        className="text-[11px] font-bold text-rose-600 hover:underline"
+                      >
+                        Clear Pin
+                      </button>
+                      <a
+                        href={`https://www.google.com/maps?q=${newLatitude},${newLongitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline font-black text-xs flex items-center gap-1"
+                      >
+                        Open Maps <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Interactive Map Embed */}
+                  <div className="rounded-xl overflow-hidden border border-emerald-200 shadow-2xs">
+                    <iframe
+                      title="Customer Location Pin"
+                      width="100%"
+                      height="160"
+                      style={{ border: 0 }}
+                      loading="lazy"
+                      src={`https://maps.google.com/maps?q=${newLatitude},${newLongitude}&z=16&output=embed`}
+                    />
+                  </div>
                 </div>
               ) : null}
             </div>

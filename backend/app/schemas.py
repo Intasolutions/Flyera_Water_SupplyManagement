@@ -112,8 +112,12 @@ class InventoryTypeBase(BaseModel):
 class InventoryTypeCreate(InventoryTypeBase):
     pass
 
-class InventoryTypeUpdate(InventoryTypeBase):
-    pass
+class InventoryTypeUpdate(BaseModel):
+    name: Optional[str] = None
+    price: Optional[float] = None
+    wholesale_price: Optional[float] = None
+    premium_price: Optional[float] = None
+    points_value: Optional[int] = None
 
 class InventoryTypeResponse(InventoryTypeBase):
     id: str

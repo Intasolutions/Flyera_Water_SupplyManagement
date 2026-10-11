@@ -16,7 +16,8 @@ import {
   RefreshCw,
   ExternalLink,
   CheckCircle2,
-  Phone
+  Phone,
+  Navigation
 } from "lucide-react";
 import { 
   getCurrentUser, 
@@ -168,14 +169,22 @@ export default function GlassDriverPage() {
   };
 
   useEffect(() => {
-    startGpsAcquisition();
+    if (isNewClient) {
+      startGpsAcquisition();
+    } else {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+        setIsLocating(false);
+      }
+    }
     return () => {
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
       }
     };
-  }, []);
+  }, [isNewClient]);
 
   // New Client Form Fields
   const [newClientName, setNewClientName] = useState("");
@@ -363,84 +372,187 @@ export default function GlassDriverPage() {
           </div>
 
           <form onSubmit={handleAddCollection} className="space-y-4">
-            {/* Live Auto-GPS Acquisition Card */}
-            <div className="p-3.5 rounded-2xl border border-emerald-200/80 bg-emerald-50/50 space-y-2">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2.5">
-                  <div className={`p-2 rounded-xl shrink-0 ${
-                    gpsAccuracy !== null && gpsAccuracy <= 15
-                      ? "bg-emerald-100 text-emerald-700"
-                      : isLocating
-                      ? "bg-sky-100 text-sky-700 animate-pulse"
-                      : "bg-amber-100 text-amber-700"
-                  }`}>
-                    <Crosshair className={`w-4 h-4 ${isLocating ? "animate-spin" : ""}`} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-black text-slate-800">
-                        {gpsLocation ? `${gpsLocation.lat.toFixed(6)}, ${gpsLocation.lng.toFixed(6)}` : "Detecting live GPS..."}
-                      </span>
-                      {gpsAccuracy !== null && (
-                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
-                          gpsAccuracy <= 15
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-amber-100 text-amber-800"
-                        }`}>
-                          ±{gpsAccuracy}m precision
-                        </span>
-                      )}
+            {/* Live Auto-GPS Acquisition Card (Only when registering a new client) */}
+            {isNewClient && (
+              <div className="p-3.5 rounded-2xl border border-emerald-200/80 bg-emerald-50/50 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`p-2 rounded-xl shrink-0 ${
+                      gpsAccuracy !== null && gpsAccuracy <= 15
+                        ? "bg-emerald-100 text-emerald-700"
+                        : isLocating
+                        ? "bg-sky-100 text-sky-700 animate-pulse"
+                        : "bg-amber-100 text-amber-700"
+                    }`}>
+                      <Crosshair className={`w-4 h-4 ${isLocating ? "animate-spin" : ""}`} />
                     </div>
-                    <p className="text-[11px] text-slate-500 font-medium">{gpsStatus}</p>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-black text-slate-800">
+                          {gpsLocation ? `${gpsLocation.lat.toFixed(6)}, ${gpsLocation.lng.toFixed(6)}` : "Detecting live GPS..."}
+                        </span>
+                        {gpsAccuracy !== null && (
+                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
+                            gpsAccuracy <= 15
+                              ? "bg-emerald-100 text-emerald-800"
+                              : "bg-amber-100 text-amber-800"
+                          }`}>
+                            ±{gpsAccuracy}m precision
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-medium">{gpsStatus}</p>
+                    </div>
                   </div>
-                </div>
 
-                <button
-                  type="button"
-                  onClick={startGpsAcquisition}
-                  disabled={isLocating}
-                  className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all flex items-center gap-1 active:scale-95 disabled:opacity-50 shrink-0 shadow-2xs"
-                  title="Refetch High-Accuracy GPS"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isLocating ? "animate-spin text-emerald-600" : ""}`} />
-                  <span className="text-[11px]">Refetch</span>
-                </button>
-              </div>
-
-              {gpsLocation && (
-                <div className="pt-2 border-t border-emerald-100 flex items-center justify-between text-[11px]">
-                  <span className="text-emerald-700 font-bold flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Coordinates Auto-Saved on Submission
-                  </span>
-                  <a
-                    href={`https://www.google.com/maps?q=${gpsLocation.lat},${gpsLocation.lng}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-bold text-sky-600 hover:text-sky-700 flex items-center gap-1 hover:underline"
+                  <button
+                    type="button"
+                    onClick={startGpsAcquisition}
+                    disabled={isLocating}
+                    className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all flex items-center gap-1 active:scale-95 disabled:opacity-50 shrink-0 shadow-2xs"
+                    title="Refetch High-Accuracy GPS"
                   >
-                    <ExternalLink className="w-3 h-3" /> Preview Pin on Maps
-                  </a>
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLocating ? "animate-spin text-emerald-600" : ""}`} />
+                    <span className="text-[11px]">Refetch</span>
+                  </button>
                 </div>
-              )}
-            </div>
+
+                {gpsLocation && (
+                  <div className="pt-2 border-t border-emerald-100 flex items-center justify-between text-[11px]">
+                    <span className="text-emerald-700 font-bold flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Coordinates Auto-Saved on Submission
+                    </span>
+                    <a
+                      href={`https://www.google.com/maps?q=${gpsLocation.lat},${gpsLocation.lng}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-bold text-sky-600 hover:text-sky-700 flex items-center gap-1 hover:underline"
+                    >
+                      <ExternalLink className="w-3 h-3" /> Preview Pin on Maps
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
             {!isNewClient ? (
-              <div>
-                <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 block">
-                  Select Registered Client / Location
-                </label>
-                <select
-                  required
-                  value={selectedClientId}
-                  onChange={e => setSelectedClientId(e.target.value)}
-                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 outline-none text-slate-800 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all font-semibold text-sm cursor-pointer shadow-xs"
-                >
-                  <option value="" disabled>-- Select location --</option>
-                  {clients.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.address})
-                    </option>
-                  ))}
-                </select>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5 block">
+                    Select Registered Client / Location
+                  </label>
+                  <select
+                    required
+                    value={selectedClientId}
+                    onChange={e => setSelectedClientId(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 outline-none text-slate-800 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all font-semibold text-sm cursor-pointer shadow-xs"
+                  >
+                    <option value="" disabled>-- Select location --</option>
+                    {clients.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.address})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Show Saved Location & Directions Card when client is selected */}
+                {(() => {
+                  const selectedClient = clients.find(c => c.id === selectedClientId);
+                  if (!selectedClient) return null;
+                  return (
+                    <div className="bg-emerald-50/50 rounded-2xl border border-emerald-200/80 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                            <Navigation className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                              Saved Location & Directions
+                            </h4>
+                            <p className="text-[11px] text-slate-500 font-semibold">
+                              {selectedClient.latitude && selectedClient.longitude
+                                ? "GPS Pin Verified"
+                                : "Using Registered Address"}
+                            </p>
+                          </div>
+                        </div>
+                        {selectedClient.latitude && selectedClient.longitude ? (
+                          <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Pinned
+                          </span>
+                        ) : (
+                          <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                            Address Only
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="bg-white rounded-xl p-3 border border-emerald-100 space-y-1.5 text-xs">
+                        <div className="flex items-start gap-2">
+                          <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
+                          <span className="text-slate-800 font-bold">
+                            {selectedClient.address || "No address listed"}
+                          </span>
+                        </div>
+                        {selectedClient.latitude && selectedClient.longitude && (
+                          <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-slate-100 font-semibold text-slate-600">
+                            <span>Saved Coordinates:</span>
+                            <span className="font-mono text-slate-800 font-bold">
+                              {selectedClient.latitude.toFixed(6)}, {selectedClient.longitude.toFixed(6)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Embedded Map Preview if Coordinates exist */}
+                      {selectedClient.latitude && selectedClient.longitude && (
+                        <div className="rounded-xl overflow-hidden border border-emerald-200/80 shadow-2xs">
+                          <iframe
+                            title={`Saved location for ${selectedClient.name}`}
+                            width="100%"
+                            height="140"
+                            style={{ border: 0 }}
+                            loading="lazy"
+                            src={`https://maps.google.com/maps?q=${selectedClient.latitude},${selectedClient.longitude}&z=16&output=embed`}
+                          />
+                        </div>
+                      )}
+
+                      {/* Direction and Phone Actions */}
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <a
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${
+                            selectedClient.latitude && selectedClient.longitude
+                              ? `${selectedClient.latitude},${selectedClient.longitude}`
+                              : encodeURIComponent(selectedClient.address || selectedClient.name)
+                          }`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 text-center"
+                        >
+                          <Navigation className="w-3.5 h-3.5 shrink-0" />
+                          <span>Get Directions</span>
+                        </a>
+
+                        {selectedClient.phone ? (
+                          <a
+                            href={`tel:${selectedClient.phone.replace(/[^0-9+*#]/g, "")}`}
+                            className="py-2.5 px-3 bg-white border border-slate-200 text-slate-800 hover:bg-slate-50 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-2xs transition-all active:scale-95 text-center"
+                          >
+                            <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span>Call Client</span>
+                          </a>
+                        ) : (
+                          <div className="py-2.5 px-3 bg-slate-100 text-slate-400 rounded-xl text-xs font-bold flex items-center justify-center">
+                            No Phone Listed
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               <div className="space-y-3.5">

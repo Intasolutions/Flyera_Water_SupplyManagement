@@ -11,8 +11,11 @@ import {
   getInventoryTypes, 
   getCurrentUser, 
   getVehicles, 
-  createClient 
+  createClient,
+  updateClient,
+  getSettings
 } from "@/lib/api";
+import { ThermalReceiptModal, ReceiptData } from "@/components/ThermalReceiptModal";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { toast } from "react-hot-toast";
@@ -33,7 +36,8 @@ import {
   ArrowRight,
   Crosshair,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  Upload
 } from "lucide-react";
 
 export default function DriverApp() {
@@ -65,8 +69,114 @@ export default function DriverApp() {
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
   const [gpsStatus, setGpsStatus] = useState<string>("Ready to acquire GPS");
   const [isLocating, setIsLocating] = useState<boolean>(false);
+  const [locationMethod, setLocationMethod] = useState<"gps" | "link">("gps");
+  const [locationInput, setLocationInput] = useState("");
+  const [isUpdatingLocation, setIsUpdatingLocation] = useState(false);
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [receiptModalMode, setReceiptModalMode] = useState<"qr_collect" | "success_receipt">("qr_collect");
+  const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const [systemSettings, setSystemSettings] = useState<any>({});
   const watchIdRef = useRef<number | null>(null);
   const bestAccuracyRef = useRef<number>(999999);
+
+  const parseLocationText = (text: string) => {
+    if (!text || !text.trim()) {
+      toast.error("Please enter a Google Maps link or coordinates");
+      return;
+    }
+    const trimmed = text.trim();
+
+    const atMatch = trimmed.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    const qMatch = trimmed.match(/[?&](?:q|destination|daddr)=(-?\d+\.\d+),(-?\d+\.\d+)/);
+    const coordMatch = trimmed.match(/^(-?\d+\.\d+)[\s,]+(-?\d+\.\d+)$/);
+
+    let lat: number | null = null;
+    let lng: number | null = null;
+
+    if (atMatch) {
+      lat = parseFloat(atMatch[1]);
+      lng = parseFloat(atMatch[2]);
+    } else if (qMatch) {
+      lat = parseFloat(qMatch[1]);
+      lng = parseFloat(qMatch[2]);
+    } else if (coordMatch) {
+      lat = parseFloat(coordMatch[1]);
+      lng = parseFloat(coordMatch[2]);
+    }
+
+    if (lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng)) {
+      setGpsLocation({ lat, lng });
+      setGpsAccuracy(5);
+      setGpsStatus("Coordinates loaded from location link");
+      toast.success(`Coordinates loaded: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+
+      if (!newClientAddress) {
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.address) {
+              const parts = [
+                data.address.road || data.address.pedestrian,
+                data.address.suburb || data.address.neighbourhood || data.address.residential,
+                data.address.city || data.address.town || data.address.county
+              ].filter(Boolean);
+              const resolved = parts.join(", ") || data.display_name;
+              if (resolved) {
+                setNewClientAddress(resolved);
+                toast.success("Street address auto-populated!");
+              }
+            }
+          })
+          .catch(() => {});
+      }
+    } else {
+      toast.error("Could not parse coordinates. Please paste a valid Google Maps pin or lat/lng pair.");
+    }
+  };
+
+  const handlePinCurrentLocationForClient = (clientId: string) => {
+    if (!("geolocation" in navigator)) {
+      toast.error("Geolocation not supported by device");
+      return;
+    }
+    setIsUpdatingLocation(true);
+    toast.loading("Acquiring GPS to pin client location...", { id: "pin-gps" });
+    
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        try {
+          let addr = clientDetails?.address;
+          if (!addr) {
+            try {
+              const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+              const data = await res.json();
+              if (data?.display_name) addr = data.display_name;
+            } catch (e) {}
+          }
+
+          await updateClient(clientId, {
+            latitude,
+            longitude,
+            address: addr || undefined
+          });
+
+          setClients(prev => prev.map(c => c.id === clientId ? { ...c, latitude, longitude, address: addr || c.address } : c));
+          toast.success("Client location pinned and saved!", { id: "pin-gps" });
+        } catch (err) {
+          console.error("Failed to update client location:", err);
+          toast.error("Failed to save location.", { id: "pin-gps" });
+        } finally {
+          setIsUpdatingLocation(false);
+        }
+      },
+      (err) => {
+        setIsUpdatingLocation(false);
+        toast.error("Could not acquire GPS. Please allow location permissions.", { id: "pin-gps" });
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    );
+  };
   
   const [vehicleDisplay, setVehicleDisplay] = useState("No Vehicle Assigned");
   const [routeDisplay, setRouteDisplay] = useState("No Route");
@@ -79,10 +189,20 @@ export default function DriverApp() {
       getRoutes(), 
       getInventoryTypes(), 
       getCurrentUser(), 
-      getVehicles()
+      getVehicles(),
+      getSettings().catch(() => null)
     ])
-      .then(([assignments, allClients, allRoutes, invTypes, user, allVehicles]) => {
+      .then(([assignments, allClients, allRoutes, invTypes, user, allVehicles, settings]) => {
         setInventoryTypes(invTypes || []);
+        if (settings) {
+          setSystemSettings(settings);
+          try { localStorage.setItem("flyera_system_settings", JSON.stringify(settings)); } catch (e) {}
+        } else {
+          try {
+            const cached = localStorage.getItem("flyera_system_settings");
+            if (cached) setSystemSettings(JSON.parse(cached));
+          } catch (e) {}
+        }
         
         // Find assignment for current driver
         let active = assignments.find(a => a.status === "ACTIVE" && a.driver_id === user.id);
@@ -139,7 +259,7 @@ export default function DriverApp() {
     }
   };
 
-  const handlePayment = async (method: string) => {
+  const handlePayment = async (method: string, clearActive: boolean = true) => {
     if (activeClient) {
       const itemsPayload = Object.entries(deliveryItems)
         .filter(([_, counts]) => counts.full > 0 || counts.empty > 0)
@@ -179,7 +299,68 @@ export default function DriverApp() {
       setCurrentStock(prev => Math.max(0, prev - totalFullDelivered));
       toast.success("Delivery completed successfully!");
     }
-    setActiveClient(null);
+    if (clearActive) {
+      setActiveClient(null);
+    }
+  };
+
+  const buildReceiptData = (method: string): ReceiptData => {
+    const itemsPayload = Object.entries(deliveryItems)
+      .filter(([_, counts]) => counts.full > 0 || counts.empty > 0)
+      .map(([invId, counts]) => {
+        const inv = inventoryTypes.find(i => i.id === invId);
+        const rate = getClientPrice(inv, clientDetails?.tier);
+        return {
+          name: inv?.name || "20L Mineral Jar",
+          qty: counts.full,
+          rate: rate,
+          amount: counts.full * rate
+        };
+      });
+
+    const emptyCount = Object.values(deliveryItems).reduce((sum, it) => sum + it.empty, 0);
+
+    return {
+      receiptNo: `FL-${Date.now().toString().slice(-6)}`,
+      date: new Date().toLocaleString("en-IN", { 
+        day: "2-digit", 
+        month: "short", 
+        year: "numeric", 
+        hour: "2-digit", 
+        minute: "2-digit", 
+        hour12: true 
+      }),
+      companyName: systemSettings.company_name || "Flyera - Water & Glass Logistics",
+      gstin: systemSettings.gstin || "GSTIN-27AAACH7409R1ZZ",
+      hotline: systemSettings.dispatch_hotline || "+91 98765 43210",
+      address: systemSettings.central_address || "Plot 42, Hinjewadi Industrial Zone Phase 2, Pune",
+      vehiclePlate: vehicleDisplay,
+      routeName: routeDisplay,
+      driverName: "Driver",
+      clientName: clientDetails?.name || "Customer",
+      clientPhone: clientDetails?.phone || "",
+      clientAddress: clientDetails?.address || "",
+      items: itemsPayload,
+      emptyReturned: emptyCount,
+      totalAmount: totalAmount,
+      paymentMethod: method,
+      upiId: systemSettings.upi_id || "flyera@okhdfcbank"
+    };
+  };
+
+  const handleSelectCash = async () => {
+    const rData = buildReceiptData("Cash");
+    setReceiptData(rData);
+    await handlePayment("Cash", false);
+    setReceiptModalMode("success_receipt");
+    setIsReceiptModalOpen(true);
+  };
+
+  const handleSelectUPI = () => {
+    const rData = buildReceiptData("UPI / QR");
+    setReceiptData(rData);
+    setReceiptModalMode("qr_collect");
+    setIsReceiptModalOpen(true);
   };
 
   const startGpsAcquisition = () => {
@@ -307,12 +488,15 @@ export default function DriverApp() {
         longitude: gpsLocation?.lng
       });
       setClients(prev => [...prev, client]);
+      setActiveClient(client.id);
       setIsAddClientOpen(false);
       setNewClientName("");
       setNewClientPhone("");
       setNewClientAddress("");
       setNewClientTier("Standard");
       setNewClientOptIn(true);
+      setLocationInput("");
+      setLocationMethod("gps");
       toast.success("Client added and saved to route!");
     } catch (err) {
       console.error("Failed to create client", err);
@@ -467,35 +651,48 @@ export default function DriverApp() {
             <div className="space-y-3.5">
               {clients.map(c => {
                 const isCompleted = (c as any).isCompleted;
+                const isSelected = activeClient === c.id;
                 return (
                   <div
                     key={c.id}
-                    className={`glass-card p-4 transition-all duration-300 ${
+                    onClick={() => handleStartDelivery(c.id)}
+                    className={`glass-card p-4 transition-all duration-300 cursor-pointer ${
                       isCompleted
                         ? "border-emerald-200/60 bg-emerald-50/20 opacity-70"
-                        : activeClient === c.id
-                        ? "border-primary ring-2 ring-primary/20 shadow-md"
+                        : isSelected
+                        ? "border-primary ring-2 ring-primary/20 shadow-md bg-sky-50/20"
                         : "border-slate-100 hover:border-slate-200"
                     }`}
                   >
                     <div className="flex justify-between items-start mb-2">
                       <div>
-                        <h3 className={`font-black text-base ${isCompleted ? "text-emerald-800" : "text-slate-800"}`}>
-                          {c.name}
-                        </h3>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className={`font-black text-base ${isCompleted ? "text-emerald-800" : "text-slate-800"}`}>
+                            {c.name}
+                          </h3>
+                          {c.latitude && c.longitude ? (
+                            <span className="text-[10px] font-black text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-emerald-600" /> Pinned
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                              No GPS
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs sm:text-sm text-slate-600 font-semibold flex items-center gap-1.5 mt-1">
                           <MapPin className="w-4 h-4 text-slate-500 shrink-0" /> {c.address || "Local address"}
                         </p>
                       </div>
                       {isCompleted && (
-                        <span className="flex items-center gap-1 text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-100/80 px-2.5 py-1 rounded-lg">
+                        <span className="flex items-center gap-1 text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-100/80 px-2.5 py-1 rounded-lg shrink-0">
                           <CheckCircle2 className="w-3.5 h-3.5" /> Done
                         </span>
                       )}
                     </div>
 
                     {!isCompleted && (
-                      <div className="flex gap-2 mt-3 pt-3 border-t border-slate-100">
+                      <div className="flex gap-2 mt-3 pt-3 border-t border-slate-100" onClick={(e) => e.stopPropagation()}>
                         <button
                           type="button"
                           onClick={(e) => handleCallClient(e, c.name, c.phone)}
@@ -515,9 +712,9 @@ export default function DriverApp() {
                           }`}
                           target="_blank"
                           rel="noreferrer"
-                          className="flex-[1.2] py-2 bg-sky-50 border border-sky-100 rounded-xl text-xs font-black flex items-center justify-center gap-1 text-sky-700 hover:bg-sky-100 transition-all active:scale-95"
+                          className="flex-[1.2] py-2 bg-sky-50 border border-sky-100 rounded-xl text-xs font-black flex items-center justify-center gap-1 text-sky-700 hover:bg-sky-100 transition-all active:scale-95 text-center"
                         >
-                          <Navigation className="w-3.5 h-3.5" /> Maps
+                          <Navigation className="w-3.5 h-3.5" /> Directions
                         </a>
                         <button
                           type="button"
@@ -563,34 +760,106 @@ export default function DriverApp() {
                     </button>
                   </div>
 
-                  {/* Active Stop Quick Actions: Call & Map Navigation */}
-                  <div className="flex gap-2.5 mb-5">
-                    <button
-                      type="button"
-                      onClick={(e) => handleCallClient(e, clientDetails.name, clientDetails.phone)}
-                      className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-95 ${
-                        clientDetails.phone
-                          ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                          : "bg-slate-100 border border-slate-200 text-slate-400"
-                      }`}
-                    >
-                      <Phone className="w-4 h-4 shrink-0" />
-                      <span>{clientDetails.phone ? `Call ${clientDetails.phone}` : "No Phone Listed"}</span>
-                    </button>
+                  {/* Saved Location & Directions to Client Card */}
+                  <div className="bg-white rounded-2xl border border-sky-100 shadow-xs p-4 mb-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-sky-100 text-sky-700 flex items-center justify-center">
+                          <Navigation className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h3 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                            Saved Location & Directions
+                          </h3>
+                          <p className="text-[11px] text-slate-500 font-semibold">
+                            {clientDetails.latitude && clientDetails.longitude
+                              ? "GPS Pin Verified"
+                              : "No GPS Coordinates Saved"}
+                          </p>
+                        </div>
+                      </div>
+                      {clientDetails.latitude && clientDetails.longitude ? (
+                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" /> GPS Saved
+                        </span>
+                      ) : (
+                        <span className="bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-amber-600" /> Unpinned
+                        </span>
+                      )}
+                    </div>
 
-                    <a
-                      href={`https://www.google.com/maps/dir/?api=1&destination=${
-                        clientDetails.latitude && clientDetails.longitude
-                          ? `${clientDetails.latitude},${clientDetails.longitude}`
-                          : encodeURIComponent(clientDetails.address || clientDetails.name || "")
-                      }`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="py-2.5 px-3.5 bg-sky-50 hover:bg-sky-100 border border-sky-100 rounded-xl text-xs font-black text-sky-700 flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-xs"
-                    >
-                      <Navigation className="w-3.5 h-3.5" />
-                      <span>Maps</span>
-                    </a>
+                    {/* Address & Coordinates Display */}
+                    <div className="bg-slate-50/80 rounded-xl p-3 border border-slate-100 space-y-1.5 text-xs">
+                      <div className="flex items-start gap-2">
+                        <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
+                        <span className="text-slate-800 font-bold">
+                          {clientDetails.address || "No street address listed"}
+                        </span>
+                      </div>
+                      {clientDetails.latitude && clientDetails.longitude && (
+                        <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-slate-200/60 font-semibold text-slate-600">
+                          <span>Saved Coordinates:</span>
+                          <span className="font-mono text-slate-800 font-bold">
+                            {clientDetails.latitude.toFixed(6)}, {clientDetails.longitude.toFixed(6)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Interactive Embedded Map Preview */}
+                    {clientDetails.latitude && clientDetails.longitude ? (
+                      <div className="rounded-xl overflow-hidden border border-slate-200 shadow-2xs relative">
+                        <iframe
+                          title={`Saved location for ${clientDetails.name}`}
+                          width="100%"
+                          height="150"
+                          style={{ border: 0 }}
+                          loading="lazy"
+                          src={`https://maps.google.com/maps?q=${clientDetails.latitude},${clientDetails.longitude}&z=16&output=embed`}
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handlePinCurrentLocationForClient(clientDetails.id)}
+                        disabled={isUpdatingLocation}
+                        className="w-full py-2.5 px-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
+                      >
+                        <MapPin className="w-3.5 h-3.5 text-amber-700" />
+                        <span>{isUpdatingLocation ? "Acquiring GPS..." : "📍 Pin Client's Current Location Now"}</span>
+                      </button>
+                    )}
+
+                    {/* Prominent Directions & Call Action Buttons */}
+                    <div className="grid grid-cols-2 gap-2 pt-1">
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${
+                          clientDetails.latitude && clientDetails.longitude
+                            ? `${clientDetails.latitude},${clientDetails.longitude}`
+                            : encodeURIComponent(clientDetails.address || clientDetails.name)
+                        }`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="py-2.5 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 text-center"
+                      >
+                        <Navigation className="w-3.5 h-3.5 shrink-0" />
+                        <span>Directions</span>
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={(e) => handleCallClient(e, clientDetails.name, clientDetails.phone)}
+                        className={`py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-95 ${
+                          clientDetails.phone
+                            ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                            : "bg-slate-100 border border-slate-200 text-slate-400"
+                        }`}
+                      >
+                        <Phone className="w-3.5 h-3.5 shrink-0" />
+                        <span>{clientDetails.phone ? "Call" : "No Phone"}</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Client Info Pill */}
@@ -695,7 +964,7 @@ export default function DriverApp() {
 
                   <div className="grid grid-cols-2 gap-3 mb-6">
                     <button
-                      onClick={() => handlePayment("Cash")}
+                      onClick={handleSelectCash}
                       className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col items-center gap-2 hover:border-emerald-500 hover:bg-emerald-50/20 active:scale-95 transition-all"
                     >
                       <div className="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center">
@@ -705,7 +974,7 @@ export default function DriverApp() {
                     </button>
 
                     <button
-                      onClick={() => handlePayment("Razorpay QR")}
+                      onClick={handleSelectUPI}
                       className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col items-center gap-2 hover:border-sky-500 hover:bg-sky-50/20 active:scale-95 transition-all"
                     >
                       <div className="w-12 h-12 bg-sky-100 text-sky-700 rounded-2xl flex items-center justify-center">
@@ -740,65 +1009,137 @@ export default function DriverApp() {
       {/* Add Client Modal */}
       <Modal isOpen={isAddClientOpen} onClose={() => setIsAddClientOpen(false)} title="Register Client on Route">
         <form onSubmit={handleAddClient} className="space-y-4">
-          <div className="p-3.5 rounded-2xl border border-slate-200/90 bg-slate-50/90 space-y-2.5">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2.5">
-                <div className={`p-2 rounded-xl shrink-0 ${
-                  gpsAccuracy !== null && gpsAccuracy <= 15
-                    ? "bg-emerald-100 text-emerald-700"
-                    : isLocating
-                    ? "bg-sky-100 text-sky-700 animate-pulse"
-                    : "bg-amber-100 text-amber-700"
-                }`}>
-                  <Crosshair className={`w-4 h-4 ${isLocating ? "animate-spin" : ""}`} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-black text-slate-800">
-                      {gpsLocation ? `${gpsLocation.lat.toFixed(6)}, ${gpsLocation.lng.toFixed(6)}` : "Detecting GPS..."}
-                    </span>
-                    {gpsAccuracy !== null && (
-                      <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
-                        gpsAccuracy <= 15
-                          ? "bg-emerald-100 text-emerald-800"
-                          : "bg-amber-100 text-amber-800"
-                      }`}>
-                        ±{gpsAccuracy}m
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-slate-500 font-medium">{gpsStatus}</p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={startGpsAcquisition}
-                disabled={isLocating}
-                className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all flex items-center gap-1 active:scale-95 disabled:opacity-50 shrink-0"
-                title="Refetch High-Accuracy GPS"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLocating ? "animate-spin text-primary" : ""}`} />
-                <span className="text-[11px]">Refetch</span>
-              </button>
-            </div>
-
-            {gpsLocation && (
-              <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
-                <span className="text-emerald-700 font-bold flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> High Precision Confirmed
-                </span>
-                <a
-                  href={`https://www.google.com/maps?q=${gpsLocation.lat},${gpsLocation.lng}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-bold text-sky-600 hover:text-sky-700 flex items-center gap-1 hover:underline"
-                >
-                  <ExternalLink className="w-3 h-3" /> Verify on Maps
-                </a>
-              </div>
-            )}
+          {/* Location Mode Switcher */}
+          <div className="flex bg-slate-100 p-1 rounded-xl">
+            <button
+              type="button"
+              onClick={() => {
+                setLocationMethod("gps");
+                startGpsAcquisition();
+              }}
+              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                locationMethod === "gps" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              📍 Auto-Detect GPS
+            </button>
+            <button
+              type="button"
+              onClick={() => setLocationMethod("link")}
+              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
+                locationMethod === "link" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              🔗 Paste Map Link
+            </button>
           </div>
+
+          {locationMethod === "gps" && (
+            <div className="p-3.5 rounded-2xl border border-slate-200/90 bg-slate-50/90 space-y-2.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className={`p-2 rounded-xl shrink-0 ${
+                    gpsAccuracy !== null && gpsAccuracy <= 15
+                      ? "bg-emerald-100 text-emerald-700"
+                      : isLocating
+                      ? "bg-sky-100 text-sky-700 animate-pulse"
+                      : "bg-amber-100 text-amber-700"
+                  }`}>
+                    <Crosshair className={`w-4 h-4 ${isLocating ? "animate-spin" : ""}`} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-black text-slate-800">
+                        {gpsLocation ? `${gpsLocation.lat.toFixed(6)}, ${gpsLocation.lng.toFixed(6)}` : "Detecting GPS..."}
+                      </span>
+                      {gpsAccuracy !== null && (
+                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
+                          gpsAccuracy <= 15
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-amber-100 text-amber-800"
+                        }`}>
+                          ±{gpsAccuracy}m
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">{gpsStatus}</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={startGpsAcquisition}
+                  disabled={isLocating}
+                  className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all flex items-center gap-1 active:scale-95 disabled:opacity-50 shrink-0"
+                  title="Refetch High-Accuracy GPS"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLocating ? "animate-spin text-primary" : ""}`} />
+                  <span className="text-[11px]">Refetch</span>
+                </button>
+              </div>
+
+              {gpsLocation && (
+                <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px]">
+                  <span className="text-emerald-700 font-bold flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> High Precision Confirmed
+                  </span>
+                  <a
+                    href={`https://www.google.com/maps?q=${gpsLocation.lat},${gpsLocation.lng}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-bold text-sky-600 hover:text-sky-700 flex items-center gap-1 hover:underline"
+                  >
+                    <ExternalLink className="w-3 h-3" /> Verify on Maps
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+
+          {locationMethod === "link" && (
+            <div className="space-y-2 p-3 bg-slate-50 rounded-2xl border border-slate-200/80">
+              <label className="text-[11px] font-black uppercase tracking-wider text-slate-600 block">
+                Paste Google Maps Link / WhatsApp Location / Coordinates
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={locationInput}
+                  onChange={e => setLocationInput(e.target.value)}
+                  placeholder="e.g. maps.app.goo.gl/... or 19.0760, 72.8774"
+                  className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 shadow-2xs"
+                />
+                <button
+                  type="button"
+                  onClick={() => parseLocationText(locationInput)}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all active:scale-95 shrink-0 flex items-center gap-1"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Parse</span>
+                </button>
+              </div>
+              {gpsLocation && (
+                <div className="text-[11px] text-emerald-700 font-bold flex items-center gap-1 pt-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Pinned: {gpsLocation.lat.toFixed(6)}, {gpsLocation.lng.toFixed(6)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Map Preview when coordinates are present in Add Client */}
+          {gpsLocation && (
+            <div className="rounded-xl overflow-hidden border border-slate-200 shadow-2xs">
+              <iframe
+                title="New client location preview"
+                width="100%"
+                height="120"
+                style={{ border: 0 }}
+                loading="lazy"
+                src={`https://maps.google.com/maps?q=${gpsLocation.lat},${gpsLocation.lng}&z=16&output=embed`}
+              />
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
@@ -878,6 +1219,27 @@ export default function DriverApp() {
           </div>
         </form>
       </Modal>
+
+      {/* Thermal Bluetooth Receipt Modal with Dynamic QR & Celebratory Success Animation */}
+      {receiptData && (
+        <ThermalReceiptModal
+          isOpen={isReceiptModalOpen}
+          onClose={() => setIsReceiptModalOpen(false)}
+          mode={receiptModalMode}
+          data={receiptData}
+          onConfirmPayment={async () => {
+            await handlePayment("UPI / QR", false);
+            setReceiptData(prev => prev ? { ...prev, paymentMethod: "UPI / QR" } : null);
+            setReceiptModalMode("success_receipt");
+          }}
+          onNextStop={() => {
+            setIsReceiptModalOpen(false);
+            setActiveClient(null);
+            setStep(1);
+            setDeliveryItems({});
+          }}
+        />
+      )}
     </div>
   );
 }

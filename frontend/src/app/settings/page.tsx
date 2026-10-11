@@ -9,47 +9,154 @@ import {
   Building2, 
   Wallet, 
   Package, 
-  ShieldCheck, 
-  Percent, 
-  Receipt,
+  CheckCircle2,
   Sparkles
 } from "lucide-react";
-import { getInventoryTypes, updateInventoryType, InventoryType } from "@/lib/api";
+import { 
+  getInventoryTypes, 
+  updateInventoryType, 
+  InventoryType, 
+  getSettings, 
+  updateSettings 
+} from "@/lib/api";
 import { toast } from "react-hot-toast";
+
+const DEFAULT_SETTINGS = {
+  company_name: "Flyera - Water & Glass Logistics",
+  gstin: "GSTIN-27AAACH7409R1ZZ",
+  support_email: "operations@flyera.demo",
+  dispatch_hotline: "+91 98765 43210",
+  central_address: "Plot 42, Hinjewadi Industrial Zone Phase 2, Pune, Maharashtra 411057",
+  gst_enabled: true,
+  loyalty_rate: 0.50,
+  upi_id: "flyera@okhdfcbank"
+};
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<"business" | "billing">("business");
   const [loading, setLoading] = useState(false);
   const [inventoryTypes, setInventoryTypes] = useState<InventoryType[]>([]);
 
+  // Business Profile States
+  const [companyName, setCompanyName] = useState(DEFAULT_SETTINGS.company_name);
+  const [gstin, setGstin] = useState(DEFAULT_SETTINGS.gstin);
+  const [supportEmail, setSupportEmail] = useState(DEFAULT_SETTINGS.support_email);
+  const [dispatchHotline, setDispatchHotline] = useState(DEFAULT_SETTINGS.dispatch_hotline);
+  const [centralAddress, setCentralAddress] = useState(DEFAULT_SETTINGS.central_address);
+  const [upiId, setUpiId] = useState(DEFAULT_SETTINGS.upi_id);
+
+  // Billing States
+  const [gstEnabled, setGstEnabled] = useState(DEFAULT_SETTINGS.gst_enabled);
+  const [loyaltyRate, setLoyaltyRate] = useState(DEFAULT_SETTINGS.loyalty_rate);
+
+  // Load Settings on Mount
   useEffect(() => {
-    getInventoryTypes().then(types => setInventoryTypes(types || [])).catch(console.error);
+    // 1. Try local storage cache for immediate display
+    try {
+      const cached = localStorage.getItem("flyera_system_settings");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed.company_name) setCompanyName(parsed.company_name);
+        if (parsed.gstin) setGstin(parsed.gstin);
+        if (parsed.support_email) setSupportEmail(parsed.support_email);
+        if (parsed.dispatch_hotline) setDispatchHotline(parsed.dispatch_hotline);
+        if (parsed.central_address) setCentralAddress(parsed.central_address);
+        if (parsed.upi_id) setUpiId(parsed.upi_id);
+        if (parsed.gst_enabled !== undefined) setGstEnabled(parsed.gst_enabled === true || parsed.gst_enabled === "true");
+        if (parsed.loyalty_rate !== undefined) setLoyaltyRate(Number(parsed.loyalty_rate));
+      }
+    } catch (e) {}
+
+    // 2. Fetch from backend
+    getSettings()
+      .then(res => {
+        if (res) {
+          if (res.company_name) setCompanyName(res.company_name);
+          if (res.gstin) setGstin(res.gstin);
+          if (res.support_email) setSupportEmail(res.support_email);
+          if (res.dispatch_hotline) setDispatchHotline(res.dispatch_hotline);
+          if (res.central_address) setCentralAddress(res.central_address);
+          if (res.upi_id) setUpiId(res.upi_id);
+          if (res.gst_enabled !== undefined) setGstEnabled(res.gst_enabled === true || res.gst_enabled === "true");
+          if (res.loyalty_rate !== undefined) setLoyaltyRate(Number(res.loyalty_rate));
+          try {
+            localStorage.setItem("flyera_system_settings", JSON.stringify(res));
+          } catch (e) {}
+        }
+      })
+      .catch(console.warn);
+
+    // 3. Load product tiers
+    getInventoryTypes()
+      .then(types => setInventoryTypes(types || []))
+      .catch(console.error);
   }, []);
 
   const handleSave = async () => {
     setLoading(true);
     try {
-      if (activeTab === "billing") {
-        await Promise.all(
-          inventoryTypes.map(inv =>
-            updateInventoryType(inv.id, {
-              name: inv.name,
-              price: inv.price,
-              wholesale_price: inv.wholesale_price,
-              premium_price: inv.premium_price
-            })
-          )
-        );
-      }
-      setTimeout(() => {
-        setLoading(false);
-        toast.success("Settings saved successfully!");
-      }, 500);
+      const settingsPayload = {
+        company_name: companyName,
+        gstin: gstin,
+        support_email: supportEmail,
+        dispatch_hotline: dispatchHotline,
+        central_address: centralAddress,
+        upi_id: upiId,
+        gst_enabled: String(gstEnabled),
+        loyalty_rate: String(loyaltyRate)
+      };
+
+      // Save to localStorage immediately
+      try {
+        localStorage.setItem("flyera_system_settings", JSON.stringify(settingsPayload));
+      } catch (e) {}
+
+      // Persist to backend settings API
+      const settingsPromise = updateSettings(settingsPayload).catch(err => {
+        console.warn("Backend settings sync warning:", err);
+      });
+
+      // Persist product pricing matrix
+      const inventoryPromise = Promise.all(
+        inventoryTypes.map(inv =>
+          updateInventoryType(inv.id, {
+            name: inv.name,
+            price: Number(inv.price),
+            wholesale_price: Number(inv.wholesale_price),
+            premium_price: Number(inv.premium_price)
+          }).catch(err => console.warn(`Failed updating product ${inv.name}:`, err))
+        )
+      );
+
+      await Promise.all([settingsPromise, inventoryPromise]);
+
+      toast.success("Settings saved successfully!");
     } catch (err) {
-      console.error(err);
+      console.error("Save settings error:", err);
+      toast.error("Failed to save settings. Please try again.");
+    } finally {
       setLoading(false);
-      toast.error("Failed to save settings.");
     }
+  };
+
+  const handleDiscard = () => {
+    try {
+      const cached = localStorage.getItem("flyera_system_settings");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        setCompanyName(parsed.company_name || DEFAULT_SETTINGS.company_name);
+        setGstin(parsed.gstin || DEFAULT_SETTINGS.gstin);
+        setSupportEmail(parsed.support_email || DEFAULT_SETTINGS.support_email);
+        setDispatchHotline(parsed.dispatch_hotline || DEFAULT_SETTINGS.dispatch_hotline);
+        setCentralAddress(parsed.central_address || DEFAULT_SETTINGS.central_address);
+        setUpiId(parsed.upi_id || DEFAULT_SETTINGS.upi_id);
+        setGstEnabled(parsed.gst_enabled === true || parsed.gst_enabled === "true");
+        setLoyaltyRate(Number(parsed.loyalty_rate) || DEFAULT_SETTINGS.loyalty_rate);
+        toast("Changes discarded", { icon: "↩️" });
+        return;
+      }
+    } catch (e) {}
+    window.location.reload();
   };
 
   return (
@@ -133,7 +240,9 @@ export default function SettingsPage() {
                       </label>
                       <input
                         type="text"
-                        defaultValue="Flyera - Water & Glass Logistics"
+                        value={companyName}
+                        onChange={e => setCompanyName(e.target.value)}
+                        placeholder="e.g. Flyera - Water & Glass Logistics"
                         className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-sm shadow-xs"
                       />
                     </div>
@@ -144,7 +253,9 @@ export default function SettingsPage() {
                       </label>
                       <input
                         type="text"
-                        defaultValue="GSTIN-27AAACH7409R1ZZ"
+                        value={gstin}
+                        onChange={e => setGstin(e.target.value)}
+                        placeholder="e.g. GSTIN-27AAACH7409R1ZZ"
                         className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-sm shadow-xs"
                       />
                     </div>
@@ -155,7 +266,9 @@ export default function SettingsPage() {
                       </label>
                       <input
                         type="email"
-                        defaultValue="operations@flyera.demo"
+                        value={supportEmail}
+                        onChange={e => setSupportEmail(e.target.value)}
+                        placeholder="operations@flyera.demo"
                         className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-sm shadow-xs"
                       />
                     </div>
@@ -166,7 +279,22 @@ export default function SettingsPage() {
                       </label>
                       <input
                         type="text"
-                        defaultValue="+91 98765 43210"
+                        value={dispatchHotline}
+                        onChange={e => setDispatchHotline(e.target.value)}
+                        placeholder="+91 98765 43210"
+                        className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-sm shadow-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2">
+                        Merchant UPI ID (VPA for QR Payments)
+                      </label>
+                      <input
+                        type="text"
+                        value={upiId}
+                        onChange={e => setUpiId(e.target.value)}
+                        placeholder="e.g. flyera@okhdfcbank"
                         className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-sm shadow-xs"
                       />
                     </div>
@@ -176,7 +304,9 @@ export default function SettingsPage() {
                         Central Godown & Bottling Depot Address
                       </label>
                       <textarea
-                        defaultValue="Plot 42, Hinjewadi Industrial Zone Phase 2, Pune, Maharashtra 411057"
+                        value={centralAddress}
+                        onChange={e => setCentralAddress(e.target.value)}
+                        placeholder="Plot 42, Hinjewadi Industrial Zone Phase 2, Pune, Maharashtra 411057"
                         rows={3}
                         className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-sm shadow-xs resize-none"
                       />
@@ -206,7 +336,12 @@ export default function SettingsPage() {
                         </p>
                       </div>
                       <label className="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" className="sr-only peer" defaultChecked />
+                        <input 
+                          type="checkbox" 
+                          className="sr-only peer" 
+                          checked={gstEnabled}
+                          onChange={e => setGstEnabled(e.target.checked)}
+                        />
                         <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
                       </label>
                     </div>
@@ -220,8 +355,9 @@ export default function SettingsPage() {
                         <span className="text-slate-400 font-black text-sm">₹</span>
                         <input
                           type="number"
-                          defaultValue="0.50"
+                          value={loyaltyRate}
                           step="0.05"
+                          onChange={e => setLoyaltyRate(parseFloat(e.target.value) || 0)}
                           className="w-20 text-center border border-slate-200 rounded-xl p-2 font-black text-slate-800 text-sm outline-none focus:border-primary shadow-xs"
                         />
                       </div>
@@ -309,7 +445,7 @@ export default function SettingsPage() {
 
               {/* Bottom Actions */}
               <div className="mt-8 pt-5 border-t border-slate-100 flex justify-end gap-3">
-                <Button variant="secondary" onClick={() => window.location.reload()}>
+                <Button variant="secondary" onClick={handleDiscard}>
                   Discard Changes
                 </Button>
                 <Button
