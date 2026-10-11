@@ -7,10 +7,12 @@ from app.database import get_db
 
 router = APIRouter()
 
+@router.post("", response_model=schemas.ClientResponse, include_in_schema=False)
 @router.post("/", response_model=schemas.ClientResponse)
 def create_client(client: schemas.ClientCreate, db: Session = Depends(get_db)):
     return crud.create_client(db=db, client=client)
 
+@router.get("", response_model=List[schemas.ClientResponse], include_in_schema=False)
 @router.get("/", response_model=List[schemas.ClientResponse])
 def read_clients(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     clients = crud.get_clients(db, skip=skip, limit=limit)

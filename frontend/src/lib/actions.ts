@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 
-const API_BASE_URL = "http://127.0.0.1:8000/api";
+const API_BASE_URL = process.env.BACKEND_URL 
+  ? `${process.env.BACKEND_URL.replace(/\/api\/?$/, '')}/api` 
+  : "http://64.227.171.31/api";
 
 // Dashboard Actions
 export async function getDashboardStats(startDate?: string, endDate?: string) {

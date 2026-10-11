@@ -8,7 +8,7 @@ from app.api.routers import users, clients, vehicles, inventory, routes, auth, a
 # Create all tables in the database (simple alternative to migrations for now)
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Water Supply API")
+app = FastAPI(title="Water Supply API", redirect_slashes=False)
 
 # Configure CORS so the frontend can communicate with the backend
 cors_origins = os.environ.get("CORS_ORIGINS", "*").split(",")

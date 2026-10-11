@@ -7,10 +7,12 @@ from app.database import get_db
 
 router = APIRouter()
 
+@router.post("", response_model=schemas.InventoryTypeResponse, include_in_schema=False)
 @router.post("/", response_model=schemas.InventoryTypeResponse)
 def create_inventory_type(inv_type: schemas.InventoryTypeCreate, db: Session = Depends(get_db)):
     return crud.create_inventory_type(db=db, inv_type=inv_type)
 
+@router.get("", response_model=List[schemas.InventoryTypeResponse], include_in_schema=False)
 @router.get("/", response_model=List[schemas.InventoryTypeResponse])
 def read_inventory_types(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_inventory_types(db, skip=skip, limit=limit)

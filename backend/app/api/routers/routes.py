@@ -7,10 +7,12 @@ from ...database import get_db
 
 router = APIRouter()
 
+@router.post("", response_model=schemas.RouteResponse, include_in_schema=False)
 @router.post("/", response_model=schemas.RouteResponse)
 def create_route(route: schemas.RouteCreate, db: Session = Depends(get_db)):
     return crud.create_route(db=db, route=route)
 
+@router.get("", response_model=List[schemas.RouteResponse], include_in_schema=False)
 @router.get("/", response_model=List[schemas.RouteResponse])
 def read_routes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     return crud.get_routes(db, skip=skip, limit=limit)

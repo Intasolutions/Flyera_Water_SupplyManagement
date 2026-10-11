@@ -7,10 +7,12 @@ from app.database import get_db
 
 router = APIRouter()
 
+@router.post("", response_model=schemas.VehicleResponse, include_in_schema=False)
 @router.post("/", response_model=schemas.VehicleResponse)
 def create_vehicle(vehicle: schemas.VehicleCreate, db: Session = Depends(get_db)):
     return crud.create_vehicle(db=db, vehicle=vehicle)
 
+@router.get("", response_model=List[schemas.VehicleResponse], include_in_schema=False)
 @router.get("/", response_model=List[schemas.VehicleResponse])
 def read_vehicles(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     vehicles = crud.get_vehicles(db, skip=skip, limit=limit)

@@ -8,6 +8,7 @@ from app.api import deps
 
 router = APIRouter()
 
+@router.post("", response_model=schemas.DeliveryResponse, include_in_schema=False)
 @router.post("/", response_model=schemas.DeliveryResponse)
 def create_delivery(
     delivery: schemas.DeliveryCreate,

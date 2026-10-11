@@ -8,6 +8,7 @@ from app.api import deps
 
 router = APIRouter()
 
+@router.post("", response_model=schemas.AssignmentResponse, include_in_schema=False)
 @router.post("/", response_model=schemas.AssignmentResponse)
 def create_assignment(
     assignment: schemas.AssignmentCreate, 
@@ -52,6 +53,7 @@ def create_assignment(
     db.refresh(db_assignment)
     return db_assignment
 
+@router.get("", response_model=List[schemas.AssignmentResponse], include_in_schema=False)
 @router.get("/", response_model=List[schemas.AssignmentResponse])
 def get_assignments(
     skip: int = 0, limit: int = 100, 

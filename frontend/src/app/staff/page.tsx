@@ -179,7 +179,7 @@ export default function StaffPage() {
     formData.append("file", file);
     
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/users/upload-id", {
+      const res = await fetch("/api/users/upload-id", {
         method: "POST",
         body: formData,
       });
