@@ -14,7 +14,8 @@ import {
   Edit2, 
   Check, 
   Smartphone, 
-  FileText 
+  FileText,
+  Clock
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
@@ -41,7 +42,8 @@ export interface ReceiptData {
   items: ReceiptItem[];
   emptyReturned: number;
   totalAmount: number;
-  paymentMethod: string; // "Cash" | "UPI / QR"
+  paymentMethod: string; // "Cash" | "UPI / QR" | "Pay Later (Slip QR)"
+  paymentStatus?: "PAID" | "PENDING";
   upiId: string;
 }
 
@@ -65,6 +67,7 @@ export function ThermalReceiptModal({
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const receiptRef = useRef<HTMLDivElement>(null);
   const activeUpiId = data.upiId || "flyera@okhdfcbank";
+  const isPayLater = data.paymentStatus === "PENDING" || (data.paymentMethod || "").toLowerCase().includes("pay later") || (data.paymentMethod || "").toLowerCase().includes("slip");
 
   // Generate dynamic NPCI UPI URI and QR code strictly using Admin configured UPI ID
   useEffect(() => {
@@ -97,7 +100,28 @@ export function ThermalReceiptModal({
   // WhatsApp formatted receipt text
   const handleShareWhatsApp = () => {
     const cleanPhone = (data.clientPhone || "").replace(/[^0-9]/g, "");
-    const lines = [
+    const lines = isPayLater ? [
+      `*WATER DELIVERY INVOICE & PAYMENT QR*`,
+      `*${data.companyName}*`,
+      `--------------------------------`,
+      `Receipt No: *${data.receiptNo}*`,
+      `Date: ${data.date}`,
+      `Vehicle: ${data.vehiclePlate} | Route: ${data.routeName} | Driver: *${data.driverName}*`,
+      `Customer: *${data.clientName}*`,
+      `--------------------------------`,
+      ...data.items.map(item => `• ${item.name} x ${item.qty} @ ₹${item.rate} = ₹${item.amount}`),
+      data.emptyReturned > 0 ? `• Empty Jars Collected: ${data.emptyReturned}` : "",
+      `--------------------------------`,
+      `*TOTAL DUE: ₹${data.totalAmount}*`,
+      `*PAYMENT STATUS: PENDING (PAY VIA SLIP QR)*`,
+      `--------------------------------`,
+      `Your water bottles have been dropped off!`,
+      `Please scan the QR code on your printed slip or pay via UPI:`,
+      `UPI ID: *${activeUpiId}*`,
+      `Amount: *₹${data.totalAmount}*`,
+      `--------------------------------`,
+      `Helpline: ${data.hotline}`
+    ].filter(Boolean).join("\n") : [
       `*WATER DELIVERY INVOICE & RECEIPT*`,
       `*${data.companyName}*`,
       `--------------------------------`,
@@ -253,23 +277,29 @@ export function ThermalReceiptModal({
               </div>
             )}
 
-            {/* MODE 2: Clean Celebratory Success Screen */}
+            {/* MODE 2: Clean Celebratory / Slip Ready Screen */}
             {mode === "success_receipt" && (
               <div className="space-y-5 text-center">
                 
-                {/* Celebratory Animated Checkmark with Ripple Aura */}
+                {/* Celebratory Animated Checkmark or Clock Aura */}
                 <div className="py-2 flex flex-col items-center justify-center">
                   <div className="relative mb-3">
-                    <div className="absolute inset-0 rounded-full bg-emerald-400/20 animate-ping" />
-                    <div className="w-18 h-18 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center shadow-lg relative z-10">
-                      <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />
+                    <div className={`absolute inset-0 rounded-full ${isPayLater ? "bg-amber-400/20" : "bg-emerald-400/20"} animate-ping`} />
+                    <div className={`w-18 h-18 rounded-full ${
+                      isPayLater 
+                        ? "bg-gradient-to-tr from-amber-500 to-orange-500" 
+                        : "bg-gradient-to-tr from-emerald-600 to-teal-500"
+                    } text-white flex items-center justify-center shadow-lg relative z-10`}>
+                      {isPayLater ? <Clock className="w-10 h-10 stroke-[2.5]" /> : <CheckCircle2 className="w-10 h-10 stroke-[2.5]" />}
                     </div>
                   </div>
                   <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                    Payment Collected!
+                    {isPayLater ? "Delivery Dropped • Slip Ready" : "Payment Collected!"}
                   </h2>
-                  <p className="text-xs font-bold text-emerald-700 mt-0.5">
-                    ₹{data.totalAmount} received via {data.paymentMethod}
+                  <p className={`text-xs font-bold mt-0.5 ${isPayLater ? "text-amber-700" : "text-emerald-700"}`}>
+                    {isPayLater 
+                      ? `₹${data.totalAmount} Due • Awaiting Customer Slip QR Payment`
+                      : `₹${data.totalAmount} received via ${data.paymentMethod}`}
                   </p>
                 </div>
 
@@ -308,14 +338,16 @@ export function ThermalReceiptModal({
                   <div className="border-b border-dashed border-slate-300 my-1"></div>
                   <div className="flex justify-between">
                     <span>INV: {data.receiptNo}</span>
-                    <span>{data.paymentMethod}</span>
+                    <span className={isPayLater ? "text-amber-700 font-bold" : "text-emerald-700"}>
+                      {isPayLater ? "PAY LATER (SLIP QR)" : data.paymentMethod}
+                    </span>
                   </div>
                   <div className="flex justify-between text-slate-500">
                     <span>DRIVER: {data.driverName}</span>
                     <span>{data.vehiclePlate}</span>
                   </div>
                   <div className="flex justify-between font-bold text-slate-900 pt-1">
-                    <span>TOTAL PAID:</span>
+                    <span>{isPayLater ? "AMOUNT DUE:" : "TOTAL PAID:"}</span>
                     <span>₹{data.totalAmount}</span>
                   </div>
                 </div>
@@ -328,7 +360,7 @@ export function ThermalReceiptModal({
                     className="py-3 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
                   >
                     <Printer className="w-4 h-4" />
-                    <span>Print 58mm Receipt</span>
+                    <span>{isPayLater ? "Print Slip QR (58mm)" : "Print 58mm Receipt"}</span>
                   </button>
 
                   <button
@@ -402,13 +434,13 @@ export function ThermalReceiptModal({
         )}
         <div>--------------------------------</div>
         <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: "13px" }}>
-          <span>TOTAL COLLECTED:</span>
+          <span>{isPayLater ? "TOTAL DUE:" : "TOTAL COLLECTED:"}</span>
           <span>Rs.{data.totalAmount}</span>
         </div>
-        <div>PAYMENT METHOD   : {data.paymentMethod.toUpperCase()}</div>
+        <div>{isPayLater ? "PAYMENT STATUS  : PENDING (SCAN SLIP QR)" : `PAYMENT METHOD   : ${data.paymentMethod.toUpperCase()}`}</div>
         <div>--------------------------------</div>
         
-        {/* Dynamic UPI QR printed on the thermal slip if available */}
+        {/* Dynamic UPI QR printed on the thermal slip */}
         {qrDataUrl && (
           <div style={{ textAlign: "center", margin: "4px 0" }}>
             <img 
@@ -417,11 +449,18 @@ export function ThermalReceiptModal({
               style={{ width: "160px", height: "160px", margin: "0 auto", display: "block" }} 
             />
             <div style={{ fontSize: "9px" }}>UPI ID: {activeUpiId}</div>
-            <div style={{ fontSize: "9px" }}>Scan to Pay / Verify</div>
+            <div style={{ fontSize: "9px" }}>
+              {isPayLater ? "Scan to Pay Pending Refill Bill" : "Scan to Pay / Verify"}
+            </div>
           </div>
         )}
         
         <div>--------------------------------</div>
+        {isPayLater && (
+          <div style={{ textAlign: "center", fontSize: "9px", fontWeight: "bold", margin: "2px 0" }}>
+            * PLEASE SCAN QR TO PAY UPON RETURNING *
+          </div>
+        )}
         <div style={{ textAlign: "center", fontSize: "10px" }}>
           Thank you for trusting Flyera!
         </div>

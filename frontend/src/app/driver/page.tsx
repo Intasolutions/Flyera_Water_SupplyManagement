@@ -40,7 +40,10 @@ import {
   RefreshCw,
   ExternalLink,
   Upload,
-  User as UserIcon
+  User as UserIcon,
+  Printer,
+  Clock,
+  Receipt
 } from "lucide-react";
 
 export default function DriverApp() {
@@ -325,7 +328,7 @@ export default function DriverApp() {
             client_id: activeClient,
             total_amount: totalAmount,
             payment_method: method,
-            status: method === "Skipped" ? "SKIPPED" : "COMPLETED",
+            status: method === "Skipped" ? "SKIPPED" : method.includes("Pay Later") ? "PENDING_PAYMENT" : "COMPLETED",
             items: itemsPayload
           });
         } catch (e) {
@@ -349,7 +352,7 @@ export default function DriverApp() {
     }
   };
 
-  const buildReceiptData = (method: string): ReceiptData => {
+  const buildReceiptData = (method: string, paymentStatus: "PAID" | "PENDING" = "PAID"): ReceiptData => {
     const itemsPayload = Object.entries(deliveryItems)
       .filter(([_, counts]) => counts.full > 0 || counts.empty > 0)
       .map(([invId, counts]) => {
@@ -389,12 +392,13 @@ export default function DriverApp() {
       emptyReturned: emptyCount,
       totalAmount: totalAmount,
       paymentMethod: method,
+      paymentStatus: paymentStatus,
       upiId: systemSettings.upi_id || "flyera@okhdfcbank"
     };
   };
 
   const handleSelectCash = async () => {
-    const rData = buildReceiptData("Cash");
+    const rData = buildReceiptData("Cash", "PAID");
     setReceiptData(rData);
     await handlePayment("Cash", false);
     setReceiptModalMode("success_receipt");
@@ -402,9 +406,17 @@ export default function DriverApp() {
   };
 
   const handleSelectUPI = () => {
-    const rData = buildReceiptData("UPI / QR");
+    const rData = buildReceiptData("UPI / QR", "PAID");
     setReceiptData(rData);
     setReceiptModalMode("qr_collect");
+    setIsReceiptModalOpen(true);
+  };
+
+  const handleSelectPayLaterSlip = async () => {
+    const rData = buildReceiptData("Pay Later (Slip QR)", "PENDING");
+    setReceiptData(rData);
+    await handlePayment("Pay Later (Slip QR)", false);
+    setReceiptModalMode("success_receipt");
     setIsReceiptModalOpen(true);
   };
 
@@ -1012,7 +1024,7 @@ export default function DriverApp() {
                   <h2 className="text-4xl font-black text-slate-800 mb-1">₹{totalAmount}</h2>
                   <p className="text-slate-500 font-bold text-xs mb-4">{clientDetails.name}</p>
 
-                  <div className="grid grid-cols-2 gap-3 mb-6">
+                  <div className="grid grid-cols-2 gap-3 mb-3">
                     <button
                       onClick={handleSelectCash}
                       className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col items-center gap-2 hover:border-emerald-500 hover:bg-emerald-50/20 active:scale-95 transition-all"
@@ -1021,6 +1033,7 @@ export default function DriverApp() {
                         <IndianRupee className="w-6 h-6" />
                       </div>
                       <span className="font-black text-slate-800 text-sm">Cash</span>
+                      <span className="text-[10px] text-slate-400 font-semibold">Handed in person</span>
                     </button>
 
                     <button
@@ -1031,8 +1044,33 @@ export default function DriverApp() {
                         <QrCode className="w-6 h-6" />
                       </div>
                       <span className="font-black text-slate-800 text-sm">UPI / QR</span>
+                      <span className="text-[10px] text-slate-400 font-semibold">Immediate phone scan</span>
                     </button>
                   </div>
+
+                  {/* Customer Not Available / Pay Later from Slip QR */}
+                  <button
+                    onClick={handleSelectPayLaterSlip}
+                    className="w-full mb-6 bg-gradient-to-r from-amber-50 to-orange-50/80 p-4 rounded-2xl border border-amber-200/90 shadow-xs flex items-center justify-between hover:border-amber-400 active:scale-[0.98] transition-all text-left group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 bg-amber-500 text-white rounded-xl flex items-center justify-center shadow-xs shrink-0 group-hover:scale-105 transition-transform">
+                        <Receipt className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-slate-900 text-sm">Leave at Door (Slip QR)</span>
+                          <span className="bg-amber-200/80 text-amber-900 text-[9px] font-black uppercase px-2 py-0.5 rounded-md">
+                            Pay Later
+                          </span>
+                        </div>
+                        <p className="text-[11px] font-medium text-slate-600 mt-0.5">
+                          Customer not home • Drops jars &amp; prints 58mm slip with UPI QR to pay later
+                        </p>
+                      </div>
+                    </div>
+                    <Printer className="w-4 h-4 text-amber-700 shrink-0 ml-2" />
+                  </button>
 
                   <button
                     onClick={() => setStep(1)}

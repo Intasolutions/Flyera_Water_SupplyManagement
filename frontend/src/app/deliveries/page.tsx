@@ -828,8 +828,16 @@ export default function DeliveriesPage() {
               });
 
               let totalCash = 0;
+              let totalUpi = 0;
+              let totalPendingSlip = 0;
               (assignmentObj as any).deliveries?.forEach((d: any) => {
-                totalCash += d.total_amount || 0;
+                if (d.payment_method === "Cash") {
+                  totalCash += d.total_amount || 0;
+                } else if (d.payment_method === "Pay Later (Slip QR)" || d.status === "PENDING_PAYMENT") {
+                  totalPendingSlip += d.total_amount || 0;
+                } else {
+                  totalUpi += d.total_amount || 0;
+                }
               });
 
               return (
@@ -858,12 +866,24 @@ export default function DeliveriesPage() {
                     </div>
                   ))}
 
-                  <div className="flex items-center justify-between p-5 bg-emerald-50/60 rounded-2xl border border-emerald-200/70 shadow-xs">
-                    <div>
-                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 block">Cash Handover</span>
-                      <span className="font-black text-emerald-950 text-base">Driver Cash Collected</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="p-4 bg-emerald-50/80 rounded-2xl border border-emerald-200/80 shadow-xs">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">Cash Handover</span>
+                      <span className="text-2xl font-black text-emerald-950">₹{totalCash.toLocaleString()}</span>
+                      <span className="text-[10px] text-emerald-600 font-bold block mt-0.5">Physical cash from driver</span>
                     </div>
-                    <span className="text-3xl font-black text-emerald-700">₹{totalCash.toLocaleString()}</span>
+
+                    <div className="p-4 bg-sky-50/80 rounded-2xl border border-sky-200/80 shadow-xs">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-sky-800 block">Direct UPI QR</span>
+                      <span className="text-2xl font-black text-sky-950">₹{totalUpi.toLocaleString()}</span>
+                      <span className="text-[10px] text-sky-600 font-bold block mt-0.5">Direct to bank account</span>
+                    </div>
+
+                    <div className="p-4 bg-amber-50/80 rounded-2xl border border-amber-200/80 shadow-xs">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 block">Pending Slip QR</span>
+                      <span className="text-2xl font-black text-amber-950">₹{totalPendingSlip.toLocaleString()}</span>
+                      <span className="text-[10px] text-amber-600 font-bold block mt-0.5">Left at door / Pay later</span>
+                    </div>
                   </div>
                 </div>
               );
