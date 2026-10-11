@@ -15,7 +15,8 @@ import {
   Crosshair,
   RefreshCw,
   ExternalLink,
-  CheckCircle2
+  CheckCircle2,
+  Phone
 } from "lucide-react";
 import { 
   getCurrentUser, 
@@ -587,6 +588,20 @@ export default function GlassDriverPage() {
                         <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> {c.location}
                         <ExternalLink className="w-3 h-3 text-slate-400" />
                       </a>
+                    )}
+                    {c.phone && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const clean = c.phone?.replace(/[^0-9+*#]/g, "");
+                          if (clean) window.location.href = `tel:${clean}`;
+                        }}
+                        className="text-xs text-slate-500 hover:text-emerald-700 font-bold flex items-center gap-1 mt-1 hover:underline"
+                        title={`Call ${c.phone}`}
+                      >
+                        <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>{c.phone}</span>
+                      </button>
                     )}
                     <div className="flex gap-2 mt-2">
                       <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-100 px-2 py-0.5 rounded-md">

@@ -324,6 +324,34 @@ export default function DriverApp() {
 
   const clientDetails = clients.find(c => c.id === activeClient);
 
+  const handleCallClient = (e: React.MouseEvent, clientName: string, phone?: string | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!phone || !phone.trim()) {
+      toast.error(`No phone number listed for ${clientName}`);
+      return;
+    }
+
+    // Clean phone number: strip spaces, dashes, parentheses, non-digit characters
+    const cleanPhone = phone.replace(/[^0-9+*#]/g, "");
+
+    if (!cleanPhone || cleanPhone.length < 3) {
+      toast.error(`Invalid phone number format for ${clientName}`);
+      return;
+    }
+
+    // Copy to clipboard for easy manual dial or tablets
+    if (typeof navigator !== "undefined" && navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(cleanPhone).catch(() => {});
+    }
+
+    toast.success(`Opening dialer: ${cleanPhone}`);
+
+    // Direct window location trigger to reliably launch device phone dialer
+    window.location.href = `tel:${cleanPhone}`;
+  };
+
   const getClientPrice = (inv: any, tier?: string) => {
     if (!inv) return 80;
     if (tier === "Wholesale") return inv.wholesale_price || 65;
@@ -468,27 +496,33 @@ export default function DriverApp() {
 
                     {!isCompleted && (
                       <div className="flex gap-2 mt-3 pt-3 border-t border-slate-100">
-                        {c.phone && (
-                          <a
-                            href={`tel:${c.phone}`}
-                            className="flex-1 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black flex items-center justify-center gap-1 text-slate-700 hover:bg-slate-100 transition-all"
-                          >
-                            <Phone className="w-3.5 h-3.5" /> Call
-                          </a>
-                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => handleCallClient(e, c.name, c.phone)}
+                          className={`flex-1 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all active:scale-95 ${
+                            c.phone
+                              ? "bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100"
+                              : "bg-slate-50 border border-slate-200 text-slate-400 hover:bg-slate-100"
+                          }`}
+                          title={c.phone ? `Call ${c.name} (${c.phone})` : "No phone number registered"}
+                        >
+                          <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span>Call</span>
+                        </button>
                         <a
                           href={`https://www.google.com/maps/dir/?api=1&destination=${
                             c.latitude && c.longitude ? `${c.latitude},${c.longitude}` : encodeURIComponent(c.address || c.name || "")
                           }`}
                           target="_blank"
                           rel="noreferrer"
-                          className="flex-[1.2] py-2 bg-sky-50 border border-sky-100 rounded-xl text-xs font-black flex items-center justify-center gap-1 text-sky-700 hover:bg-sky-100 transition-all"
+                          className="flex-[1.2] py-2 bg-sky-50 border border-sky-100 rounded-xl text-xs font-black flex items-center justify-center gap-1 text-sky-700 hover:bg-sky-100 transition-all active:scale-95"
                         >
                           <Navigation className="w-3.5 h-3.5" /> Maps
                         </a>
                         <button
+                          type="button"
                           onClick={() => handleStartDelivery(c.id)}
-                          className={`flex-[1.5] py-2 rounded-xl text-xs font-black transition-all ${
+                          className={`flex-[1.5] py-2 rounded-xl text-xs font-black transition-all active:scale-95 ${
                             activeClient === c.id
                               ? "bg-primary text-white shadow-xs"
                               : "bg-primary/10 text-primary hover:bg-primary/20"
@@ -509,12 +543,17 @@ export default function DriverApp() {
             <div className="flex-1 md:max-w-md lg:max-w-lg md:sticky top-8 self-start">
               {step === 1 && (
                 <div className="glass-panel p-6 shadow-md border-slate-100">
-                  <div className="flex justify-between items-center mb-5 pb-3 border-b border-slate-100">
+                  <div className="flex justify-between items-start mb-3 pb-3 border-b border-slate-100">
                     <div>
                       <span className="text-xs font-black uppercase tracking-wider text-primary bg-primary/10 px-2.5 py-1 rounded-lg mb-1 inline-block">
                         Active Stop
                       </span>
                       <h2 className="text-xl sm:text-2xl font-black text-slate-900">{clientDetails.name}</h2>
+                      {clientDetails.address && (
+                        <p className="text-xs text-slate-500 font-semibold flex items-center gap-1 mt-0.5">
+                          <MapPin className="w-3 h-3 text-slate-400 shrink-0" /> {clientDetails.address}
+                        </p>
+                      )}
                     </div>
                     <button
                       onClick={() => setActiveClient(null)}
@@ -522,6 +561,36 @@ export default function DriverApp() {
                     >
                       Close
                     </button>
+                  </div>
+
+                  {/* Active Stop Quick Actions: Call & Map Navigation */}
+                  <div className="flex gap-2.5 mb-5">
+                    <button
+                      type="button"
+                      onClick={(e) => handleCallClient(e, clientDetails.name, clientDetails.phone)}
+                      className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-95 ${
+                        clientDetails.phone
+                          ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                          : "bg-slate-100 border border-slate-200 text-slate-400"
+                      }`}
+                    >
+                      <Phone className="w-4 h-4 shrink-0" />
+                      <span>{clientDetails.phone ? `Call ${clientDetails.phone}` : "No Phone Listed"}</span>
+                    </button>
+
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${
+                        clientDetails.latitude && clientDetails.longitude
+                          ? `${clientDetails.latitude},${clientDetails.longitude}`
+                          : encodeURIComponent(clientDetails.address || clientDetails.name || "")
+                      }`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="py-2.5 px-3.5 bg-sky-50 hover:bg-sky-100 border border-sky-100 rounded-xl text-xs font-black text-sky-700 flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-xs"
+                    >
+                      <Navigation className="w-3.5 h-3.5" />
+                      <span>Maps</span>
+                    </a>
                   </div>
 
                   {/* Client Info Pill */}
