@@ -558,17 +558,17 @@ function StatCard({
 
   return (
     <div className="glass-panel p-5 sm:p-6 rounded-3xl hover:shadow-md transition-all border border-black/5 group relative overflow-hidden">
-      <div className="flex justify-between items-start mb-3.5">
-        <div className="p-2.5 sm:p-3 bg-surface rounded-2xl border border-black/5 shadow-xs group-hover:scale-110 transition-transform">
+      <div className="flex justify-between items-start mb-3">
+        <div className="p-2.5 sm:p-3 bg-surface rounded-2xl border border-black/5 shadow-xs group-hover:scale-105 transition-transform">
           {icon}
         </div>
-        <span className={`text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${colorMap[color]}`}>
+        <span className={`text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${colorMap[color]}`}>
           {badge}
         </span>
       </div>
-      <h3 className="text-slate-600 text-xs sm:text-sm font-black uppercase tracking-wider mb-1.5">{title}</h3>
-      <p className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">{value}</p>
-      <p className="text-xs sm:text-sm text-slate-600 mt-1.5 font-bold">{trend}</p>
+      <h3 className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">{title}</h3>
+      <p className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">{value}</p>
+      <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">{trend}</p>
     </div>
   );
 }

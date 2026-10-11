@@ -117,26 +117,26 @@ export default function DashboardPage() {
         </div>
 
         {/* Date Filter Toolbar */}
-        <div className="glass-panel p-4 md:p-5 mb-8 shadow-sm">
+        <div className="glass-panel p-4 md:p-5 mb-8 shadow-xs">
           <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-600">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
                 Reporting Range:
               </span>
-              <div className="flex items-center gap-2 bg-white/90 border border-slate-200/80 rounded-xl px-3 py-2 shadow-xs">
-                <Calendar className="w-4 h-4 text-slate-500" />
+              <div className="flex items-center gap-2 bg-white/90 border border-slate-200/80 rounded-xl px-3 py-2 shadow-2xs">
+                <Calendar className="w-4 h-4 text-slate-400" />
                 <input
                   type="date"
                   value={startDate}
                   onChange={e => setStartDate(e.target.value)}
-                  className="outline-none text-xs sm:text-sm font-bold text-slate-800 bg-transparent cursor-pointer"
+                  className="outline-none text-xs font-semibold text-slate-700 bg-transparent cursor-pointer"
                 />
-                <span className="text-slate-400 font-bold text-xs sm:text-sm">to</span>
+                <span className="text-slate-300 font-medium text-xs">to</span>
                 <input
                   type="date"
                   value={endDate}
                   onChange={e => setEndDate(e.target.value)}
-                  className="outline-none text-xs sm:text-sm font-bold text-slate-800 bg-transparent cursor-pointer"
+                  className="outline-none text-xs font-semibold text-slate-700 bg-transparent cursor-pointer"
                 />
               </div>
             </div>
@@ -148,7 +148,7 @@ export default function DashboardPage() {
                   setStartDate(today);
                   setEndDate(today);
                 }}
-                className="px-3.5 py-2 bg-white/90 hover:bg-white text-slate-800 text-xs sm:text-sm font-bold rounded-xl border border-slate-200/80 shadow-xs transition-all active:scale-95"
+                className="px-3.5 py-1.5 bg-white/90 hover:bg-white text-slate-700 text-xs font-semibold rounded-xl border border-slate-200/80 shadow-2xs transition-all active:scale-95"
               >
                 Today
               </button>
@@ -160,7 +160,7 @@ export default function DashboardPage() {
                   setStartDate(firstDay);
                   setEndDate(today);
                 }}
-                className="px-3.5 py-2 bg-white/90 hover:bg-white text-slate-800 text-xs sm:text-sm font-bold rounded-xl border border-slate-200/80 shadow-xs transition-all active:scale-95"
+                className="px-3.5 py-1.5 bg-white/90 hover:bg-white text-slate-700 text-xs font-semibold rounded-xl border border-slate-200/80 shadow-2xs transition-all active:scale-95"
               >
                 This Month
               </button>
@@ -171,20 +171,20 @@ export default function DashboardPage() {
         {/* Main Content Area */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Active Routes (8 cols) */}
-          <div className="lg:col-span-8 glass-panel p-6 shadow-sm space-y-5">
+          <div className="lg:col-span-8 glass-panel p-6 shadow-xs space-y-5">
             <div className="flex justify-between items-center pb-3 border-b border-slate-100">
               <div>
-                <span className="text-xs font-black uppercase tracking-wider text-slate-600 block mb-1">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
                   Fleet In Transit
                 </span>
-                <h2 className="text-xl sm:text-2xl font-black text-slate-900">Active Delivery Corridors</h2>
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900">Active Delivery Corridors</h2>
               </div>
               <Link
                 href="/deliveries"
-                className="text-xs sm:text-sm font-black text-primary hover:text-sky-700 flex items-center gap-1 transition-colors"
+                className="text-xs font-bold text-primary hover:text-sky-700 flex items-center gap-1 transition-colors"
               >
                 <span>View Full Dispatch</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </div>
 
@@ -193,26 +193,26 @@ export default function DashboardPage() {
                 stats.activeRoutes.map((route: any, i: number) => (
                   <div
                     key={i}
-                    className="p-4 sm:p-5 bg-white/90 rounded-2xl border border-slate-100 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all hover:border-slate-200"
+                    className="p-4 sm:p-5 bg-white/90 rounded-2xl border border-slate-100 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all hover:border-slate-200"
                   >
                     <div className="flex items-center gap-3.5">
-                      <div className="w-12 h-12 rounded-2xl bg-sky-50 border border-sky-100 flex items-center justify-center text-primary shrink-0">
-                        <Truck className="w-6 h-6" />
+                      <div className="w-11 h-11 rounded-2xl bg-sky-50 border border-sky-100 flex items-center justify-center text-primary shrink-0">
+                        <Truck className="w-5 h-5" />
                       </div>
                       <div>
-                        <p className="font-black text-slate-900 text-sm sm:text-base">{route.vehicle}</p>
-                        <p className="text-xs sm:text-sm text-slate-600 font-semibold mt-0.5">
-                          Driver: <span className="text-slate-800 font-bold">{route.driver}</span>
+                        <p className="font-bold text-slate-900 text-sm">{route.vehicle}</p>
+                        <p className="text-xs text-slate-500 font-medium mt-0.5">
+                          Driver: <span className="text-slate-700 font-semibold">{route.driver}</span>
                         </p>
                       </div>
                     </div>
 
                     <div className="flex-1 max-w-xs mx-0 sm:mx-4">
-                      <div className="flex justify-between text-xs sm:text-sm mb-1.5 font-bold">
-                        <span className="text-xs uppercase tracking-wider text-slate-600 font-black">Route Progress</span>
-                        <span className="text-primary font-black">{route.progress}%</span>
+                      <div className="flex justify-between text-xs mb-1 font-semibold">
+                        <span className="text-slate-400 font-bold uppercase tracking-wider text-[11px]">Route Progress</span>
+                        <span className="text-primary font-bold">{route.progress}%</span>
                       </div>
-                      <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-gradient-to-r from-sky-400 to-primary rounded-full transition-all duration-500"
                           style={{ width: `${route.progress}%` }}
@@ -221,8 +221,8 @@ export default function DashboardPage() {
                     </div>
 
                     <div className="text-right shrink-0">
-                      <span className="text-sm sm:text-base font-black text-slate-900 block">{route.deliveries}</span>
-                      <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+                      <span className="text-sm font-bold text-slate-900 block">{route.deliveries}</span>
+                      <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
                         Drops Completed
                       </span>
                     </div>
@@ -231,20 +231,20 @@ export default function DashboardPage() {
               ) : (
                 <div className="py-12 text-center">
                   <Truck className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                  <p className="text-slate-600 font-bold text-sm sm:text-base">No vehicles currently on the road.</p>
-                  <p className="text-slate-500 text-xs sm:text-sm mt-1">Assign and dispatch routes in Deliveries &amp; Assignments.</p>
+                  <p className="text-slate-600 font-semibold text-sm">No vehicles currently on the road.</p>
+                  <p className="text-slate-400 text-xs mt-1">Assign and dispatch routes in Deliveries &amp; Assignments.</p>
                 </div>
               )}
             </div>
           </div>
 
           {/* Recent Operations Activity (4 cols) */}
-          <div className="lg:col-span-4 glass-panel p-6 shadow-sm space-y-5">
+          <div className="lg:col-span-4 glass-panel p-6 shadow-xs space-y-5">
             <div className="pb-3 border-b border-slate-100">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-600 block mb-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
                 Audit Trail
               </span>
-              <h2 className="text-xl sm:text-2xl font-black text-slate-900">Recent Activity</h2>
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900">Recent Activity</h2>
             </div>
 
             <div className="space-y-4">

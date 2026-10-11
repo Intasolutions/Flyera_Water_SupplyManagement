@@ -140,16 +140,8 @@ const defaultAssignments: Assignment[] = [];
 const defaultStaff: Staff[] = [];
 const defaultRoutes: Route[] = [];
 
-const defaultGlassInventory: GlassInventory[] = [
-  { id: "gi2", type: "white", tons: 8 },
-  { id: "gi3", type: "mixed", tons: 12 },
-];
-
-const defaultGlassCollections: GlassCollection[] = [
-  { id: "gc1", driverId: "s1", driverName: "Rahul D.", vehicle: "MH 12 AB 1234", property: "Sunshine Resort", tonsCollected: 2.5, paymentAmount: 500, status: "dropped_at_godown", date: new Date().toISOString() },
-  { id: "gc2", driverId: "s2", driverName: "Vikram S.", vehicle: "MH 12 CD 5678", property: "Tech Park", tonsCollected: 4.2, paymentAmount: 0, status: "dropped_at_godown", date: new Date(Date.now() - 3600000).toISOString() },
-];
-
+const defaultGlassInventory: GlassInventory[] = [];
+const defaultGlassCollections: GlassCollection[] = [];
 const defaultGlassVendorPickups: GlassVendorPickup[] = [];
 
 const StoreContext = createContext<StoreContextType | null>(null);

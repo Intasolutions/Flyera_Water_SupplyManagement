@@ -153,10 +153,10 @@ export function Sidebar() {
                 {isGlass ? <Recycle className="w-6 h-6" /> : <Droplet className="w-6 h-6" />}
               </div>
               <div>
-                <h1 className="text-xl font-black text-slate-900 tracking-tight leading-none">
+                <h1 className="text-lg font-black text-slate-900 tracking-tight leading-none">
                   FLYERA
                 </h1>
-                <p className="text-xs uppercase tracking-wider font-black text-slate-600 mt-1">
+                <p className="text-xs uppercase tracking-wider font-semibold text-slate-500 mt-1">
                   {isGlass ? "Glass Circular" : "Water Logistics"}
                 </p>
               </div>
@@ -165,7 +165,7 @@ export function Sidebar() {
             {/* Close Button inside Drawer (Mobile only) */}
             <button
               onClick={() => setIsOpen(false)}
-              className="md:hidden text-slate-500 hover:text-slate-900 p-2.5 rounded-xl hover:bg-slate-100 transition-colors"
+              className="md:hidden text-slate-500 hover:text-slate-900 p-2 rounded-xl hover:bg-slate-100 transition-colors"
               aria-label="Close menu drawer"
             >
               <X className="w-5 h-5" />
@@ -174,35 +174,35 @@ export function Sidebar() {
 
           {/* Business Switcher for Owner / Admin */}
           {currentUserRole === "Owner" && (
-            <div className="p-1 bg-slate-100/90 border border-slate-200/70 rounded-2xl mb-2 flex gap-1">
+            <div className="p-1 bg-slate-100/80 border border-slate-200/60 rounded-xl mb-2 flex gap-1">
               <button
                 onClick={() => setActiveBusiness("Water")}
-                className={`flex-1 py-2 px-3 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                   activeBusiness === "Water"
                     ? "bg-white shadow-xs text-sky-600"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                <Droplet className="w-4 h-4" />
+                <Droplet className="w-3.5 h-3.5" />
                 Water
               </button>
               <button
                 onClick={() => setActiveBusiness("Glass")}
-                className={`flex-1 py-2 px-3 text-xs sm:text-sm font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
                   activeBusiness === "Glass"
                     ? "bg-white shadow-xs text-emerald-600"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                <Recycle className="w-4 h-4" />
+                <Recycle className="w-3.5 h-3.5" />
                 Glass
               </button>
             </div>
           )}
         </div>
 
-        {/* Navigation Links with Comfortable 15px Font & Clear Icons */}
-        <nav className="flex-1 space-y-1.5 overflow-y-auto px-1 py-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+        {/* Navigation Links with Crisp Desktop 14px Font & Balanced Spacing */}
+        <nav className="flex-1 space-y-1 overflow-y-auto px-1 py-1.5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
           {links.map(link => {
             const isActive = pathname === link.href;
             const Icon = link.icon;
@@ -212,26 +212,26 @@ export function Sidebar() {
                 key={link.name}
                 href={link.href}
                 onClick={() => setIsOpen(false)}
-                className={`group flex items-center justify-between px-4 py-3 rounded-2xl text-[15px] sm:text-base font-bold transition-all duration-200 ${
+                className={`group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
                   isActive 
                     ? isGlass
-                      ? "bg-emerald-50 text-emerald-800 font-black shadow-xs border border-emerald-200"
-                      : "bg-sky-50 text-sky-800 font-black shadow-xs border border-sky-200"
-                    : "text-slate-700 hover:bg-slate-100/80 hover:text-slate-900 border border-transparent"
+                      ? "bg-emerald-50 text-emerald-700 font-bold shadow-2xs border border-emerald-100"
+                      : "bg-sky-50 text-primary font-bold shadow-2xs border border-sky-100"
+                    : "text-slate-600 hover:bg-slate-100/70 hover:text-slate-900 border border-transparent"
                 }`}
               >
-                <div className="flex items-center gap-3.5">
+                <div className="flex items-center gap-3">
                   <Icon
-                    className={`w-5 h-5 shrink-0 transition-transform group-hover:scale-110 ${
+                    className={`w-4.5 h-4.5 shrink-0 transition-transform group-hover:scale-105 ${
                       isActive 
-                        ? isGlass ? "text-emerald-700" : "text-sky-700" 
-                        : "text-slate-500 group-hover:text-slate-800"
+                        ? isGlass ? "text-emerald-600" : "text-primary" 
+                        : "text-slate-400 group-hover:text-slate-600"
                     }`}
                   />
                   <span>{link.name}</span>
                 </div>
                 {isActive && (
-                  <span className={`w-2.5 h-2.5 rounded-full ${isGlass ? "bg-emerald-600" : "bg-primary"}`} />
+                  <span className={`w-1.5 h-1.5 rounded-full ${isGlass ? "bg-emerald-600" : "bg-primary"}`} />
                 )}
               </Link>
             );
@@ -240,18 +240,18 @@ export function Sidebar() {
 
         {/* PWA Install Button inside Drawer */}
         {isInstallable && (
-          <div className="px-1 mb-3">
+          <div className="px-1 mb-2.5">
             <button
               onClick={handleInstallClick}
-              className="w-full p-3.5 rounded-2xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-800 flex items-center justify-between transition-all group shadow-xs active:scale-95"
+              className="w-full p-2.5 rounded-xl bg-sky-50 hover:bg-sky-100/80 border border-sky-200/80 text-sky-800 flex items-center justify-between transition-all group shadow-2xs active:scale-95"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-primary text-white flex items-center justify-center shrink-0 shadow-xs">
-                  <Smartphone className="w-5 h-5" />
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-primary text-white flex items-center justify-center shrink-0 shadow-2xs">
+                  <Smartphone className="w-4 h-4" />
                 </div>
                 <div className="text-left">
-                  <p className="text-xs sm:text-sm font-black text-slate-900 leading-none">Install Flyera App</p>
-                  <p className="text-xs text-sky-800 font-bold mt-0.5">Offline PWA Standalone</p>
+                  <p className="text-xs font-bold text-slate-800 leading-none">Install Flyera App</p>
+                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">Offline PWA Standalone</p>
                 </div>
               </div>
               <Download className="w-4 h-4 text-primary group-hover:translate-y-0.5 transition-transform" />
@@ -260,11 +260,11 @@ export function Sidebar() {
         )}
 
         {/* User Card & Logout Footer */}
-        <div className="mt-auto pt-3 border-t border-slate-100">
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3 shadow-xs">
-            <div className="flex items-center gap-3 min-w-0">
+        <div className="mt-auto pt-2.5 border-t border-slate-100">
+          <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/60 flex items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center gap-2.5 min-w-0">
               <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center text-white text-xs font-black shadow-xs shrink-0 ${
+                className={`w-9 h-9 rounded-lg flex items-center justify-center text-white text-xs font-bold shadow-2xs shrink-0 ${
                   isGlass 
                     ? "bg-gradient-to-tr from-emerald-600 to-teal-500" 
                     : "bg-gradient-to-tr from-sky-600 to-blue-500"
@@ -273,10 +273,10 @@ export function Sidebar() {
                 {currentUserRole === "Owner" ? "OW" : currentUserRole === "GlassStaff" ? "GS" : "DR"}
               </div>
               <div className="truncate">
-                <p className="text-sm sm:text-base font-black text-slate-900 truncate">
+                <p className="text-sm font-bold text-slate-800 truncate">
                   {currentUserRole}
                 </p>
-                <span className="text-xs text-slate-600 font-bold block">
+                <span className="text-xs text-slate-500 font-medium block">
                   {currentUserRole === "Owner" ? "Admin Access" : "Staff Access"}
                 </span>
               </div>
@@ -285,7 +285,7 @@ export function Sidebar() {
             <button
               onClick={handleSignOut}
               title="Sign Out"
-              className="p-2.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors shrink-0"
+              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors shrink-0"
             >
               <LogOut className="w-4 h-4" />
             </button>

@@ -50,19 +50,19 @@ export function StatCard({
         onClick ? "cursor-pointer" : ""
       } ${className}`}
     >
-      <div className="flex justify-between items-start mb-3.5">
-        <div className="p-2.5 sm:p-3 bg-surface rounded-2xl border border-black/5 shadow-xs group-hover:scale-110 transition-transform">
+      <div className="flex justify-between items-start mb-3">
+        <div className="p-2.5 sm:p-3 bg-surface rounded-2xl border border-black/5 shadow-xs group-hover:scale-105 transition-transform">
           {icon}
         </div>
         {displayBadge && (
-          <span className={`text-[11px] sm:text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border shadow-2xs ${colorMap[color]}`}>
+          <span className={`text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${colorMap[color]}`}>
             {displayBadge}
           </span>
         )}
       </div>
-      <h3 className="text-slate-600 text-xs sm:text-sm font-black uppercase tracking-wider mb-1.5">{displayTitle}</h3>
-      <p className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">{value}</p>
-      {displayTrend && <p className="text-xs sm:text-sm text-slate-600 mt-1.5 font-bold">{displayTrend}</p>}
+      <h3 className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">{displayTitle}</h3>
+      <p className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">{value}</p>
+      {displayTrend && <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">{displayTrend}</p>}
     </div>
   );
 }
