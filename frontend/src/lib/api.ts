@@ -6,10 +6,69 @@ const API_BASE_URL = typeof window !== 'undefined'
       : '/api')
   : (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api');
 
+// --- Token Rotation State ---
+let activeRefreshPromise: Promise<string | null> | null = null;
+
+export interface Token {
+  access_token: string;
+  refresh_token?: string;
+  token_type: string;
+  expires_in?: number;
+}
+
 /**
- * Generic fetcher to handle JSON responses and errors uniformly.
+ * Perform silent token refresh using the stored refresh token.
+ * Multiple concurrent callers will reuse the same in-flight request.
  */
-async function fetcher<T>(endpoint: string, options?: RequestInit): Promise<T> {
+async function refreshAccessToken(): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) return null;
+
+  if (activeRefreshPromise) {
+    return activeRefreshPromise;
+  }
+
+  activeRefreshPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+
+      if (!res.ok) {
+        // Refresh token is expired or revoked
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        return null;
+      }
+
+      const data: Token = await res.json();
+      if (data.access_token) {
+        localStorage.setItem('access_token', data.access_token);
+        if (data.refresh_token) {
+          localStorage.setItem('refresh_token', data.refresh_token);
+        }
+        return data.access_token;
+      }
+      return null;
+    } catch {
+      return null;
+    } finally {
+      activeRefreshPromise = null;
+    }
+  })();
+
+  return activeRefreshPromise;
+}
+
+/**
+ * Generic fetcher to handle JSON responses, errors, and silent token rotation.
+ */
+async function fetcher<T>(endpoint: string, options?: RequestInit, isRetry: boolean = false): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   
   const headers: Record<string, string> = {
@@ -54,8 +113,23 @@ async function fetcher<T>(endpoint: string, options?: RequestInit): Promise<T> {
       (response.status === 403 && errorMessage === "Could not validate credentials") || 
       errorMessage === "Not authenticated";
 
+    // Attempt silent token refresh if not already retrying, and not on auth endpoints
+    if (isAuthError && !isRetry && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/refresh')) {
+      const newAccessToken = await refreshAccessToken();
+      if (newAccessToken) {
+        return fetcher<T>(endpoint, {
+          ...options,
+          headers: {
+            ...headers,
+            'Authorization': `Bearer ${newAccessToken}`,
+          },
+        }, true);
+      }
+    }
+
     if (isAuthError && typeof window !== 'undefined' && window.location.pathname !== '/login') {
       localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
       window.location.href = '/login';
       // Return a never-resolving promise to pause execution until the browser navigates away
       return new Promise(() => {}) as any;
@@ -139,6 +213,8 @@ export interface User {
   address?: string | null;
   id_proof_url?: string | null;
   assigned_vehicle_id?: string | null;
+  is_active?: boolean;
+  token_version?: number;
   created_at: string;
   updated_at: string;
 }
@@ -271,7 +347,7 @@ export const createDelivery = (data: any) =>
 
 
 // --- Auth ---
-export const login = (username: string, password: string) => {
+export const login = (username: string, password: string): Promise<Token> => {
   // OAuth2 expects form-urlencoded data
   const formData = new URLSearchParams();
   formData.append('username', username);
@@ -292,7 +368,12 @@ export const login = (username: string, password: string) => {
       } catch (e) {}
       throw new Error(detail);
     }
-    return res.json();
+    const data: Token = await res.json();
+    if (typeof window !== 'undefined') {
+      if (data.access_token) localStorage.setItem('access_token', data.access_token);
+      if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+    }
+    return data;
   }).catch((err: any) => {
     if (err.message === "Load failed" || err.message === "Failed to fetch") {
       throw new Error("Unable to connect to backend server. Please check backend connection or server status.");
@@ -300,6 +381,17 @@ export const login = (username: string, password: string) => {
     throw err;
   });
 };
+
+export const refreshToken = (refreshTokenStr: string): Promise<Token> =>
+  fetcher<Token>('/auth/refresh', {
+    method: 'POST',
+    body: JSON.stringify({ refresh_token: refreshTokenStr }),
+  });
+
+export const revokeAllUserTokens = (userId: string) =>
+  fetcher<{ message: string; token_version: number }>(`/auth/revoke-tokens?user_id=${encodeURIComponent(userId)}`, {
+    method: 'POST',
+  });
 
 export const getCurrentUser = () => fetcher<User>('/auth/me');
 

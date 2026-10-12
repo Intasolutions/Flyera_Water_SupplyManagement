@@ -18,6 +18,12 @@ try:
                 conn.commit()
             except Exception:
                 pass
+        for col in ["is_active BOOLEAN DEFAULT 1", "token_version INTEGER DEFAULT 1"]:
+            try:
+                conn.execute(text(f"ALTER TABLE users ADD COLUMN {col}"))
+                conn.commit()
+            except Exception:
+                pass
 except Exception as e:
     print("Database migration check note:", e)
 

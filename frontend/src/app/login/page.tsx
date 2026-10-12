@@ -25,6 +25,9 @@ export default function LoginPage() {
     try {
       const authRes = await login(username, password);
       localStorage.setItem("access_token", authRes.access_token);
+      if (authRes.refresh_token) {
+        localStorage.setItem("refresh_token", authRes.refresh_token);
+      }
       
       const user = await getCurrentUser();
       try {

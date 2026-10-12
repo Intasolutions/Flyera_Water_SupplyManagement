@@ -19,6 +19,8 @@ class User(Base):
     address = Column(String, nullable=True)
     id_proof_url = Column(String, nullable=True)
     assigned_vehicle_id = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    token_version = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -5,11 +5,21 @@ from datetime import datetime
 # --- Auth Schemas ---
 class Token(BaseModel):
     access_token: str
-    token_type: str
+    refresh_token: Optional[str] = None
+    token_type: str = "bearer"
+    expires_in: Optional[int] = None
     
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
 class TokenPayload(BaseModel):
     sub: Optional[str] = None
+    role: Optional[str] = None
+    name: Optional[str] = None
+    token_type: Optional[str] = "access" # "access" or "refresh"
+    token_version: Optional[int] = 1
     exp: Optional[int] = None
+    iat: Optional[int] = None
 
 # --- User Schemas ---
 class UserBase(BaseModel):
@@ -21,6 +31,8 @@ class UserBase(BaseModel):
     address: Optional[str] = None
     id_proof_url: Optional[str] = None
     assigned_vehicle_id: Optional[str] = None
+    is_active: Optional[bool] = True
+    token_version: Optional[int] = 1
 
 class UserCreate(UserBase):
     password: str

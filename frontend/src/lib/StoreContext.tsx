@@ -173,13 +173,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   // Load from localStorage and verify auth on mount
   useEffect(() => {
     const token = localStorage.getItem("access_token");
-    if (!token && window.location.pathname !== "/login") {
+    const refreshToken = localStorage.getItem("refresh_token");
+    if (!token && !refreshToken && window.location.pathname !== "/login") {
       window.location.href = "/login";
       return;
     }
 
-    if (token && window.location.pathname !== "/login") {
-      // Validate token with backend (placeholder for actual API call, assumed valid for demo logic if present)
+    if ((token || refreshToken) && window.location.pathname !== "/login") {
       setIsAuthenticated(true);
     }
 

@@ -75,6 +75,8 @@ export function Sidebar() {
 
   const handleSignOut = () => {
     localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("flyera_user");
     window.location.href = "/login";
   };
 
