@@ -195,10 +195,15 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Security watermark footer */}
-        <div className="text-center mt-6 flex items-center justify-center gap-1.5 text-slate-400 text-xs font-semibold">
-          <ShieldCheck className="w-4 h-4 text-emerald-500" />
-          <span>256-Bit SSL Encrypted Session</span>
+        {/* Security watermark footer & Brand signature */}
+        <div className="text-center mt-6 space-y-2">
+          <div className="flex items-center justify-center gap-1.5 text-slate-400 text-xs font-semibold">
+            <ShieldCheck className="w-4 h-4 text-emerald-500" />
+            <span>256-Bit SSL Encrypted Session</span>
+          </div>
+          <p className="text-xs font-semibold text-slate-400">
+            Powered by <span className="font-bold text-slate-600">IN-TA Solution PVT LTD</span>
+          </p>
         </div>
       </div>
     </div>

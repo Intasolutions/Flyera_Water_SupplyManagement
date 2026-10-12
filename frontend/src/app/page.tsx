@@ -444,6 +444,13 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
+
+          {/* Brand Signature Footer */}
+          <footer className="mt-12 py-6 text-center border-t border-slate-200/60">
+            <p className="text-xs font-semibold text-slate-400">
+              Powered by <span className="font-bold text-slate-600">IN-TA Solution PVT LTD</span>
+            </p>
+          </footer>
         </div>
       </main>
     </div>

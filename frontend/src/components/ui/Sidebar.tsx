@@ -290,6 +290,13 @@ export function Sidebar() {
               <LogOut className="w-4 h-4" />
             </button>
           </div>
+
+          {/* Brand Footer */}
+          <div className="pt-2 pb-0.5 text-center">
+            <p className="text-[10.5px] font-semibold text-slate-400 tracking-tight">
+              Powered by <span className="font-bold text-slate-600">IN-TA Solution PVT LTD</span>
+            </p>
+          </div>
         </div>
       </aside>
 

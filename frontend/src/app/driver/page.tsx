@@ -1328,6 +1328,13 @@ export default function DriverApp() {
           }}
         />
       )}
+
+      {/* Brand Footer */}
+      <footer className="mt-12 py-4 text-center">
+        <p className="text-xs font-semibold text-slate-400">
+          Powered by <span className="font-bold text-slate-600">IN-TA Solution PVT LTD</span>
+        </p>
+      </footer>
     </div>
   );
 }

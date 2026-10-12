@@ -120,7 +120,8 @@ export function ThermalReceiptModal({
       `UPI ID: *${activeUpiId}*`,
       `Amount: *₹${data.totalAmount}*`,
       `--------------------------------`,
-      `Helpline: ${data.hotline}`
+      `Helpline: ${data.hotline}`,
+      `_Powered by IN-TA Solution PVT LTD_`
     ].filter(Boolean).join("\n") : [
       `*WATER DELIVERY INVOICE & RECEIPT*`,
       `*${data.companyName}*`,
@@ -137,7 +138,8 @@ export function ThermalReceiptModal({
       `*PAYMENT STATUS: PAID (${data.paymentMethod.toUpperCase()})*`,
       `--------------------------------`,
       `Thank you for choosing Flyera!`,
-      `Helpline: ${data.hotline}`
+      `Helpline: ${data.hotline}`,
+      `_Powered by IN-TA Solution PVT LTD_`
     ].filter(Boolean).join("\n");
 
     const encoded = encodeURIComponent(lines);
@@ -350,6 +352,9 @@ export function ThermalReceiptModal({
                     <span>{isPayLater ? "AMOUNT DUE:" : "TOTAL PAID:"}</span>
                     <span>₹{data.totalAmount}</span>
                   </div>
+                  <div className="border-t border-dashed border-slate-200 mt-2 pt-1 text-center text-[9px] text-slate-400 font-sans font-semibold">
+                    Powered by IN-TA Solution PVT LTD
+                  </div>
                 </div>
 
                 {/* Action Buttons */}
@@ -466,6 +471,9 @@ export function ThermalReceiptModal({
         </div>
         <div style={{ textAlign: "center", fontSize: "9px" }}>
           For refills call: {data.hotline}
+        </div>
+        <div style={{ textAlign: "center", fontSize: "8.5px", marginTop: "3px" }}>
+          Powered by IN-TA Solution PVT LTD
         </div>
         <div style={{ textAlign: "center" }}>================================</div>
       </div>
