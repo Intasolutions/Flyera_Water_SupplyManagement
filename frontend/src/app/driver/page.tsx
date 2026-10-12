@@ -11,11 +11,12 @@ import {
   getInventoryTypes, 
   getCurrentUser, 
   getVehicles, 
-  createClient,
-  updateClient,
-  getSettings,
-  getUsers,
-  User as UserType
+  createClient, 
+  updateClient, 
+  getSettings, 
+  getUsers, 
+  User as UserType,
+  completeAssignment
 } from "@/lib/api";
 import { ThermalReceiptModal, ReceiptData } from "@/components/ThermalReceiptModal";
 import { Button } from "@/components/ui/Button";
@@ -43,7 +44,9 @@ import {
   User as UserIcon,
   Printer,
   Clock,
-  Receipt
+  Receipt,
+  Flag,
+  ShieldCheck
 } from "lucide-react";
 
 export default function DriverApp() {
@@ -197,106 +200,234 @@ export default function DriverApp() {
     }
     return "Driver";
   });
+  const [helperName, setHelperName] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [vehicleDisplay, setVehicleDisplay] = useState("No Vehicle Assigned");
-  const [routeDisplay, setRouteDisplay] = useState("No Route");
+  const [routeDisplay, setRouteDisplay] = useState("Awaiting Dispatch");
   const [assignmentStatus, setAssignmentStatus] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [lastCompletedSummary, setLastCompletedSummary] = useState<{
+    routeName: string;
+    vehiclePlate: string;
+    stopsCount: number;
+    deliveredCount: number;
+    completedAt?: string;
+  } | null>(null);
+
+  // Modal for driver/helper to reconcile & end route
+  const [isEndRouteModalOpen, setIsEndRouteModalOpen] = useState(false);
+  const [isSubmittingEndRoute, setIsSubmittingEndRoute] = useState(false);
+
+  // Core assignment loader supporting both DRIVER and HELPER roles with live sync
+  const fetchAssignmentData = async (showFeedback: boolean = false) => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+
+    try {
+      const [assignments, allClients, allRoutes, invTypes, user, allVehicles, settings, allUsers] = await Promise.all([
+        getAssignments().catch(() => []), 
+        getClients().catch(() => []), 
+        getRoutes().catch(() => []), 
+        getInventoryTypes().catch(() => []), 
+        getCurrentUser().catch(() => {
+          try {
+            const cached = localStorage.getItem("flyera_user");
+            if (cached) return JSON.parse(cached);
+          } catch (e) {}
+          return null;
+        }), 
+        getVehicles().catch(() => []),
+        getSettings().catch(() => null),
+        getUsers().catch(() => [])
+      ]);
+
+      setInventoryTypes(invTypes || []);
+      if (settings) {
+        setSystemSettings(settings);
+        try { localStorage.setItem("flyera_system_settings", JSON.stringify(settings)); } catch (e) {}
+      }
+
+      let activeUser = user;
+      if (activeUser) {
+        setCurrentUser(activeUser);
+        try { localStorage.setItem("flyera_user", JSON.stringify(activeUser)); } catch (e) {}
+      }
+
+      const currentUserId = activeUser?.id;
+      const userRole = activeUser?.role;
+
+      // Check if assignment is linked to current user as either Lead Driver OR Route Helper
+      const isUserAssigned = (a: any) => {
+        if (!currentUserId) return false;
+        return a.driver_id === currentUserId || a.helper_id === currentUserId;
+      };
+
+      // 1. Check for ACTIVE assignment assigned to current user
+      let active = (assignments as any[]).find((a: any) => a.status === "ACTIVE" && isUserAssigned(a));
+
+      // 2. Check for PENDING assignment assigned to current user
+      if (!active && currentUserId) {
+        active = (assignments as any[]).find((a: any) => a.status === "PENDING" && isUserAssigned(a));
+      }
+
+      // 3. For ADMIN / Owner preview mode: if no direct assignment is linked to their ID, allow viewing active or pending runs
+      if (!active && (userRole === "ADMIN" || !currentUserId)) {
+        active = (assignments as any[]).find((a: any) => a.status === "ACTIVE") || (assignments as any[]).find((a: any) => a.status === "PENDING");
+      }
+
+      // STRICT LOGIC: If no ACTIVE or PENDING assignment exists, active MUST remain null!
+      // Completed / closed routes are NEVER treated as active runs.
+      if (active) {
+        setAssignedRouteId(active.route_id);
+        setActiveAssignmentId(active.id);
+        setAssignmentStatus(active.status);
+
+        // Resolve driver and helper display names
+        const matchedDriver = (allUsers as any[]).find(u => u.id === active.driver_id);
+        const matchedHelper = active.helper_id ? (allUsers as any[]).find(u => u.id === active.helper_id) : null;
+
+        if (matchedDriver?.name) {
+          setDriverName(matchedDriver.name);
+        } else if (activeUser?.role === "DRIVER" && (activeUser.name || activeUser.username)) {
+          setDriverName(activeUser.name || activeUser.username);
+        } else {
+          setDriverName("Lead Driver");
+        }
+
+        if (matchedHelper?.name) {
+          setHelperName(matchedHelper.name);
+        } else if (activeUser?.role === "HELPER" && (activeUser.name || activeUser.username)) {
+          setHelperName(activeUser.name || activeUser.username);
+        } else {
+          setHelperName(null);
+        }
+
+        const matchedRoute = (allRoutes as any[]).find(r => r.id === active.route_id);
+        const matchedVehicle = (allVehicles as any[]).find(v => v.id === active.vehicle_id);
+
+        if (matchedRoute) setRouteDisplay(matchedRoute.name);
+        if (matchedVehicle) setVehicleDisplay(matchedVehicle.plate_number);
+
+        // Filter clients by assigned route
+        const routeClients = (allClients as any[]).filter(c => c.route_id === active.route_id);
+        const mappedClients = routeClients.map(c => {
+          const delivery = (active as any).deliveries?.find((d: any) => d.client_id === c.id);
+          if (delivery) {
+            const bottles = delivery.items?.reduce((sum: number, item: any) => sum + (item.delivered_full || 0), 0) || 0;
+            return { ...c, isCompleted: true, deliveredCount: bottles };
+          }
+          return c;
+        });
+        setClients(mappedClients);
+
+        if (active.allocations && active.allocations.length > 0) {
+          setActiveAllocations(active.allocations);
+          const total = active.allocations.reduce((sum: number, alloc: any) => sum + alloc.allocated_count, 0);
+          const totalDelivered = (active as any).deliveries?.reduce((sum: number, d: any) => sum + (d.items?.reduce((itemSum: number, item: any) => itemSum + (item.delivered_full || 0), 0) || 0), 0) || 0;
+          setInitialStock(total);
+          setCurrentStock(Math.max(0, total - totalDelivered));
+        }
+
+        if (showFeedback) {
+          toast.success(`Active route synced: ${matchedRoute?.name || "Route"}`);
+        }
+      } else {
+        // No active route: Transition to Standby
+        const wasActiveBefore = assignmentStatus === "ACTIVE" || assignmentStatus === "PENDING";
+
+        setAssignmentStatus("UNASSIGNED");
+        setActiveAssignmentId(null);
+        setAssignedRouteId(null);
+        setClients([]);
+        setInitialStock(0);
+        setCurrentStock(0);
+        setVehicleDisplay("No Vehicle Assigned");
+        setRouteDisplay("Awaiting Dispatch");
+        setActiveAllocations([]);
+
+        // Still display current user's name
+        if (activeUser?.name || activeUser?.username) {
+          setDriverName(activeUser.name || activeUser.username);
+        }
+
+        // Look for recently completed assignment to display summary on standby
+        const recentCompleted = (assignments as any[])
+          .filter((a: any) => a.status === "COMPLETED" && (isUserAssigned(a) || userRole === "ADMIN"))
+          .sort((a: any, b: any) => new Date(b.date || b.created_at || 0).getTime() - new Date(a.date || a.created_at || 0).getTime())[0];
+
+        if (recentCompleted) {
+          const r = (allRoutes as any[]).find(rt => rt.id === recentCompleted.route_id);
+          const v = (allVehicles as any[]).find(vh => vh.id === recentCompleted.vehicle_id);
+          const totalDelivered = (recentCompleted as any).deliveries?.reduce((sum: number, d: any) => 
+            sum + (d.items?.reduce((itemSum: number, item: any) => itemSum + (item.delivered_full || 0), 0) || 0), 0) || 0;
+          const stopsCount = (recentCompleted as any).deliveries?.length || 0;
+
+          setLastCompletedSummary({
+            routeName: r?.name || "Completed Run",
+            vehiclePlate: v?.plate_number || "Returned to Hub",
+            stopsCount: stopsCount,
+            deliveredCount: totalDelivered,
+            completedAt: recentCompleted.date || "Today"
+          });
+        }
+
+        if (wasActiveBefore) {
+          toast("Route reconciled and closed. Vehicle returned to hub.", { icon: "🏁" });
+        } else if (showFeedback) {
+          toast("Checked: Still on standby. Waiting for dispatch to assign next vehicle.", { icon: "⏳" });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to sync driver assignment data:", err);
+      if (showFeedback) toast.error("Live sync failed. Check network connection.");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   useEffect(() => {
-    Promise.all([
-      getAssignments().catch(() => []), 
-      getClients().catch(() => []), 
-      getRoutes().catch(() => []), 
-      getInventoryTypes().catch(() => []), 
-      getCurrentUser().catch(() => {
-        try {
-          const cached = localStorage.getItem("flyera_user");
-          if (cached) return JSON.parse(cached);
-        } catch (e) {}
-        return null;
-      }), 
-      getVehicles().catch(() => []),
-      getSettings().catch(() => null),
-      getUsers().catch(() => [])
-    ])
-      .then(([assignments, allClients, allRoutes, invTypes, user, allVehicles, settings, allUsers]) => {
-        setInventoryTypes(invTypes || []);
-        if (settings) {
-          setSystemSettings(settings);
-          try { localStorage.setItem("flyera_system_settings", JSON.stringify(settings)); } catch (e) {}
-        } else {
-          try {
-            const cached = localStorage.getItem("flyera_system_settings");
-            if (cached) setSystemSettings(JSON.parse(cached));
-          } catch (e) {}
-        }
+    fetchAssignmentData(false);
 
-        if (user) {
-          setCurrentUser(user);
-          const resolvedName = user.name || user.username;
-          if (resolvedName) {
-            setDriverName(resolvedName);
-            try { localStorage.setItem("flyera_user", JSON.stringify(user)); } catch (e) {}
-          }
-        }
-        
-        // Find assignment for current driver
-        const currentUserId = user?.id;
-        let active = assignments.find((a: any) => a.status === "ACTIVE" && (!currentUserId || a.driver_id === currentUserId));
-        if (!active && currentUserId) {
-          active = assignments.find((a: any) => a.status === "PENDING" && a.driver_id === currentUserId);
-        }
-        if (!active && assignments.length > 0) {
-          active = assignments.find((a: any) => a.status === "ACTIVE") || assignments.find((a: any) => a.status === "PENDING") || assignments[0];
-        }
+    // Auto-sync polling every 12s to detect remote route closure or newly assigned vehicle
+    const intervalTimer = setInterval(() => {
+      fetchAssignmentData(false);
+    }, 12000);
 
-        if (active) {
-          // If logged-in user name wasn't set, resolve driver name from assignment's driver_id
-          if ((!user || !user.name) && active.driver_id && allUsers && allUsers.length > 0) {
-            const matchedStaff = (allUsers as any[]).find(u => u.id === active.driver_id);
-            if (matchedStaff?.name) {
-              setDriverName(matchedStaff.name);
-            }
-          }
-
-          setAssignedRouteId(active.route_id);
-          setActiveAssignmentId(active.id);
-          setAssignmentStatus(active.status);
-          
-          const matchedRoute = (allRoutes as any[]).find(r => r.id === active.route_id);
-          const matchedVehicle = (allVehicles as any[]).find(v => v.id === active.vehicle_id);
-          
-          if (matchedRoute) setRouteDisplay(matchedRoute.name);
-          if (matchedVehicle) setVehicleDisplay(matchedVehicle.plate_number);
-
-          // Filter clients by assigned route
-          const routeClients = (allClients as any[]).filter(c => c.route_id === active.route_id);
-          const mappedClients = routeClients.map(c => {
-            const delivery = (active as any).deliveries?.find((d: any) => d.client_id === c.id);
-            if (delivery) {
-              const bottles = delivery.items?.reduce((sum: number, item: any) => sum + (item.delivered_full || 0), 0) || 0;
-              return { ...c, isCompleted: true, deliveredCount: bottles };
-            }
-            return c;
-          });
-          setClients(mappedClients);
-          
-          if (active.allocations && active.allocations.length > 0) {
-            setActiveAllocations(active.allocations);
-            const total = active.allocations.reduce((sum: number, alloc: any) => sum + alloc.allocated_count, 0);
-            const totalDelivered = (active as any).deliveries?.reduce((sum: number, d: any) => sum + (d.items?.reduce((itemSum: number, item: any) => itemSum + (item.delivered_full || 0), 0) || 0), 0) || 0;
-            setInitialStock(total);
-            setCurrentStock(total - totalDelivered);
-          }
-        } else {
-          setAssignmentStatus("UNASSIGNED");
-          setClients([]);
-          setInitialStock(0);
-          setCurrentStock(0);
-        }
-      })
-      .catch(console.error);
+    return () => clearInterval(intervalTimer);
   }, []);
+
+  // End Route / Reconcile from Co-Pilot
+  const handleConfirmEndRoute = async () => {
+    if (!activeAssignmentId) return;
+    setIsSubmittingEndRoute(true);
+
+    try {
+      const deliveredBottles = clients
+        .filter(c => (c as any).isCompleted)
+        .reduce((sum, c) => sum + ((c as any).deliveredCount || 0), 0);
+
+      const returned_stock = (activeAllocations || []).map((alloc: any) => {
+        const invId = alloc.inventory_type_id;
+        const returnedFull = Math.max(0, alloc.allocated_count - deliveredBottles);
+        return {
+          inventory_type_id: invId,
+          allocated_count: alloc.allocated_count,
+          returned_full: returnedFull,
+          returned_empty: 0
+        };
+      });
+
+      await completeAssignment(activeAssignmentId, returned_stock);
+      toast.success("Route ended & reconciled! Returned to hub standby.");
+      setIsEndRouteModalOpen(false);
+      await fetchAssignmentData(false);
+    } catch (err: any) {
+      console.error("Failed to complete assignment:", err);
+      toast.error(err.message || "Failed to end route. Please try again.");
+    } finally {
+      setIsSubmittingEndRoute(false);
+    }
+  };
 
   const handleStartDelivery = (id: string) => {
     setActiveClient(id);
@@ -620,52 +751,244 @@ export default function DriverApp() {
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-slate-900 p-4 md:p-8 relative">
       {/* Mobile-Friendly Frosted Header */}
-      <header className="glass-panel p-4 md:p-6 mb-6 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <header className="glass-panel p-4 md:p-6 mb-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-sky-500 animate-pulse" />
-            <h1 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight">Driver Co-Pilot</h1>
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <span className={`w-2.5 h-2.5 rounded-full ${
+              assignmentStatus === "ACTIVE" 
+                ? "bg-emerald-500 animate-pulse" 
+                : assignmentStatus === "PENDING" 
+                ? "bg-amber-500 animate-pulse" 
+                : "bg-slate-400"
+            }`} />
+            <h1 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight">
+              {currentUser?.role === "HELPER" ? "Helper Co-Pilot" : "Driver Co-Pilot"}
+            </h1>
             <span className="text-xs font-black uppercase tracking-wider bg-sky-50 text-sky-800 border border-sky-200 px-2.5 py-1 rounded-lg">
               Water Run
             </span>
-          </div>
-          <p className="text-xs sm:text-sm font-semibold text-slate-600 flex flex-wrap items-center gap-2">
-            <span className="font-black text-slate-900 bg-white/90 border border-slate-200/90 px-2.5 py-1 rounded-xl text-xs shadow-2xs flex items-center gap-1.5">
-              <UserIcon className="w-3.5 h-3.5 text-sky-600" />
-              <span>{driverName}</span>
-            </span>
-            <span className="text-slate-400">•</span>
-            <span className="font-black text-slate-900">{vehicleDisplay}</span>
-            <span className="text-slate-400">•</span>
-            <span className="font-bold text-slate-700">{routeDisplay}</span>
-            {assignmentStatus === "PENDING" && (
-              <span className="bg-amber-100 text-amber-900 text-xs px-2.5 py-0.5 rounded-full font-black uppercase tracking-wider">
+            {assignmentStatus === "UNASSIGNED" ? (
+              <span className="text-xs font-black uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                <Clock className="w-3 h-3" /> Standby • Awaiting Route
+              </span>
+            ) : assignmentStatus === "PENDING" ? (
+              <span className="text-xs font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-lg">
                 Pending Dispatch
               </span>
+            ) : (
+              <span className="text-xs font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Route In Progress
+              </span>
             )}
-          </p>
-        </div>
+          </div>
 
-        <div className="flex items-center gap-3 self-stretch sm:self-auto">
-          <div className="bg-white/90 border border-slate-200/80 px-4 py-2.5 rounded-2xl text-xs font-black shadow-xs flex items-center gap-2 flex-1 sm:flex-initial justify-center">
-            <Package className="w-4 h-4 text-primary" />
-            <span className="text-slate-800">
-              Van Stock: <span className="text-primary text-sm font-black">{currentStock}</span>/{initialStock}
+          {/* Crew & Vehicle Assignment Bar */}
+          <div className="text-xs sm:text-sm font-semibold text-slate-600 flex flex-wrap items-center gap-2 mt-1.5">
+            {/* Logged in User with Role Badge */}
+            <span className="font-black text-slate-900 bg-white/90 border border-slate-200/90 px-2.5 py-1 rounded-xl text-xs shadow-2xs flex items-center gap-1.5">
+              <UserIcon className="w-3.5 h-3.5 text-sky-600" />
+              <span>{currentUser?.name || currentUser?.username || driverName}</span>
+              <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md ${
+                currentUser?.role === "HELPER" 
+                  ? "bg-emerald-100 text-emerald-800" 
+                  : currentUser?.role === "ADMIN" 
+                  ? "bg-purple-100 text-purple-800" 
+                  : "bg-sky-100 text-sky-800"
+              }`}>
+                {currentUser?.role === "HELPER" ? "Route Helper" : currentUser?.role === "ADMIN" ? "Admin" : "Lead Driver"}
+              </span>
+            </span>
+
+            {/* Crew Team if Helper is assigned */}
+            {helperName && (
+              <>
+                <span className="text-slate-400">•</span>
+                <span className="font-bold text-slate-700 bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded-xl text-xs flex items-center gap-1.5">
+                  <span className="text-slate-400 text-[10px] uppercase font-black">Run Crew:</span>
+                  <span>🚚 {driverName}</span>
+                  <span className="text-slate-300">+</span>
+                  <span>🤝 {helperName}</span>
+                </span>
+              </>
+            )}
+
+            <span className="text-slate-400">•</span>
+            <span className="font-black text-slate-900 flex items-center gap-1">
+              <Truck className="w-3.5 h-3.5 text-slate-500" />
+              {vehicleDisplay}
+            </span>
+
+            <span className="text-slate-400">•</span>
+            <span className="font-bold text-slate-700 flex items-center gap-1">
+              <RouteIcon className="w-3.5 h-3.5 text-slate-500" />
+              {routeDisplay}
             </span>
           </div>
+        </div>
+
+        {/* Action Controls & Stock Indicator */}
+        <div className="flex items-center gap-2.5 self-stretch md:self-auto flex-wrap">
+          {/* Live Sync button */}
+          <button
+            onClick={() => fetchAssignmentData(true)}
+            disabled={isSyncing}
+            title="Check latest route and vehicle assignment status"
+            className="bg-white border border-slate-200 hover:border-slate-300 active:scale-95 text-slate-700 px-3 py-2 rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-sky-600 ${isSyncing ? "animate-spin" : ""}`} />
+            <span className="hidden sm:inline">{isSyncing ? "Checking..." : "Live Sync"}</span>
+          </button>
+
+          {/* Van Stock (only when active route is present) */}
+          {assignmentStatus !== "UNASSIGNED" && (
+            <div className="bg-white/90 border border-slate-200/80 px-3.5 py-2 rounded-xl text-xs font-black shadow-xs flex items-center gap-2">
+              <Package className="w-4 h-4 text-primary" />
+              <span className="text-slate-800">
+                Van Stock: <span className="text-primary text-sm font-black">{currentStock}</span>/{initialStock}
+              </span>
+            </div>
+          )}
+
+          {/* End Route / Complete Run button */}
+          {assignmentStatus !== "UNASSIGNED" && activeAssignmentId && (
+            <button
+              onClick={() => setIsEndRouteModalOpen(true)}
+              className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-800 px-3.5 py-2 rounded-xl text-xs font-black shadow-xs flex items-center gap-1.5 transition-all active:scale-95"
+            >
+              <Flag className="w-3.5 h-3.5 text-rose-600" />
+              <span>End Route / Close Run</span>
+            </button>
+          )}
+
+          {/* Office Dashboard Shortcut for Admin */}
+          {currentUser?.role === "ADMIN" && (
+            <a
+              href="/"
+              className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-all"
+            >
+              <span>Office View</span>
+            </a>
+          )}
         </div>
       </header>
 
-      {/* Main Content Area */}
+      {/* Main Content Area: Standby Waiting Screen vs Active Route */}
       {assignmentStatus === "UNASSIGNED" ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center px-4 glass-panel max-w-lg mx-auto">
-          <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center text-primary mb-4">
-            <Truck className="w-10 h-10 animate-bounce" />
+        <div className="max-w-3xl mx-auto space-y-6 py-4">
+          {/* Standby Hero Card */}
+          <div className="glass-panel p-6 sm:p-10 text-center relative overflow-hidden border-sky-100 shadow-md">
+            {/* Ambient background glows */}
+            <div className="absolute -top-24 -left-24 w-72 h-72 bg-sky-200/30 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-24 -right-24 w-72 h-72 bg-emerald-200/30 rounded-full blur-3xl pointer-events-none" />
+
+            {/* Standby Beacon Icon */}
+            <div className="relative mx-auto w-24 h-24 mb-5">
+              <div className="absolute inset-0 bg-sky-500/10 rounded-full animate-ping opacity-60" />
+              <div className="relative w-24 h-24 bg-gradient-to-br from-sky-500 to-blue-600 text-white rounded-3xl flex items-center justify-center shadow-lg shadow-sky-500/25">
+                <Truck className="w-12 h-12 animate-pulse" />
+              </div>
+              <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-emerald-500 text-white rounded-full flex items-center justify-center border-2 border-white shadow-xs">
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
+            </div>
+
+            <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full text-xs font-black text-emerald-800 mb-3">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Shift Standby • Route Reconciled</span>
+            </div>
+
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight mb-2">
+              Waiting for New Vehicle &amp; Route Assignment
+            </h2>
+            <p className="text-slate-600 font-medium text-sm sm:text-base max-w-lg mx-auto mb-6 leading-relaxed">
+              Your delivery run has been completed and returned to the hub. Please stand by while the dispatch office assigns your next vehicle, loaded inventory bottles, and delivery route.
+            </p>
+
+            {/* Live Auto-Checking Indicator */}
+            <div className="bg-slate-50/80 border border-slate-200/80 rounded-2xl p-4 max-w-md mx-auto mb-6 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 text-left">
+                <div className="w-3 h-3 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                <div>
+                  <p className="text-xs font-black text-slate-800">Auto-Sync Active</p>
+                  <p className="text-[11px] font-semibold text-slate-500">Checking for new assignments every 12 seconds</p>
+                </div>
+              </div>
+              <button
+                onClick={() => fetchAssignmentData(true)}
+                disabled={isSyncing}
+                className="bg-primary hover:bg-sky-600 text-white font-black text-xs px-3.5 py-2 rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1.5 shrink-0"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
+                <span>{isSyncing ? "Checking..." : "Check Now"}</span>
+              </button>
+            </div>
+
+            {/* Crew Status Bar */}
+            <div className="flex flex-wrap items-center justify-center gap-3 text-xs font-bold text-slate-600 pt-3 border-t border-slate-100">
+              <span className="flex items-center gap-1 bg-white border border-slate-200 px-3 py-1.5 rounded-xl shadow-2xs">
+                <UserIcon className="w-3.5 h-3.5 text-sky-600" />
+                <span>Crew: {currentUser?.name || currentUser?.username || driverName}</span>
+                <span className="text-[10px] text-slate-400">({currentUser?.role === "HELPER" ? "Route Helper" : "Lead Driver"})</span>
+              </span>
+              <span className="flex items-center gap-1 bg-white border border-slate-200 px-3 py-1.5 rounded-xl shadow-2xs">
+                <Package className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Van Inventory: Reconciled &amp; Returned to Hub</span>
+              </span>
+              {systemSettings.dispatch_hotline && (
+                <a
+                  href={`tel:${systemSettings.dispatch_hotline}`}
+                  className="flex items-center gap-1 bg-sky-50 border border-sky-200 text-sky-800 hover:bg-sky-100 px-3 py-1.5 rounded-xl transition-all"
+                >
+                  <Phone className="w-3.5 h-3.5 text-sky-600" />
+                  <span>Call Dispatch ({systemSettings.dispatch_hotline})</span>
+                </a>
+              )}
+            </div>
           </div>
-          <h2 className="text-2xl font-black text-slate-800 mb-2">No Active Route Assigned</h2>
-          <p className="text-slate-500 font-medium text-sm max-w-sm mb-4 leading-relaxed">
-            You currently have no scheduled delivery route. Please wait for the hub dispatcher to assign your vehicle.
-          </p>
+
+          {/* Previous Run Summary Card (if available) */}
+          {lastCompletedSummary && (
+            <div className="glass-panel p-5 sm:p-6 border-slate-200/80 bg-white/70 shadow-xs">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <h3 className="text-sm font-black uppercase tracking-wider text-slate-700">
+                    Previous Run Completed &amp; Reconciled
+                  </h3>
+                </div>
+                <span className="text-xs font-bold text-slate-400">
+                  {lastCompletedSummary.completedAt || "Today"}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <span className="text-[10px] font-black uppercase text-slate-400 block">Route Name</span>
+                  <span className="text-sm font-black text-slate-800 truncate block mt-0.5">
+                    {lastCompletedSummary.routeName}
+                  </span>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <span className="text-[10px] font-black uppercase text-slate-400 block">Vehicle Used</span>
+                  <span className="text-sm font-black text-slate-800 truncate block mt-0.5">
+                    {lastCompletedSummary.vehiclePlate}
+                  </span>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <span className="text-[10px] font-black uppercase text-slate-400 block">Stops Completed</span>
+                  <span className="text-sm font-black text-emerald-600 block mt-0.5">
+                    {lastCompletedSummary.stopsCount} Stops
+                  </span>
+                </div>
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <span className="text-[10px] font-black uppercase text-slate-400 block">Bottles Delivered</span>
+                  <span className="text-sm font-black text-primary block mt-0.5">
+                    {lastCompletedSummary.deliveredCount} Jars
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex flex-col md:flex-row gap-6 max-w-6xl mx-auto">
@@ -1306,6 +1629,85 @@ export default function DriverApp() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* End Route / Reconcile Run Modal */}
+      <Modal
+        isOpen={isEndRouteModalOpen}
+        onClose={() => !isSubmittingEndRoute && setIsEndRouteModalOpen(false)}
+        title="End Route & Return to Warehouse"
+      >
+        <div className="space-y-4">
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80">
+            <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-slate-200/60">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">
+                Route Run Summary
+              </span>
+              <span className="text-xs font-bold text-slate-700">{routeDisplay} • {vehicleDisplay}</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-2xs">
+                <span className="text-[10px] font-black text-slate-400 uppercase block">Stops Completed</span>
+                <span className="text-xl font-black text-slate-900 mt-0.5 block">
+                  {clients.filter(c => (c as any).isCompleted).length} / {clients.length}
+                </span>
+              </div>
+              <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-2xs">
+                <span className="text-[10px] font-black text-slate-400 uppercase block">Bottles Delivered</span>
+                <span className="text-xl font-black text-primary mt-0.5 block">
+                  {clients.reduce((acc, c) => acc + ((c as any).deliveredCount || 0), 0)}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-white p-3.5 rounded-xl border border-slate-100 shadow-2xs space-y-1.5">
+              <span className="text-[10px] font-black text-slate-400 uppercase block mb-1">
+                Van Stock Reconciliation to Warehouse
+              </span>
+              <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                <span>Remaining Full Jars:</span>
+                <span className="font-black text-slate-900 text-sm">{currentStock}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                <span>Crew Returning:</span>
+                <span className="font-semibold text-slate-600">
+                  {driverName} {helperName ? `+ ${helperName}` : ""}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Incomplete stops warning if any */}
+          {clients.filter(c => !(c as any).isCompleted).length > 0 && (
+            <div className="p-3.5 bg-amber-50 rounded-2xl border border-amber-200 flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-xs font-semibold text-amber-900 leading-relaxed">
+                Notice: {clients.filter(c => !(c as any).isCompleted).length} stop(s) were not marked completed. Ending this route now will reconcile today&apos;s shift and return all remaining stock back to the warehouse.
+              </p>
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <Button
+              variant="secondary"
+              onClick={() => setIsEndRouteModalOpen(false)}
+              disabled={isSubmittingEndRoute}
+              fullWidth
+            >
+              Keep Delivering
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleConfirmEndRoute}
+              isLoading={isSubmittingEndRoute}
+              fullWidth
+              className="bg-rose-600 hover:bg-rose-700 text-white"
+            >
+              Confirm &amp; End Route
+            </Button>
+          </div>
+        </div>
       </Modal>
 
       {/* Thermal Bluetooth Receipt Modal with Dynamic QR & Celebratory Success Animation */}
