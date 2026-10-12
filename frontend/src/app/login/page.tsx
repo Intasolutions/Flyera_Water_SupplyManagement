@@ -59,11 +59,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleDemoFill = (u: string, p: string) => {
-    setUsername(u);
-    setPassword(p);
-  };
-
   return (
     <div className="h-screen h-[100dvh] w-full bg-[#FDFBF7] flex flex-col items-center justify-center px-4 py-2 relative overflow-hidden select-none">
       {/* Ambient glowing backdrop orbs */}
@@ -166,43 +161,6 @@ export default function LoginPage() {
               {loading ? "Authenticating..." : "Sign In to Dashboard"}
             </Button>
           </form>
-
-          {/* Quick-Fill Demo Pills */}
-          <div className="mt-3 pt-2.5 border-t border-slate-100 text-center">
-            <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1.5">
-              Quick One-Click Demo Logins:
-            </span>
-            <div className="flex flex-wrap gap-1.5 justify-center">
-              <button
-                type="button"
-                onClick={() => handleDemoFill("admin", "password123")}
-                className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 transition-all active:scale-95"
-              >
-                Admin (Owner)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDemoFill("water_staff", "password123")}
-                className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-[11px] font-bold text-sky-700 transition-all active:scale-95"
-              >
-                Priya (Water Staff)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDemoFill("rahul", "password123")}
-                className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 transition-all active:scale-95"
-              >
-                Rahul (Water Driver)
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDemoFill("vikram", "password123")}
-                className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 transition-all active:scale-95"
-              >
-                Vikram (Glass Driver)
-              </button>
-            </div>
-          </div>
         </div>
 
         {/* Security watermark footer & Brand signature */}

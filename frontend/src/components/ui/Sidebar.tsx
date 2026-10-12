@@ -144,7 +144,7 @@ export function Sidebar() {
 
       {/* Sidebar Navigation Drawer */}
       <aside
-        className={`w-80 max-w-[85vw] inset-y-0 h-full min-h-dvh bg-white backdrop-blur-2xl fixed left-0 top-0 flex flex-col p-5 z-50 border-r border-slate-200/80 shadow-2xl transition-transform duration-300 md:translate-x-0 ${
+        className={`w-72 max-w-[85vw] inset-y-0 h-full min-h-dvh bg-white backdrop-blur-2xl fixed left-0 top-0 flex flex-col p-5 z-50 border-r border-slate-200/80 shadow-2xl transition-transform duration-300 md:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >

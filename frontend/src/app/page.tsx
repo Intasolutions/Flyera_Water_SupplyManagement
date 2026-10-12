@@ -446,23 +446,23 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
-
-          {/* Brand Signature Footer */}
-          <footer className="mt-12 py-6 text-center border-t border-slate-200/60">
-            <p className="text-xs font-semibold text-slate-400">
-              Powered by{" "}
-              <a
-                href="https://in-tasolutions.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-black bg-gradient-to-r from-slate-950 via-slate-900 to-blue-600 bg-clip-text text-transparent hover:opacity-80 transition-opacity underline decoration-blue-500/30 underline-offset-2"
-                title="Visit IN-TA Solutions"
-              >
-                IN-TA Solution PVT LTD
-              </a>
-            </p>
-          </footer>
         </div>
+
+        {/* Brand Signature Footer */}
+        <footer className="w-full mt-12 py-6 text-center border-t border-slate-200/60 flex items-center justify-center">
+          <p className="text-xs font-semibold text-slate-400">
+            Powered by{" "}
+            <a
+              href="https://in-tasolutions.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-black bg-gradient-to-r from-slate-950 via-slate-900 to-blue-600 bg-clip-text text-transparent hover:opacity-80 transition-opacity underline decoration-blue-500/30 underline-offset-2"
+              title="Visit IN-TA Solutions"
+            >
+              IN-TA Solution PVT LTD
+            </a>
+          </p>
+        </footer>
       </main>
     </div>
   );
