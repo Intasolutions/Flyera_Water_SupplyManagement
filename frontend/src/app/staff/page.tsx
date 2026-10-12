@@ -211,6 +211,7 @@ export default function StaffPage() {
   }, [staff, searchQuery, roleFilter]);
 
   const totalHeadcount = staff.length;
+  const totalWaterStaff = staff.filter(s => s.role.toUpperCase() === "WATER_STAFF").length;
   const totalDrivers = staff.filter(s => s.role.toUpperCase() === "DRIVER").length;
   const totalHelpers = staff.filter(s => s.role.toUpperCase() === "HELPER").length;
   const totalGlass = staff.filter(s => s.role.toUpperCase().includes("GLASS")).length;
@@ -246,13 +247,21 @@ export default function StaffPage() {
         />
 
         {/* Top KPI Metrics Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
           <StatCard 
             title="Total Team" 
             value={totalHeadcount} 
             trend="Active accounts"
             icon={<Users className="w-5 h-5 text-blue-600" />}
             badge="Team"
+            color="blue"
+          />
+          <StatCard 
+            title="Water Staff" 
+            value={totalWaterStaff} 
+            trend="Desk & operations"
+            icon={<Users className="w-5 h-5 text-sky-600" />}
+            badge="Operations"
             color="blue"
           />
           <StatCard 
@@ -296,7 +305,7 @@ export default function StaffPage() {
             </div>
 
             <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
-              <div className="flex bg-surface border border-gray-200 rounded-xl p-1 shadow-sm text-xs font-bold">
+              <div className="flex bg-surface border border-gray-200 rounded-xl p-1 shadow-sm text-xs font-bold flex-wrap">
                 <button
                   onClick={() => setRoleFilter("all")}
                   className={`px-3 py-1.5 rounded-lg transition-all ${
@@ -304,6 +313,14 @@ export default function StaffPage() {
                   }`}
                 >
                   All ({totalHeadcount})
+                </button>
+                <button
+                  onClick={() => setRoleFilter("WATER_STAFF")}
+                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                    roleFilter === "WATER_STAFF" ? "bg-white shadow text-sky-600 font-black" : "text-text-muted hover:text-text"
+                  }`}
+                >
+                  Water Staff ({totalWaterStaff})
                 </button>
                 <button
                   onClick={() => setRoleFilter("DRIVER")}
@@ -425,11 +442,12 @@ export default function StaffPage() {
                   onChange={e => setNewRole(e.target.value)} 
                   className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium appearance-none cursor-pointer"
                 >
+                  <option value="WATER_STAFF">Water Staff (Operations / Desk)</option>
                   <option value="DRIVER">Delivery Driver (Water)</option>
                   <option value="HELPER">Route Helper (Water)</option>
                   <option value="GLASS_DRIVER">Collection Driver (Glass)</option>
                   <option value="GLASS_STAFF">Godown Worker (Glass)</option>
-                  <option value="ADMIN">Administrator</option>
+                  <option value="ADMIN">Administrator (Owner)</option>
                 </select>
               </div>
             </div>
@@ -539,6 +557,7 @@ function StaffCard({
   onDelete: () => void; 
 }) {
   const roleConfig = {
+    WATER_STAFF: { label: "Water Staff", bg: "bg-sky-50 text-sky-700 border-sky-100", icon: Users },
     DRIVER: { label: "Water Driver", bg: "bg-blue-50 text-blue-700 border-blue-100", icon: Truck },
     HELPER: { label: "Route Helper", bg: "bg-cyan-50 text-cyan-700 border-cyan-100", icon: UserCheck },
     GLASS_DRIVER: { label: "Glass Driver", bg: "bg-purple-50 text-purple-700 border-purple-100", icon: Recycle },

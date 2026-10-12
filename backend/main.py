@@ -27,6 +27,28 @@ try:
 except Exception as e:
     print("Database migration check note:", e)
 
+# Ensure default WATER_STAFF user exists for role testing
+try:
+    from app.database import SessionLocal
+    from app.core import security
+    _db = SessionLocal()
+    _ws = _db.query(models.User).filter(models.User.username == "water_staff").first()
+    if not _ws:
+        _ws_user = models.User(
+            name="Priya Sharma (Water Staff)",
+            username="water_staff",
+            phone="9123456780",
+            role="WATER_STAFF",
+            hashed_password=security.get_password_hash("password123"),
+            is_active=True,
+            token_version=1
+        )
+        _db.add(_ws_user)
+        _db.commit()
+    _db.close()
+except Exception as e:
+    print("Staff seed check note:", e)
+
 app = FastAPI(title="Water Supply API", redirect_slashes=False)
 
 # Configure CORS so the frontend can communicate with the backend

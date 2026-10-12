@@ -1,16 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/ui/Sidebar";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
+import { useStore } from "@/lib/StoreContext";
 import { 
   Save, 
   Building2, 
   Wallet, 
   Package, 
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  ShieldAlert
 } from "lucide-react";
 import { 
   getInventoryTypes, 
@@ -33,9 +36,19 @@ const DEFAULT_SETTINGS = {
 };
 
 export default function SettingsPage() {
+  const router = useRouter();
+  const { currentUserRole } = useStore();
   const [activeTab, setActiveTab] = useState<"business" | "billing">("business");
   const [loading, setLoading] = useState(false);
   const [inventoryTypes, setInventoryTypes] = useState<InventoryType[]>([]);
+
+  // Guard: Restrict settings and UPI configuration to Admin only
+  useEffect(() => {
+    if (currentUserRole && currentUserRole !== "Owner") {
+      toast.error("Settings and UPI configuration are restricted to Administrators only.");
+      router.replace("/");
+    }
+  }, [currentUserRole, router]);
 
   // Business Profile States
   const [companyName, setCompanyName] = useState(DEFAULT_SETTINGS.company_name);
@@ -158,6 +171,28 @@ export default function SettingsPage() {
     } catch (e) {}
     window.location.reload();
   };
+
+  if (currentUserRole !== "Owner") {
+    return (
+      <div className="flex min-h-screen bg-[#FDFBF7]">
+        <Sidebar />
+        <main className="flex-1 ml-0 md:ml-72 p-6 md:p-12 flex flex-col items-center justify-center text-center">
+          <div className="max-w-md p-8 bg-white/90 backdrop-blur-xl rounded-3xl shadow-sm border border-slate-200">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-4 border border-rose-200">
+              <ShieldAlert className="w-6 h-6" />
+            </div>
+            <h2 className="text-xl font-black text-slate-900 mb-1.5">Access Restricted</h2>
+            <p className="text-xs font-semibold text-slate-500 mb-6">
+              System Settings and UPI configuration are restricted to Administrators only.
+            </p>
+            <Button onClick={() => router.push("/")} variant="primary">
+              Return to Dashboard
+            </Button>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen bg-[#FDFBF7]">

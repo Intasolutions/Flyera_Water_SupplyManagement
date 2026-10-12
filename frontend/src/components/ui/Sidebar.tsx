@@ -71,7 +71,14 @@ export function Sidebar() {
   ];
 
   const isGlass = currentUserRole === "GlassStaff" || (currentUserRole === "Owner" && activeBusiness === "Glass");
-  const links = isGlass ? glassLinks : waterLinks;
+  const rawLinks = isGlass ? glassLinks : waterLinks;
+  const links = rawLinks.filter(link => {
+    // Only Admin / Owner can see Settings
+    if (link.href === "/settings" && currentUserRole !== "Owner") {
+      return false;
+    }
+    return true;
+  });
 
   const handleSignOut = () => {
     localStorage.removeItem("access_token");
@@ -272,14 +279,14 @@ export function Sidebar() {
                     : "bg-gradient-to-tr from-sky-600 to-blue-500"
                 }`}
               >
-                {currentUserRole === "Owner" ? "OW" : currentUserRole === "GlassStaff" ? "GS" : "DR"}
+                {currentUserRole === "Owner" ? "AD" : currentUserRole === "GlassStaff" ? "GS" : currentUserRole === "WaterStaff" ? "WS" : "DR"}
               </div>
               <div className="truncate">
                 <p className="text-sm font-bold text-slate-800 truncate">
-                  {currentUserRole}
+                  {currentUserRole === "Owner" ? "Administrator" : currentUserRole === "WaterStaff" ? "Water Staff" : currentUserRole === "GlassStaff" ? "Glass Staff" : currentUserRole}
                 </p>
                 <span className="text-xs text-slate-500 font-medium block">
-                  {currentUserRole === "Owner" ? "Admin Access" : "Staff Access"}
+                  {currentUserRole === "Owner" ? "Full Admin Access" : "Staff Operations"}
                 </span>
               </div>
             </div>
@@ -296,7 +303,16 @@ export function Sidebar() {
           {/* Brand Footer */}
           <div className="pt-2 pb-0.5 text-center">
             <p className="text-[10.5px] font-semibold text-slate-400 tracking-tight">
-              Powered by <span className="font-bold text-slate-600">IN-TA Solution PVT LTD</span>
+              Powered by{" "}
+              <a
+                href="https://in-tasolutions.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-black bg-gradient-to-r from-slate-950 via-slate-900 to-blue-600 bg-clip-text text-transparent hover:opacity-80 transition-opacity underline decoration-blue-500/30 underline-offset-2"
+                title="Visit IN-TA Solutions"
+              >
+                IN-TA Solution PVT LTD
+              </a>
             </p>
           </div>
         </div>

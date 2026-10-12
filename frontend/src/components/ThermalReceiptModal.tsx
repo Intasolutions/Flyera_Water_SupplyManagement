@@ -353,7 +353,15 @@ export function ThermalReceiptModal({
                     <span>₹{data.totalAmount}</span>
                   </div>
                   <div className="border-t border-dashed border-slate-200 mt-2 pt-1 text-center text-[9px] text-slate-400 font-sans font-semibold">
-                    Powered by IN-TA Solution PVT LTD
+                    Powered by{" "}
+                    <a
+                      href="https://in-tasolutions.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-bold bg-gradient-to-r from-slate-950 via-slate-900 to-blue-600 bg-clip-text text-transparent hover:opacity-80"
+                    >
+                      IN-TA Solution PVT LTD
+                    </a>
                   </div>
                 </div>
 

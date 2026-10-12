@@ -1332,7 +1332,16 @@ export default function DriverApp() {
       {/* Brand Footer */}
       <footer className="mt-12 py-4 text-center">
         <p className="text-xs font-semibold text-slate-400">
-          Powered by <span className="font-bold text-slate-600">IN-TA Solution PVT LTD</span>
+          Powered by{" "}
+          <a
+            href="https://in-tasolutions.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-black bg-gradient-to-r from-slate-950 via-slate-900 to-blue-600 bg-clip-text text-transparent hover:opacity-80 transition-opacity underline decoration-blue-500/30 underline-offset-2"
+            title="Visit IN-TA Solutions"
+          >
+            IN-TA Solution PVT LTD
+          </a>
         </p>
       </footer>
     </div>

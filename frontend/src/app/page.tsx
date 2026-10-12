@@ -25,10 +25,12 @@ import {
 } from "lucide-react";
 import { getDashboardStats } from "@/lib/actions";
 import { getSettings, updateSettings } from "@/lib/api";
+import { useStore } from "@/lib/StoreContext";
 import QRCode from "qrcode";
 import { toast } from "react-hot-toast";
 
 export default function DashboardPage() {
+  const { currentUserRole } = useStore();
   const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
   const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
   const [loading, setLoading] = useState(false);
@@ -189,106 +191,106 @@ export default function DashboardPage() {
             color="amber"
             category="Infrastructure"
           />
-        </div>
-
-        {/* Admin Merchant UPI & Driver QR Payment Setup Card */}
-        <div className="glass-panel p-5 md:p-6 mb-8 shadow-xs border-emerald-100 bg-gradient-to-r from-emerald-50/60 via-white to-sky-50/40">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md shrink-0">
-                <QrCode className="w-6 h-6" />
+        </div>        {/* Admin Merchant UPI & Driver QR Payment Setup Card (Admin Only) */}
+        {currentUserRole === "Owner" && (
+          <div className="glass-panel p-5 md:p-6 mb-8 shadow-xs border-emerald-100 bg-gradient-to-r from-emerald-50/60 via-white to-sky-50/40">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md shrink-0">
+                  <QrCode className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-base font-black text-slate-900">
+                      Admin Merchant UPI Configuration
+                    </h3>
+                    <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-md flex items-center gap-1 border border-emerald-200">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Driver Locked (Admin Only)
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    Controls the receiving bank account for all drivers&apos; dynamic QR codes and thermal printed receipts across the fleet.
+                  </p>
+                  
+                  {/* Active UPI ID Display / Edit Input */}
+                  <div className="mt-3 flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-slate-600">Active Merchant VPA:</span>
+                    {isEditingUpi ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={tempUpi}
+                          onChange={e => setTempUpi(e.target.value)}
+                          placeholder="e.g. yourname@okhdfcbank"
+                          className="bg-white border-2 border-emerald-500 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-900 outline-none shadow-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveUpi}
+                          disabled={savingUpi}
+                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>{savingUpi ? "Saving..." : "Save UPI"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingUpi(false)}
+                          className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-black text-slate-900 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs text-sm">
+                          {upiId || "flyera@okhdfcbank"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTempUpi(upiId);
+                            setIsEditingUpi(true);
+                          }}
+                          className="px-3.5 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-xs font-bold rounded-xl shadow-2xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                        >
+                          <Edit2 className="w-3.5 h-3.5 text-slate-600" />
+                          <span>Change UPI ID</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-base font-black text-slate-900">
-                    Admin Merchant UPI Configuration
-                  </h3>
-                  <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-md flex items-center gap-1 border border-emerald-200">
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Driver Locked (Admin Only)
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  Controls the receiving bank account for all drivers&apos; dynamic QR codes and thermal printed receipts across the fleet.
-                </p>
-                
-                {/* Active UPI ID Display / Edit Input */}
-                <div className="mt-3 flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-bold text-slate-600">Active Merchant VPA:</span>
-                  {isEditingUpi ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={tempUpi}
-                        onChange={e => setTempUpi(e.target.value)}
-                        placeholder="e.g. yourname@okhdfcbank"
-                        className="bg-white border-2 border-emerald-500 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-900 outline-none shadow-xs"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleSaveUpi}
-                        disabled={savingUpi}
-                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1 disabled:opacity-50 cursor-pointer"
-                      >
-                        <Check className="w-3.5 h-3.5" />
-                        <span>{savingUpi ? "Saving..." : "Save UPI"}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setIsEditingUpi(false)}
-                        className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-xl transition-all cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-black text-slate-900 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs text-sm">
-                        {upiId || "flyera@okhdfcbank"}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTempUpi(upiId);
-                          setIsEditingUpi(true);
-                        }}
-                        className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-800 text-xs font-bold rounded-xl shadow-2xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
-                      >
-                        <Edit2 className="w-3.5 h-3.5 text-slate-600" />
-                        <span>Change UPI ID</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
 
-            {/* Live Scan Preview for Admin */}
-            <div className="flex items-center gap-3.5 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs shrink-0 self-start md:self-auto">
-              {adminQrUrl ? (
-                <img
-                  src={adminQrUrl}
-                  alt="Test UPI QR"
-                  className="w-16 h-16 rounded-lg border border-slate-100"
-                />
-              ) : (
-                <div className="w-16 h-16 bg-slate-100 rounded-lg flex items-center justify-center text-[10px] text-slate-400">
-                  Loading...
+              {/* Live Scan Preview for Admin */}
+              <div className="flex items-center gap-3.5 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-2xs shrink-0 self-start md:self-auto">
+                {adminQrUrl ? (
+                  <img
+                    src={adminQrUrl}
+                    alt="Test UPI QR"
+                    className="w-16 h-16 rounded-lg border border-slate-100"
+                  />
+                ) : (
+                  <div className="w-16 h-16 bg-slate-100 rounded-lg flex items-center justify-center text-[10px] text-slate-400">
+                    Loading...
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs font-bold text-slate-800">Live Test QR</p>
+                  <p className="text-[11px] text-slate-500 font-medium">Scan to verify bank VPA</p>
+                  <Link
+                    href="/settings"
+                    className="text-[11px] font-bold text-primary hover:underline flex items-center gap-0.5 mt-1"
+                  >
+                    <span>More Settings</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </Link>
                 </div>
-              )}
-              <div>
-                <p className="text-xs font-bold text-slate-800">Live Test QR</p>
-                <p className="text-[11px] text-slate-500 font-medium">Scan to verify bank VPA</p>
-                <Link
-                  href="/settings"
-                  className="text-[11px] font-bold text-primary hover:underline flex items-center gap-0.5 mt-1"
-                >
-                  <span>More Settings</span>
-                  <ArrowRight className="w-3 h-3" />
-                </Link>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Date Filter Toolbar */}
         <div className="glass-panel p-4 md:p-5 mb-8 shadow-xs">
@@ -448,7 +450,16 @@ export default function DashboardPage() {
           {/* Brand Signature Footer */}
           <footer className="mt-12 py-6 text-center border-t border-slate-200/60">
             <p className="text-xs font-semibold text-slate-400">
-              Powered by <span className="font-bold text-slate-600">IN-TA Solution PVT LTD</span>
+              Powered by{" "}
+              <a
+                href="https://in-tasolutions.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-black bg-gradient-to-r from-slate-950 via-slate-900 to-blue-600 bg-clip-text text-transparent hover:opacity-80 transition-opacity underline decoration-blue-500/30 underline-offset-2"
+                title="Visit IN-TA Solutions"
+              >
+                IN-TA Solution PVT LTD
+              </a>
             </p>
           </footer>
         </div>
