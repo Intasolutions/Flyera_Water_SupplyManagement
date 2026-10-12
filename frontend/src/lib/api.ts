@@ -330,6 +330,10 @@ export const completeAssignment = (id: string, returned_stock: any[]) =>
     method: 'PUT',
     body: JSON.stringify(returned_stock),
   });
+export const reopenAssignment = (id: string) =>
+  fetcher<Assignment>(`/assignments/${id}/reopen`, {
+    method: 'PUT',
+  });
 export const updateAssignment = (id: string, data: any) =>
   fetcher<Assignment>(`/assignments/${id}`, {
     method: 'PUT',
@@ -343,6 +347,10 @@ export const createDelivery = (data: any) =>
   fetcher<any>(`/deliveries`, {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+export const revertDeliveryByClient = (assignmentId: string, clientId: string) =>
+  fetcher<{message: string}>(`/deliveries/by-client/${assignmentId}/${clientId}`, {
+    method: 'DELETE',
   });
 
 

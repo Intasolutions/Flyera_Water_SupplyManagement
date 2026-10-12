@@ -16,7 +16,9 @@ import {
   getSettings, 
   getUsers, 
   User as UserType,
-  completeAssignment
+  completeAssignment,
+  reopenAssignment,
+  revertDeliveryByClient
 } from "@/lib/api";
 import { ThermalReceiptModal, ReceiptData } from "@/components/ThermalReceiptModal";
 import { Button } from "@/components/ui/Button";
@@ -46,7 +48,8 @@ import {
   Clock,
   Receipt,
   Flag,
-  ShieldCheck
+  ShieldCheck,
+  RotateCcw
 } from "lucide-react";
 
 export default function DriverApp() {
@@ -206,7 +209,9 @@ export default function DriverApp() {
   const [routeDisplay, setRouteDisplay] = useState("Awaiting Dispatch");
   const [assignmentStatus, setAssignmentStatus] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [isReopeningRoute, setIsReopeningRoute] = useState<boolean>(false);
   const [lastCompletedSummary, setLastCompletedSummary] = useState<{
+    id?: string;
     routeName: string;
     vehiclePlate: string;
     stopsCount: number;
@@ -363,6 +368,7 @@ export default function DriverApp() {
           const stopsCount = (recentCompleted as any).deliveries?.length || 0;
 
           setLastCompletedSummary({
+            id: recentCompleted.id,
             routeName: r?.name || "Completed Run",
             vehiclePlate: v?.plate_number || "Returned to Hub",
             stopsCount: stopsCount,
@@ -430,11 +436,54 @@ export default function DriverApp() {
   };
 
   const handleStartDelivery = (id: string) => {
+    const target = clients.find(c => c.id === id);
+    if ((target as any)?.isCompleted) {
+      toast("This client delivery is already completed and recorded.", { icon: "✅" });
+      return;
+    }
     setActiveClient(id);
     setStep(1);
     setDeliveryItems({});
     if (activeAllocations.length > 0) {
       setSelectedInventoryId(activeAllocations[0].inventory_type_id);
+    }
+  };
+
+  // Revert/Undo an individual completed client delivery on the current route
+  const handleUndoDeliveryStop = async (e: React.MouseEvent, clientId: string, clientName: string, deliveredCount: number) => {
+    e.stopPropagation();
+    if (!window.confirm(`Revert delivery for ${clientName}? This will restore ${deliveredCount} jar(s) back to your van stock.`)) {
+      return;
+    }
+    try {
+      if (activeAssignmentId) {
+        await revertDeliveryByClient(activeAssignmentId, clientId).catch(() => {});
+      }
+      setClients(prev => prev.map(c => c.id === clientId ? { ...c, isCompleted: false, deliveredCount: 0 } as any : c));
+      setCurrentStock(prev => prev + deliveredCount);
+      if (activeClient === clientId) {
+        setActiveClient(null);
+      }
+      toast.success(`Delivery for ${clientName} reverted to pending.`);
+    } catch (err) {
+      console.error("Failed to undo delivery", err);
+      toast.error("Failed to revert delivery.");
+    }
+  };
+
+  // Revert/Undo an entire route closure from Shift Standby
+  const handleUndoRouteClosure = async () => {
+    if (!lastCompletedSummary?.id) return;
+    setIsReopeningRoute(true);
+    try {
+      await reopenAssignment(lastCompletedSummary.id);
+      toast.success("Route reopened! Restoring active co-pilot run...");
+      await fetchAssignmentData(false);
+    } catch (err: any) {
+      console.error("Failed to reopen route:", err);
+      toast.error(err.message || "Failed to reopen route.");
+    } finally {
+      setIsReopeningRoute(false);
     }
   };
 
@@ -987,6 +1036,22 @@ export default function DriverApp() {
                   </span>
                 </div>
               </div>
+
+              {/* Undo Route Closure Action */}
+              <div className="pt-4 border-t border-slate-100 mt-4 flex items-center justify-between flex-wrap gap-2">
+                <span className="text-xs font-semibold text-slate-500">
+                  Ended this delivery run by accident?
+                </span>
+                <button
+                  type="button"
+                  onClick={handleUndoRouteClosure}
+                  disabled={isReopeningRoute}
+                  className="inline-flex items-center gap-1.5 text-xs font-black text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-3.5 py-1.5 rounded-xl transition-all active:scale-95 shadow-xs"
+                >
+                  <RotateCcw className={`w-3.5 h-3.5 text-amber-600 ${isReopeningRoute ? "animate-spin" : ""}`} />
+                  <span>{isReopeningRoute ? "Reopening..." : "Undo Closure & Reopen Route"}</span>
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1040,13 +1105,19 @@ export default function DriverApp() {
                 return (
                   <div
                     key={c.id}
-                    onClick={() => handleStartDelivery(c.id)}
-                    className={`glass-card p-4 transition-all duration-300 cursor-pointer ${
+                    onClick={() => {
+                      if (isCompleted) {
+                        toast("This client delivery is already completed and recorded.", { icon: "✅" });
+                        return;
+                      }
+                      handleStartDelivery(c.id);
+                    }}
+                    className={`glass-card p-4 transition-all duration-300 ${
                       isCompleted
-                        ? "border-emerald-200/60 bg-emerald-50/20 opacity-70"
+                        ? "border-emerald-200/60 bg-emerald-50/20 opacity-80 cursor-default"
                         : isSelected
-                        ? "border-primary ring-2 ring-primary/20 shadow-md bg-sky-50/20"
-                        : "border-slate-100 hover:border-slate-200"
+                        ? "border-primary ring-2 ring-primary/20 shadow-md bg-sky-50/20 cursor-pointer"
+                        : "border-slate-100 hover:border-slate-200 cursor-pointer"
                     }`}
                   >
                     <div className="flex justify-between items-start mb-2">
@@ -1070,9 +1141,20 @@ export default function DriverApp() {
                         </p>
                       </div>
                       {isCompleted && (
-                        <span className="flex items-center gap-1 text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-100/80 px-2.5 py-1 rounded-lg shrink-0">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Done
-                        </span>
+                        <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <span className="flex items-center gap-1 text-xs font-black uppercase tracking-wider text-emerald-800 bg-emerald-100/80 px-2.5 py-1 rounded-lg">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Done ({(c as any).deliveredCount || 0} Jars)
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => handleUndoDeliveryStop(e, c.id, c.name, (c as any).deliveredCount || 0)}
+                            className="text-[11px] font-bold text-slate-500 hover:text-amber-800 bg-white hover:bg-amber-50 border border-slate-200 hover:border-amber-300 px-2 py-1 rounded-lg transition-all active:scale-95 flex items-center gap-1 shadow-2xs"
+                            title="Undo delivery if marked complete by accident"
+                          >
+                            <RotateCcw className="w-3 h-3 text-amber-600" />
+                            <span>Undo</span>
+                          </button>
+                        </div>
                       )}
                     </div>
 

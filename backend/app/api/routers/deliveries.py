@@ -76,3 +76,32 @@ def get_deliveries_by_assignment(
     current_user: models.User = Depends(deps.get_current_active_user)
 ):
     return db.query(models.Delivery).filter(models.Delivery.assignment_id == assignment_id).all()
+
+@router.delete("/by-client/{assignment_id}/{client_id}")
+def delete_delivery_by_client(
+    assignment_id: str,
+    client_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_active_user)
+):
+    db_delivery = db.query(models.Delivery).filter(
+        models.Delivery.assignment_id == assignment_id,
+        models.Delivery.client_id == client_id
+    ).order_by(models.Delivery.created_at.desc()).first()
+    
+    if not db_delivery:
+        raise HTTPException(status_code=404, detail="Delivery record not found for this client")
+        
+    client = db.query(models.Client).filter(models.Client.id == client_id).first()
+    if client and client.opt_in_loyalty:
+        for item in db_delivery.items:
+            inv_type = db.query(models.InventoryType).filter(models.InventoryType.id == item.inventory_type_id).first()
+            if inv_type:
+                client.loyalty_points = max(0, client.loyalty_points - (item.delivered_full * inv_type.points_value))
+                
+    for item in db_delivery.items:
+        db.delete(item)
+    db.delete(db_delivery)
+    db.commit()
+    return {"message": "Delivery reverted successfully"}
+

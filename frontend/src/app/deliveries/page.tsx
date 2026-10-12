@@ -27,7 +27,8 @@ import {
   Clock,
   Sparkles,
   ChevronRight,
-  RefreshCw
+  RefreshCw,
+  RotateCcw
 } from "lucide-react";
 import { 
   getUsers, 
@@ -44,7 +45,8 @@ import {
   updateAssignment, 
   getInventoryTypes, 
   deleteAssignment as apiDeleteAssignment, 
-  completeAssignment as apiCompleteAssignment 
+  completeAssignment as apiCompleteAssignment,
+  reopenAssignment 
 } from "@/lib/api";
 import { toast } from "react-hot-toast";
 import { useConfirm } from "@/lib/useConfirm";
@@ -56,6 +58,26 @@ export default function DeliveriesPage() {
   const [reconOpen, setReconOpen] = useState<string | null>(null);
   const [dispatchConfirmOpen, setDispatchConfirmOpen] = useState<ApiAssignment | null>(null);
   const confirm = useConfirm();
+
+  const handleReopenAssignment = async (assignmentId: string) => {
+    const isConfirmed = await confirm({
+      title: "Reopen Route",
+      message: "Are you sure you want to undo this closure and reopen the route? This will restore the shift to Active and adjust returned inventory back to the van.",
+      confirmText: "Reopen Route",
+      cancelText: "Cancel"
+    });
+    if (isConfirmed) {
+      try {
+        await reopenAssignment(assignmentId);
+        const refreshed = await getAssignments();
+        setRealAssignments(refreshed);
+        toast.success("Route reopened successfully! Status restored to Active.");
+      } catch (e: any) {
+        console.error("Failed to reopen route", e);
+        toast.error(e.message || "Failed to reopen route.");
+      }
+    }
+  };
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -419,6 +441,7 @@ export default function DeliveriesPage() {
                   onTrack={() => setTrackOpen(vehicle)}
                   onRecon={() => setReconOpen(vehicle)}
                   onDelete={() => handleDeleteAssignment(a.id)}
+                  onReopen={() => handleReopenAssignment(a.id)}
                 />
               );
             })
@@ -758,48 +781,93 @@ export default function DeliveriesPage() {
           title="End of Day Reconciliation"
           subtitle={`Reconcile returns, empties & cash for ${reconOpen}`}
           width="lg"
-          actions={
-            <Button
-              variant="primary"
-              onClick={async () => {
-                const assignmentObj = realAssignments.find(a => realVehicles.find(v => v.id === a.vehicle_id)?.plate_number === reconOpen);
-                if (assignmentObj) {
-                  try {
-                    const returned_stock = assignmentObj.allocations.map(alloc => {
-                      const invId = alloc.inventory_type_id;
-                      let total_delivered = 0;
-                      let total_empty = 0;
-                      (assignmentObj as any).deliveries?.forEach((d: any) => {
-                        d.items?.forEach((item: any) => {
-                          if (item.inventory_type_id === invId) {
-                            total_delivered += item.delivered_full || 0;
-                            total_empty += item.collected_empty || 0;
-                          }
-                        });
+          actions={(() => {
+            const assignmentObj = realAssignments.find(a => realVehicles.find(v => v.id === a.vehicle_id)?.plate_number === reconOpen);
+            const isAlreadyCompleted = assignmentObj?.status === "COMPLETED";
+
+            if (isAlreadyCompleted) {
+              return (
+                <div className="flex gap-3 w-full">
+                  <Button
+                    variant="secondary"
+                    className="flex-1"
+                    onClick={() => setReconOpen(null)}
+                  >
+                    Close Window
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 border-amber-300 text-amber-800 hover:bg-amber-50"
+                    icon={<RotateCcw className="w-4 h-4 text-amber-600" />}
+                    onClick={async () => {
+                      const isConfirmed = await confirm({
+                        title: "Reopen Route",
+                        message: "Are you sure you want to undo this closure and reopen the route? This will restore the shift to Active and adjust returned inventory back to the van.",
+                        confirmText: "Reopen Route",
+                        cancelText: "Cancel"
                       });
-                      return {
-                        inventory_type_id: invId,
-                        allocated_count: alloc.allocated_count,
-                        returned_full: Math.max(0, alloc.allocated_count - total_delivered),
-                        returned_empty: total_empty
-                      };
-                    });
-                    await apiCompleteAssignment(assignmentObj.id, returned_stock);
-                    const refreshed = await getAssignments();
-                    setRealAssignments(refreshed);
-                    toast.success("Route reconciled and closed!");
-                  } catch (e) {
-                    console.error("Failed to complete assignment", e);
-                    toast.error("Failed to close route.");
+                      if (isConfirmed && assignmentObj) {
+                        try {
+                          await reopenAssignment(assignmentObj.id);
+                          const refreshed = await getAssignments();
+                          setRealAssignments(refreshed);
+                          toast.success("Route reopened successfully! Status restored to Active.");
+                          setReconOpen(null);
+                        } catch (e: any) {
+                          console.error("Failed to reopen assignment", e);
+                          toast.error(e.message || "Failed to reopen route.");
+                        }
+                      }
+                    }}
+                  >
+                    Undo Closure &amp; Reopen
+                  </Button>
+                </div>
+              );
+            }
+
+            return (
+              <Button
+                variant="primary"
+                onClick={async () => {
+                  if (assignmentObj) {
+                    try {
+                      const returned_stock = assignmentObj.allocations.map(alloc => {
+                        const invId = alloc.inventory_type_id;
+                        let total_delivered = 0;
+                        let total_empty = 0;
+                        (assignmentObj as any).deliveries?.forEach((d: any) => {
+                          d.items?.forEach((item: any) => {
+                            if (item.inventory_type_id === invId) {
+                              total_delivered += item.delivered_full || 0;
+                              total_empty += item.collected_empty || 0;
+                            }
+                          });
+                        });
+                        return {
+                          inventory_type_id: invId,
+                          allocated_count: alloc.allocated_count,
+                          returned_full: Math.max(0, alloc.allocated_count - total_delivered),
+                          returned_empty: total_empty
+                        };
+                      });
+                      await apiCompleteAssignment(assignmentObj.id, returned_stock);
+                      const refreshed = await getAssignments();
+                      setRealAssignments(refreshed);
+                      toast.success("Route reconciled and closed!");
+                    } catch (e) {
+                      console.error("Failed to complete assignment", e);
+                      toast.error("Failed to close route.");
+                    }
                   }
-                }
-                setReconOpen(null);
-              }}
-              fullWidth
-            >
-              Confirm & Return Stock to Warehouse
-            </Button>
-          }
+                  setReconOpen(null);
+                }}
+                fullWidth
+              >
+                Confirm &amp; Return Stock to Warehouse
+              </Button>
+            );
+          })()}
         >
           <div>
             {(() => {
@@ -955,7 +1023,8 @@ function AssignmentCard({
   onAssign,
   onTrack,
   onRecon,
-  onDelete
+  onDelete,
+  onReopen
 }: any) {
   const isCompleted = status === "completed";
   const isPending = status === "pending";
@@ -1100,9 +1169,21 @@ function AssignmentCard({
             Dispatch Route
           </Button>
         ) : isCompleted ? (
-          <Button variant="outline" fullWidth onClick={onRecon} icon={<CheckCircle2 className="w-4 h-4 text-emerald-500" />}>
-            View Reconciliation
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-[1.4]" onClick={onRecon} icon={<CheckCircle2 className="w-4 h-4 text-emerald-500" />}>
+              Reconciliation
+            </Button>
+            {onReopen && (
+              <Button
+                variant="secondary"
+                className="flex-1 border-amber-200 text-amber-800 hover:bg-amber-100"
+                onClick={onReopen}
+                icon={<RotateCcw className="w-3.5 h-3.5 text-amber-600" />}
+              >
+                Reopen
+              </Button>
+            )}
+          </div>
         ) : (
           <div className="flex gap-2">
             <Button variant="secondary" className="flex-1" onClick={onTrack} icon={<Navigation className="w-4 h-4" />}>

@@ -104,7 +104,8 @@ def complete_assignment(
         raise HTTPException(status_code=404, detail="Assignment not found")
         
     if db_assignment.status == "COMPLETED":
-        raise HTTPException(status_code=400, detail="Assignment already completed")
+        # Assignment is already completed; return it gracefully without throwing an error
+        return db_assignment
         
     # Reconcile stock
     for returned in returned_stock:
@@ -126,6 +127,37 @@ def complete_assignment(
         )
         
     db_assignment.status = "COMPLETED"
+    db.commit()
+    db.refresh(db_assignment)
+    return db_assignment
+
+@router.put("/{assignment_id}/reopen", response_model=schemas.AssignmentResponse)
+def reopen_assignment(
+    assignment_id: str,
+    db: Session = Depends(get_db)
+):
+    db_assignment = db.query(models.Assignment).filter(models.Assignment.id == assignment_id).first()
+    if not db_assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+        
+    if db_assignment.status != "COMPLETED":
+        # Already active or pending, return as is
+        return db_assignment
+        
+    # Revert warehouse stock additions that were credited during completion
+    for alloc in db_assignment.allocations:
+        returned_full = alloc.returned_full or 0
+        returned_empty = alloc.returned_empty or 0
+        if returned_full > 0 or returned_empty > 0:
+            crud.adjust_inventory_stock(
+                db,
+                inv_type_id=alloc.inventory_type_id,
+                stock_adj=schemas.StockAdjust(add_full=-returned_full, add_empty=-returned_empty, add_damaged=0)
+            )
+        alloc.returned_full = 0
+        alloc.returned_empty = 0
+        
+    db_assignment.status = "ACTIVE"
     db.commit()
     db.refresh(db_assignment)
     return db_assignment
