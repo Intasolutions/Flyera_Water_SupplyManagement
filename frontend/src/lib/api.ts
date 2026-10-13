@@ -1,10 +1,8 @@
 // Use relative '/api' in the browser so Next.js rewrites can proxy requests securely
 // without browser Mixed Content (HTTPS -> HTTP) or CORS issues.
 const API_BASE_URL = typeof window !== 'undefined'
-  ? (process.env.NEXT_PUBLIC_API_URL && !process.env.NEXT_PUBLIC_API_URL.includes('127.0.0.1') && !process.env.NEXT_PUBLIC_API_URL.includes('localhost')
-      ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '')
-      : '/api')
-  : (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000/api');
+  ? '/api'
+  : (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://64.227.171.31/api');
 
 // --- Token Rotation State ---
 let activeRefreshPromise: Promise<string | null> | null = null;

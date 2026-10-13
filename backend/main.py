@@ -53,11 +53,12 @@ if os.environ.get("ENABLE_DEMO_SEED", "false").lower() == "true":
 app = FastAPI(title="Water Supply API", redirect_slashes=False)
 
 # Configure CORS so the frontend can communicate with the backend
-cors_origins = os.environ.get("CORS_ORIGINS", "*").split(",")
+cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins, # Allow configured origins
+    allow_origins=cors_origins if cors_origins else ["*"],
+    allow_origin_regex=".*",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
