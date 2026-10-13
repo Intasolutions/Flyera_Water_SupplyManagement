@@ -1,8 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Droplet, Lock, User, Recycle, ArrowRight, ShieldCheck, Sparkles, Eye, EyeOff } from "lucide-react";
+import { 
+  Droplet, 
+  Lock, 
+  User, 
+  Recycle, 
+  ArrowRight, 
+  ShieldCheck, 
+  Sparkles, 
+  Eye, 
+  EyeOff, 
+  Download, 
+  Smartphone, 
+  X, 
+  Share, 
+  PlusSquare 
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { login, getCurrentUser } from "@/lib/api";
 import { useStore, AppRole } from "@/lib/StoreContext";
@@ -16,6 +31,49 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // PWA Install state
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
+  const [isIos, setIsIos] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const isStandaloneMode = 
+        window.matchMedia("(display-mode: standalone)").matches ||
+        (window.navigator as any).standalone === true;
+      setIsStandalone(isStandaloneMode);
+
+      const userAgent = window.navigator.userAgent.toLowerCase();
+      setIsIos(/iphone|ipad|ipod/.test(userAgent));
+    }
+
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (installPrompt) {
+      try {
+        installPrompt.prompt();
+        const { outcome } = await installPrompt.userChoice;
+        if (outcome === "accepted") {
+          setIsStandalone(true);
+        }
+        setInstallPrompt(null);
+        return;
+      } catch (err) {
+        console.warn("PWA prompt error", err);
+      }
+    }
+    setShowInstallGuide(true);
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,6 +152,19 @@ export default function LoginPage() {
 
   return (
     <div className="h-screen h-[100dvh] w-full bg-[#FDFBF7] flex flex-col items-center justify-center px-4 py-2 relative overflow-hidden select-none">
+      {/* Floating Top-Right Install App Button */}
+      {!isStandalone && (
+        <button
+          onClick={handleInstallClick}
+          type="button"
+          className="fixed top-4 right-4 z-30 inline-flex items-center gap-2 px-3.5 py-2 bg-white/90 hover:bg-white text-slate-800 hover:text-primary text-xs font-black rounded-xl border border-slate-200/90 shadow-sm backdrop-blur-md transition-all active:scale-95 group"
+          title="Install Flyera App"
+        >
+          <Download className="w-3.5 h-3.5 text-primary group-hover:translate-y-0.5 transition-transform" />
+          <span>Install App</span>
+        </button>
+      )}
+
       {/* Ambient glowing backdrop orbs */}
       <div className="absolute top-1/4 -left-32 w-96 h-96 bg-sky-200/40 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-emerald-200/40 rounded-full blur-3xl pointer-events-none" />
@@ -194,6 +265,25 @@ export default function LoginPage() {
               {loading ? "Authenticating..." : "Sign In to Dashboard"}
             </Button>
           </form>
+
+          {/* Install App on Device Option */}
+          {!isStandalone && (
+            <div className="pt-3 border-t border-slate-100 mt-3">
+              <button
+                type="button"
+                onClick={handleInstallClick}
+                className="w-full py-2.5 px-3 rounded-xl bg-sky-50/80 hover:bg-sky-100/90 border border-sky-200/70 text-sky-900 flex items-center justify-between transition-all group active:scale-95 text-xs font-bold shadow-2xs"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-6 h-6 rounded-lg bg-primary text-white flex items-center justify-center shrink-0 shadow-2xs">
+                    <Smartphone className="w-3.5 h-3.5" />
+                  </div>
+                  <span className="text-slate-800 font-bold">Install Flyera App on this device</span>
+                </div>
+                <Download className="w-3.5 h-3.5 text-primary group-hover:translate-y-0.5 transition-transform" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Security watermark footer & Brand signature */}
@@ -224,6 +314,65 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
+
+      {/* Mobile PWA Install Guide Modal (iOS Safari & Manual Android instructions) */}
+      {showInstallGuide && (
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl border border-slate-200/80 space-y-5">
+            <div className="flex items-start justify-between">
+              <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+                <Smartphone className="w-6 h-6" />
+              </div>
+              <button
+                onClick={() => setShowInstallGuide(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors"
+                aria-label="Close guide"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-black text-slate-900">Install Flyera App</h3>
+              <p className="text-xs font-semibold text-slate-500 mt-1">
+                Install Flyera on your device home screen for fast full-screen access and offline support.
+              </p>
+            </div>
+
+            {isIos ? (
+              <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-xs text-slate-700 font-semibold">
+                <div className="flex items-start gap-3">
+                  <span className="w-5 h-5 rounded-full bg-primary text-white flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5">1</span>
+                  <span>Tap the <span className="font-black text-slate-900 inline-flex items-center gap-1 bg-white px-1.5 py-0.5 rounded border border-slate-200"><Share className="w-3 h-3 text-primary inline" /> Share</span> icon at the bottom of Safari.</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="w-5 h-5 rounded-full bg-primary text-white flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5">2</span>
+                  <span>Scroll down and tap <span className="font-black text-slate-900 inline-flex items-center gap-1 bg-white px-1.5 py-0.5 rounded border border-slate-200"><PlusSquare className="w-3 h-3 text-primary inline" /> Add to Home Screen</span>.</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="w-5 h-5 rounded-full bg-primary text-white flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5">3</span>
+                  <span>Tap <span className="font-black text-slate-900">&quot;Add&quot;</span> in the top-right corner to finish.</span>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-100 text-xs text-slate-700 font-semibold">
+                <div className="flex items-start gap-3">
+                  <span className="w-5 h-5 rounded-full bg-primary text-white flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5">1</span>
+                  <span>Tap your browser&apos;s <span className="font-black text-slate-900">Menu (⋮ 3 dots)</span> icon.</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="w-5 h-5 rounded-full bg-primary text-white flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5">2</span>
+                  <span>Select <span className="font-black text-slate-900">&quot;Install app&quot;</span> or <span className="font-black text-slate-900">&quot;Add to Home screen&quot;</span>.</span>
+                </div>
+              </div>
+            )}
+
+            <Button variant="primary" fullWidth onClick={() => setShowInstallGuide(false)}>
+              Got it
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
