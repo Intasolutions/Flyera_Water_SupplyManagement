@@ -1,4 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#3b82f6" rx="100"/>
-  <path d="M256 120c-55 75-120 150-120 210 0 66 54 120 120 120s120-54 120-120c0-60-65-135-120-210z" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="flyeraGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="dropletShine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#e0f2fe"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#0369a1" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Rounded App Tile -->
+  <rect width="512" height="512" rx="112" fill="url(#flyeraGrad)"/>
+
+  <!-- Water Droplet Silhouette -->
+  <path d="M256 100 C256 100 136 248 136 332 C136 398.27 189.73 452 256 452 C322.27 452 376 398.27 376 332 C376 248 256 100 256 100 Z" 
+        fill="url(#dropletShine)" 
+        filter="url(#shadow)"/>
+
+  <!-- Inner Soft Reflection Arc -->
+  <path d="M210 270 C200 290 195 320 205 345 C210 330 220 305 235 285 C225 278 215 273 210 270 Z" 
+        fill="#38bdf8" 
+        opacity="0.75"/>
 </svg>
