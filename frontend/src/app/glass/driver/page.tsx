@@ -17,7 +17,8 @@ import {
   ExternalLink,
   CheckCircle2,
   Phone,
-  Navigation
+  Navigation,
+  LogOut
 } from "lucide-react";
 import { 
   getCurrentUser, 
@@ -304,6 +305,15 @@ export default function GlassDriverPage() {
     toast.success("Entire load dropped at godown!");
   };
 
+  const handleSignOut = () => {
+    if (window.confirm("Are you sure you want to sign out of the Glass Driver app?")) {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      localStorage.removeItem("flyera_user");
+      window.location.href = "/login";
+    }
+  };
+
   const activeCollections = glassCollections.filter(c => c.status === "collected");
 
   return (
@@ -329,11 +339,22 @@ export default function GlassDriverPage() {
           </p>
         </div>
 
-        <div className="bg-emerald-50/80 border border-emerald-200/80 px-4 py-2 rounded-2xl text-xs font-black text-emerald-800 shadow-xs flex items-center gap-2">
-          <span>In-Transit Load:</span>
-          <span className="text-sm font-black text-emerald-700">
-            {activeCollections.reduce((acc, c) => acc + c.tonsCollected, 0).toFixed(1)} Tons
-          </span>
+        <div className="flex items-center gap-2.5 self-stretch sm:self-auto flex-wrap">
+          <div className="bg-emerald-50/80 border border-emerald-200/80 px-4 py-2 rounded-2xl text-xs font-black text-emerald-800 shadow-xs flex items-center gap-2">
+            <span>In-Transit Load:</span>
+            <span className="text-sm font-black text-emerald-700">
+              {activeCollections.reduce((acc, c) => acc + c.tonsCollected, 0).toFixed(1)} Tons
+            </span>
+          </div>
+
+          <button
+            onClick={handleSignOut}
+            title="Sign Out of Glass Driver App"
+            className="bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-slate-700 hover:text-rose-600 active:scale-95 px-3 py-2 rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all"
+          >
+            <LogOut className="w-3.5 h-3.5 text-rose-500" />
+            <span>Logout</span>
+          </button>
         </div>
       </header>
 

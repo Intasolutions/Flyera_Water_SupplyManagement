@@ -49,7 +49,8 @@ import {
   Receipt,
   Flag,
   ShieldCheck,
-  RotateCcw
+  RotateCcw,
+  LogOut
 } from "lucide-react";
 
 export default function DriverApp() {
@@ -797,6 +798,15 @@ export default function DriverApp() {
     }));
   };
 
+  const handleSignOut = () => {
+    if (window.confirm("Are you sure you want to sign out of the Driver app?")) {
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      localStorage.removeItem("flyera_user");
+      window.location.href = "/login";
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-slate-900 p-4 md:p-8 relative">
       {/* Mobile-Friendly Frosted Header */}
@@ -918,6 +928,16 @@ export default function DriverApp() {
               <span>Office View</span>
             </a>
           )}
+
+          {/* Sign Out Button */}
+          <button
+            onClick={handleSignOut}
+            title="Sign Out of Driver App"
+            className="bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-slate-700 hover:text-rose-600 active:scale-95 px-3 py-2 rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-all"
+          >
+            <LogOut className="w-3.5 h-3.5 text-rose-500" />
+            <span>Logout</span>
+          </button>
         </div>
       </header>
 

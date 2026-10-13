@@ -265,25 +265,6 @@ export default function LoginPage() {
               {loading ? "Authenticating..." : "Sign In to Dashboard"}
             </Button>
           </form>
-
-          {/* Install App on Device Option */}
-          {!isStandalone && (
-            <div className="pt-3 border-t border-slate-100 mt-3">
-              <button
-                type="button"
-                onClick={handleInstallClick}
-                className="w-full py-2.5 px-3 rounded-xl bg-sky-50/80 hover:bg-sky-100/90 border border-sky-200/70 text-sky-900 flex items-center justify-between transition-all group active:scale-95 text-xs font-bold shadow-2xs"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="w-6 h-6 rounded-lg bg-primary text-white flex items-center justify-center shrink-0 shadow-2xs">
-                    <Smartphone className="w-3.5 h-3.5" />
-                  </div>
-                  <span className="text-slate-800 font-bold">Install Flyera App on this device</span>
-                </div>
-                <Download className="w-3.5 h-3.5 text-primary group-hover:translate-y-0.5 transition-transform" />
-              </button>
-            </div>
-          )}
         </div>
 
         {/* Security watermark footer & Brand signature */}
