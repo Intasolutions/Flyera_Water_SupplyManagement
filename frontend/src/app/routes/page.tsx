@@ -191,9 +191,21 @@ export default function RoutesPage() {
         const isNowSelected = selectedClientIds.has(c.id);
 
         if (!wasAssigned && isNowSelected) {
-          updates.push(updateClient(c.id, { route_id: assignRoute.id }));
+          updates.push(updateClient(c.id, {
+            name: c.name,
+            phone: c.phone || null,
+            address: c.address || null,
+            tier: c.tier || "Standard",
+            route_id: assignRoute.id,
+          }));
         } else if (wasAssigned && !isNowSelected) {
-          updates.push(updateClient(c.id, { route_id: null }));
+          updates.push(updateClient(c.id, {
+            name: c.name,
+            phone: c.phone || null,
+            address: c.address || null,
+            tier: c.tier || "Standard",
+            route_id: null,
+          }));
         }
       });
 

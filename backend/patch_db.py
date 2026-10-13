@@ -14,6 +14,11 @@ try:
 except Exception as e:
     print("Column hashed_password:", e)
 
+try:
+    cursor.execute("ALTER TABLE users ADD COLUMN driving_license VARCHAR")
+except Exception as e:
+    print("Column driving_license:", e)
+
 # Update existing users with a default password and username
 hashed_pwd = get_password_hash("password123")
 

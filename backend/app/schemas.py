@@ -39,8 +39,17 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
 
-class UserUpdate(UserBase):
-    pass
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    username: Optional[str] = None
+    role: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    id_proof_url: Optional[str] = None
+    assigned_vehicle_id: Optional[str] = None
+    driving_license: Optional[str] = None
+    is_active: Optional[bool] = None
+    token_version: Optional[int] = None
 
 class UserResponse(BaseModel):
     id: str
@@ -94,8 +103,16 @@ class ClientBase(BaseModel):
 class ClientCreate(ClientBase):
     pass
 
-class ClientUpdate(ClientBase):
-    pass
+class ClientUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    tier: Optional[str] = None
+    loyalty_points: Optional[int] = None
+    opt_in_loyalty: Optional[bool] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    route_id: Optional[str] = None
 
 class ClientResponse(ClientBase):
     id: str

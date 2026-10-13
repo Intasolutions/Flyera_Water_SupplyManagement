@@ -18,7 +18,7 @@ try:
                 conn.commit()
             except Exception:
                 pass
-        for col in ["is_active BOOLEAN DEFAULT 1", "token_version INTEGER DEFAULT 1"]:
+        for col in ["is_active BOOLEAN DEFAULT 1", "token_version INTEGER DEFAULT 1", "driving_license VARCHAR"]:
             try:
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {col}"))
                 conn.commit()
