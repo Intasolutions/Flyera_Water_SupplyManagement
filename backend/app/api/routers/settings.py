@@ -8,14 +8,14 @@ from app.api import deps
 router = APIRouter()
 
 DEFAULT_SETTINGS = {
-    "company_name": "Flyera - Water & Glass Logistics",
-    "gstin": "GSTIN-27AAACH7409R1ZZ",
-    "support_email": "operations@flyera.demo",
-    "dispatch_hotline": "+91 98765 43210",
-    "central_address": "Plot 42, Hinjewadi Industrial Zone Phase 2, Pune, Maharashtra 411057",
+    "company_name": "",
+    "gstin": "",
+    "support_email": "",
+    "dispatch_hotline": "",
+    "central_address": "",
     "gst_enabled": "true",
     "loyalty_rate": "0.50",
-    "upi_id": "flyera@okhdfcbank"
+    "upi_id": ""
 }
 
 @router.get("", include_in_schema=False)

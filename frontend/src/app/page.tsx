@@ -44,9 +44,9 @@ export default function DashboardPage() {
   });
 
   // Admin Merchant UPI Setup State
-  const [upiId, setUpiId] = useState("flyera@okhdfcbank");
+  const [upiId, setUpiId] = useState("");
   const [isEditingUpi, setIsEditingUpi] = useState(false);
-  const [tempUpi, setTempUpi] = useState("flyera@okhdfcbank");
+  const [tempUpi, setTempUpi] = useState("");
   const [savingUpi, setSavingUpi] = useState(false);
   const [adminQrUrl, setAdminQrUrl] = useState("");
 
@@ -243,8 +243,10 @@ export default function DashboardPage() {
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-black text-slate-900 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs text-sm">
-                          {upiId || "flyera@okhdfcbank"}
+                        <span className={`font-mono font-black px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs text-xs sm:text-sm ${
+                          upiId ? "text-slate-900 bg-white" : "text-slate-400 bg-slate-50 italic font-sans"
+                        }`}>
+                          {upiId || "Not Configured (Tap 'Edit UPI' to set)"}
                         </span>
                         <button
                           type="button"

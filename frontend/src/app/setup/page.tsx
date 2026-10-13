@@ -31,18 +31,18 @@ export default function SetupPage() {
   const [status, setStatus] = useState<SetupStatus | null>(null);
   const [loadingStatus, setLoadingStatus] = useState(true);
 
-  // Form states
+  // Form states - completely clean by default (no hardcoded prefilled dummy data)
   const [masterKey, setMasterKey] = useState("FLYERA_PROD_RESET_2026");
   const [showMasterKey, setShowMasterKey] = useState(false);
-  const [name, setName] = useState("Akash - Owner");
-  const [username, setUsername] = useState("admin");
-  const [phone, setPhone] = useState("+91 98765 43210");
+  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [companyName, setCompanyName] = useState("Flyera - Water & Glass Logistics");
-  const [dispatchHotline, setDispatchHotline] = useState("+91 98765 43210");
-  const [upiId, setUpiId] = useState("akash78988-1@okaxis");
+  const [companyName, setCompanyName] = useState("");
+  const [dispatchHotline, setDispatchHotline] = useState("");
+  const [upiId, setUpiId] = useState("");
   const [confirmWipeText, setConfirmWipeText] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
 
@@ -398,37 +398,40 @@ export default function SetupPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">
-                      Company Name
+                      Company Name (Optional)
                     </label>
                     <input
                       type="text"
                       value={companyName}
                       onChange={e => setCompanyName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-slate-800 text-xs font-bold"
+                      placeholder="e.g. Flyera - Water Logistics"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-slate-800 text-xs font-bold focus:border-primary focus:bg-white transition-all"
                     />
                   </div>
 
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">
-                      Dispatch Hotline
+                      Dispatch Hotline (Optional)
                     </label>
                     <input
                       type="text"
                       value={dispatchHotline}
                       onChange={e => setDispatchHotline(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-slate-800 text-xs font-bold"
+                      placeholder="e.g. +91 98765 43210"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-slate-800 text-xs font-bold focus:border-primary focus:bg-white transition-all"
                     />
                   </div>
 
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">
-                      Default UPI ID (QR Slips)
+                      Merchant UPI ID (Optional)
                     </label>
                     <input
                       type="text"
                       value={upiId}
                       onChange={e => setUpiId(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-slate-800 text-xs font-bold"
+                      placeholder="e.g. merchant@okaxis"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-slate-800 text-xs font-bold focus:border-primary focus:bg-white transition-all"
                     />
                   </div>
                 </div>
