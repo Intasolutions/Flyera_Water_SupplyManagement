@@ -73,6 +73,22 @@ export function Sidebar() {
     setShowInstallGuide(true);
   };
 
+  const [userRole, setUserRole] = useState<string>("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const raw = localStorage.getItem("flyera_user");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          setUserRole(parsed.role?.toUpperCase() || "");
+        }
+      } catch (e) {}
+    }
+  }, []);
+
+  const isDriver = userRole === "DRIVER" || userRole === "GLASS_DRIVER";
+
   const waterLinks = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
     { name: "Deliveries", href: "/deliveries", icon: Truck },
@@ -86,7 +102,7 @@ export function Sidebar() {
 
   const glassLinks = [
     { name: "Glass Dashboard", href: "/glass", icon: LayoutDashboard },
-    { name: "Driver Collections", href: "/glass/driver", icon: Truck },
+    ...(isDriver ? [{ name: "Driver Collections", href: "/glass/driver", icon: Truck }] : []),
     { name: "Godown Separation", href: "/glass/godown", icon: Factory },
     { name: "Vendor Pickups", href: "/glass/vendor", icon: Warehouse },
   ];
@@ -111,7 +127,7 @@ export function Sidebar() {
   // Quick bottom bar links for mobile phone navigation
   const mobileQuickLinks = isGlass ? [
     { name: "Dashboard", href: "/glass", icon: LayoutDashboard },
-    { name: "Intake", href: "/glass/driver", icon: Truck },
+    ...(isDriver ? [{ name: "Intake", href: "/glass/driver", icon: Truck }] : []),
     { name: "Godown", href: "/glass/godown", icon: Factory },
     { name: "Vendors", href: "/glass/vendor", icon: Warehouse },
   ] : [
