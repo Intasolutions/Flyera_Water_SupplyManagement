@@ -29,7 +29,40 @@ export default function LoginPage() {
         localStorage.setItem("refresh_token", authRes.refresh_token);
       }
       
-      const user = await getCurrentUser();
+      // 1. Try directly from login payload
+      let user: any = authRes.user;
+
+      // 2. Fallback to /auth/me
+      if (!user) {
+        try {
+          user = await getCurrentUser();
+        } catch (meErr) {
+          console.warn("Could not load /auth/me, trying token decoding", meErr);
+        }
+      }
+
+      // 3. Fallback to decoding the access_token JWT payload directly
+      if (!user && authRes.access_token) {
+        try {
+          const parts = authRes.access_token.split(".");
+          if (parts.length >= 2) {
+            const decoded = JSON.parse(atob(parts[1]));
+            user = {
+              id: decoded.sub,
+              name: decoded.name || username,
+              role: decoded.role || "ADMIN",
+              username: username,
+            };
+          }
+        } catch (jwtErr) {
+          console.warn("JWT payload decoding error", jwtErr);
+        }
+      }
+
+      if (!user) {
+        throw new Error("Unable to establish authenticated session. Please try again.");
+      }
+
       try {
         localStorage.setItem("flyera_user", JSON.stringify(user));
       } catch (e) {}

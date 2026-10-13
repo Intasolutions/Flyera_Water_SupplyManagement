@@ -51,6 +51,20 @@ def login_access_token(
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "expires_in": security.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "user": {
+            "id": str(user.id),
+            "name": str(user.name or ""),
+            "username": user.username,
+            "role": user.role,
+            "phone": user.phone,
+            "address": user.address,
+            "id_proof_url": user.id_proof_url,
+            "assigned_vehicle_id": user.assigned_vehicle_id,
+            "is_active": bool(getattr(user, "is_active", True)),
+            "token_version": user_token_version,
+            "created_at": user.created_at.isoformat() if hasattr(user.created_at, "isoformat") else str(user.created_at or ""),
+            "updated_at": user.updated_at.isoformat() if hasattr(user.updated_at, "isoformat") else str(user.updated_at or ""),
+        }
     }
 
 @router.post("/refresh", response_model=schemas.Token)
@@ -130,10 +144,24 @@ def test_token(current_user: models.User = Depends(deps.get_current_user)) -> An
     return current_user
 
 @router.get("/me", response_model=schemas.UserResponse)
+@router.get("/me/", response_model=schemas.UserResponse, include_in_schema=False)
 def read_current_user(
     current_user: models.User = Depends(deps.get_current_active_user),
 ) -> Any:
     """
     Get current logged in user profile.
     """
-    return current_user
+    return {
+        "id": str(current_user.id),
+        "name": str(current_user.name or ""),
+        "username": current_user.username,
+        "role": current_user.role,
+        "phone": current_user.phone,
+        "address": current_user.address,
+        "id_proof_url": current_user.id_proof_url,
+        "assigned_vehicle_id": current_user.assigned_vehicle_id,
+        "is_active": bool(getattr(current_user, "is_active", True)),
+        "token_version": getattr(current_user, "token_version", 1) or 1,
+        "created_at": current_user.created_at.isoformat() if hasattr(current_user.created_at, "isoformat") else str(current_user.created_at or ""),
+        "updated_at": current_user.updated_at.isoformat() if hasattr(current_user.updated_at, "isoformat") else str(current_user.updated_at or ""),
+    }

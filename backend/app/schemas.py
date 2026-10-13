@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Dict
 from datetime import datetime
 
 # --- Auth Schemas ---
@@ -8,6 +8,7 @@ class Token(BaseModel):
     refresh_token: Optional[str] = None
     token_type: str = "bearer"
     expires_in: Optional[int] = None
+    user: Optional[Dict[str, Any]] = None
     
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
@@ -40,10 +41,19 @@ class UserCreate(UserBase):
 class UserUpdate(UserBase):
     pass
 
-class UserResponse(UserBase):
+class UserResponse(BaseModel):
     id: str
-    created_at: datetime
-    updated_at: datetime
+    name: str
+    username: Optional[str] = None
+    role: str
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    id_proof_url: Optional[str] = None
+    assigned_vehicle_id: Optional[str] = None
+    is_active: Optional[bool] = True
+    token_version: Optional[int] = 1
+    created_at: Optional[Any] = None
+    updated_at: Optional[Any] = None
 
     class Config:
         from_attributes = True
