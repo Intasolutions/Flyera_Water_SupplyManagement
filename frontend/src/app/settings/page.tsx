@@ -13,7 +13,9 @@ import {
   Package, 
   CheckCircle2,
   Sparkles,
-  ShieldAlert
+  ShieldAlert,
+  AlertTriangle,
+  ArrowRight
 } from "lucide-react";
 import { 
   getInventoryTypes, 
@@ -38,7 +40,7 @@ const DEFAULT_SETTINGS = {
 export default function SettingsPage() {
   const router = useRouter();
   const { currentUserRole } = useStore();
-  const [activeTab, setActiveTab] = useState<"business" | "billing">("business");
+  const [activeTab, setActiveTab] = useState<"business" | "billing" | "system">("business");
   const [loading, setLoading] = useState(false);
   const [inventoryTypes, setInventoryTypes] = useState<InventoryType[]>([]);
 
@@ -222,6 +224,7 @@ export default function SettingsPage() {
               {[
                 { id: "business", label: "Business Profile", icon: Building2, desc: "Organization & Contact" },
                 { id: "billing", label: "Pricing & Billing", icon: Wallet, desc: "Tier rates & GST taxes" },
+                { id: "system", label: "Production Reset", icon: AlertTriangle, desc: "Factory wipe & superuser" },
               ].map(tab => {
                 const isActive = activeTab === tab.id;
                 return (
@@ -478,20 +481,60 @@ export default function SettingsPage() {
                 </div>
               )}
 
+              {activeTab === "system" && (
+                <div className="space-y-6 animate-fade-in">
+                  <div className="border-b border-rose-100 pb-5">
+                    <span className="text-xs font-black uppercase tracking-wider text-rose-600 block mb-1">
+                      Danger Zone
+                    </span>
+                    <h2 className="text-xl sm:text-2xl font-black text-slate-900">System Maintenance & Factory Reset</h2>
+                    <p className="text-xs sm:text-sm font-semibold text-slate-600 mt-1">
+                      Wipe testing records and initialize a fresh production database with a new superuser
+                    </p>
+                  </div>
+
+                  <div className="p-6 bg-rose-50/80 border border-rose-200 rounded-2xl space-y-4">
+                    <div className="flex items-start gap-3.5">
+                      <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 border border-rose-200">
+                        <AlertTriangle className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-black text-rose-950">Clean Production Setup Console</h3>
+                        <p className="text-xs text-rose-800 font-semibold mt-1 leading-relaxed">
+                          This specialized console clears all existing mock clients, deliveries, allocations, glass records, and staff logins. It then configures your primary Superuser account with your chosen username and secure password for live deployment.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-rose-200/60 flex flex-col sm:flex-row gap-3">
+                      <Button
+                        variant="danger"
+                        onClick={() => router.push("/setup")}
+                        icon={<ArrowRight className="w-4 h-4" />}
+                      >
+                        Open Production Setup & Superuser Console
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Bottom Actions */}
-              <div className="mt-8 pt-5 border-t border-slate-100 flex justify-end gap-3">
-                <Button variant="secondary" onClick={handleDiscard}>
-                  Discard Changes
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={handleSave}
-                  disabled={loading}
-                  icon={<Save className="w-4 h-4" />}
-                >
-                  {loading ? "Saving..." : "Save Settings"}
-                </Button>
-              </div>
+              {activeTab !== "system" && (
+                <div className="mt-8 pt-5 border-t border-slate-100 flex justify-end gap-3">
+                  <Button variant="secondary" onClick={handleDiscard}>
+                    Discard Changes
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={handleSave}
+                    disabled={loading}
+                    icon={<Save className="w-4 h-4" />}
+                  >
+                    {loading ? "Saving..." : "Save Settings"}
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>

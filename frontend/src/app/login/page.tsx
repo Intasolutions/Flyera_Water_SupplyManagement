@@ -169,6 +169,14 @@ export default function LoginPage() {
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
             <span>256-Bit SSL Encrypted Session</span>
           </div>
+          <div className="pt-0.5">
+            <a
+              href="/setup"
+              className="text-[10px] font-bold text-slate-400 hover:text-slate-600 transition-colors"
+            >
+              First time production launch? <span className="underline">Initialize Superuser</span>
+            </a>
+          </div>
           <p className="text-[11px] font-semibold text-slate-400">
             Powered by{" "}
             <a

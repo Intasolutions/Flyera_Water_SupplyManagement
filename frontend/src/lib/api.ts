@@ -533,4 +533,38 @@ export const updateSettings = (data: Record<string, any>) =>
     body: JSON.stringify(data),
   });
 
+// --- Production Setup & Reset ---
+export interface SetupStatus {
+  is_clean: boolean;
+  total_users: number;
+  total_clients: number;
+  total_vehicles: number;
+  total_routes: number;
+  total_assignments: number;
+  total_deliveries: number;
+  total_inventory_types: number;
+  total_glass_collections: number;
+}
+
+export interface SetupRequest {
+  master_key?: string;
+  confirm_wipe: string;
+  name: string;
+  username: string;
+  password: string;
+  phone?: string;
+  company_name?: string;
+  dispatch_hotline?: string;
+  upi_id?: string;
+}
+
+export const getSetupStatus = () => fetcher<SetupStatus>('/setup/status');
+
+export const resetAndCreateSuperuser = (data: SetupRequest) =>
+  fetcher<{ status: string; message: string; user: any }>('/setup/reset-and-create-superuser', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+
 

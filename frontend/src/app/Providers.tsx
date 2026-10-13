@@ -3,11 +3,13 @@
 import { Toaster } from "react-hot-toast";
 import { ConfirmProvider } from "@/lib/useConfirm";
 import { StoreProvider } from "@/lib/StoreContext";
+import { AppSplashLoader } from "@/components/ui/AppSplashLoader";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ConfirmProvider>
       <StoreProvider>
+        <AppSplashLoader />
         {children}
         <Toaster position="bottom-right" toastOptions={{
           style: {

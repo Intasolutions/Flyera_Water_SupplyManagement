@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
 from app import models
-from app.api.routers import users, clients, vehicles, inventory, routes, auth, assignments, deliveries, dashboard, glass, settings
+from app.api.routers import users, clients, vehicles, inventory, routes, auth, assignments, deliveries, dashboard, glass, settings, setup
 
 # Create all tables in the database (simple alternative to migrations for now)
 Base.metadata.create_all(bind=engine)
@@ -27,27 +27,28 @@ try:
 except Exception as e:
     print("Database migration check note:", e)
 
-# Ensure default WATER_STAFF user exists for role testing
-try:
-    from app.database import SessionLocal
-    from app.core import security
-    _db = SessionLocal()
-    _ws = _db.query(models.User).filter(models.User.username == "water_staff").first()
-    if not _ws:
-        _ws_user = models.User(
-            name="Priya Sharma (Water Staff)",
-            username="water_staff",
-            phone="9123456780",
-            role="WATER_STAFF",
-            hashed_password=security.get_password_hash("password123"),
-            is_active=True,
-            token_version=1
-        )
-        _db.add(_ws_user)
-        _db.commit()
-    _db.close()
-except Exception as e:
-    print("Staff seed check note:", e)
+# Demo staff seeding only if explicitly enabled via environment variable
+if os.environ.get("ENABLE_DEMO_SEED", "false").lower() == "true":
+    try:
+        from app.database import SessionLocal
+        from app.core import security
+        _db = SessionLocal()
+        _ws = _db.query(models.User).filter(models.User.username == "water_staff").first()
+        if not _ws:
+            _ws_user = models.User(
+                name="Priya Sharma (Water Staff)",
+                username="water_staff",
+                phone="9123456780",
+                role="WATER_STAFF",
+                hashed_password=security.get_password_hash("password123"),
+                is_active=True,
+                token_version=1
+            )
+            _db.add(_ws_user)
+            _db.commit()
+        _db.close()
+    except Exception as e:
+        print("Staff seed check note:", e)
 
 app = FastAPI(title="Water Supply API", redirect_slashes=False)
 
@@ -74,6 +75,7 @@ app.include_router(deliveries.router, prefix="/api/deliveries", tags=["deliverie
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])
 app.include_router(glass.router, prefix="/api/glass", tags=["glass"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
+app.include_router(setup.router, prefix="/api/setup", tags=["setup"])
 
 @app.get("/")
 def read_root():
