@@ -224,8 +224,13 @@ class AssignmentCreate(AssignmentBase):
     allocations: List[AllocationCreate] = []
 
 class AssignmentUpdate(BaseModel):
-    status: Optional[str] = None
+    date: Optional[datetime] = None
+    vehicle_id: Optional[str] = None
+    driver_id: Optional[str] = None
     helper_id: Optional[str] = None
+    route_id: Optional[str] = None
+    status: Optional[str] = None
+    allocations: Optional[List[AllocationCreate]] = None
 
 class AssignmentResponse(AssignmentBase):
     id: str

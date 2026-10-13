@@ -28,7 +28,8 @@ import {
   Sparkles,
   ChevronRight,
   RefreshCw,
-  RotateCcw
+  RotateCcw,
+  Edit3
 } from "lucide-react";
 import { 
   getUsers, 
@@ -133,6 +134,76 @@ export default function DeliveriesPage() {
   const [assignRoute, setAssignRoute] = useState("");
   const [assignVehicle, setAssignVehicle] = useState("");
   const [assignStock, setAssignStock] = useState<Record<string, number>>({});
+
+  // Edit modal state
+  const [editAssignment, setEditAssignment] = useState<ApiAssignment | null>(null);
+  const [editDriver, setEditDriver] = useState("");
+  const [editHelper, setEditHelper] = useState("");
+  const [editRoute, setEditRoute] = useState("");
+  const [editVehicle, setEditVehicle] = useState("");
+  const [editStatus, setEditStatus] = useState<string>("PENDING");
+  const [editDate, setEditDate] = useState<string>("");
+  const [editStock, setEditStock] = useState<Record<string, number>>({});
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  const handleOpenEdit = (assignment: ApiAssignment) => {
+    setEditAssignment(assignment);
+    setEditDriver(assignment.driver_id || "");
+    setEditHelper(assignment.helper_id || "");
+    setEditRoute(assignment.route_id || "");
+    setEditVehicle(assignment.vehicle_id || "");
+    setEditStatus(assignment.status ? assignment.status.toUpperCase() : "PENDING");
+    setEditDate(
+      assignment.date 
+        ? new Date(assignment.date).toISOString().split("T")[0] 
+        : new Date().toISOString().split("T")[0]
+    );
+
+    const stockMap: Record<string, number> = {};
+    if (assignment.allocations && assignment.allocations.length > 0) {
+      assignment.allocations.forEach(al => {
+        stockMap[al.inventory_type_id] = al.allocated_count || 0;
+      });
+    }
+    setEditStock(stockMap);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editAssignment) return;
+    if (!editDriver || !editRoute || !editVehicle) {
+      toast.error("Please select a driver, route, and vehicle.");
+      return;
+    }
+
+    const allocations = Object.entries(editStock)
+      .filter(([_, count]) => count > 0)
+      .map(([invId, count]) => ({
+        inventory_type_id: invId,
+        allocated_count: count,
+      }));
+
+    try {
+      setIsSavingEdit(true);
+      await updateAssignment(editAssignment.id, {
+        date: editDate ? new Date(editDate).toISOString() : undefined,
+        vehicle_id: editVehicle,
+        driver_id: editDriver,
+        helper_id: editHelper || null,
+        route_id: editRoute,
+        status: editStatus,
+        allocations,
+      });
+      setEditAssignment(null);
+      const refreshed = await getAssignments();
+      setRealAssignments(refreshed);
+      toast.success("Delivery route updated successfully!");
+    } catch (e: any) {
+      console.error("Failed to update assignment", e);
+      toast.error(e?.message || "Failed to update assignment.");
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
 
   const handleSaveAssignment = async () => {
     if (!assignDriver || !assignRoute || !assignVehicle) {
@@ -437,6 +508,7 @@ export default function DeliveriesPage() {
                   status={a.status.toLowerCase()}
                   progress={progress}
                   date={a.date}
+                  onEdit={() => handleOpenEdit(a)}
                   onAssign={() => setDispatchConfirmOpen(a)}
                   onTrack={() => setTrackOpen(vehicle)}
                   onRecon={() => setReconOpen(vehicle)}
@@ -574,6 +646,207 @@ export default function DeliveriesPage() {
                           min="0"
                           value={assignStock[inv.id] || ""}
                           onChange={e => setAssignStock(prev => ({ ...prev, [inv.id]: parseInt(e.target.value) || 0 }))}
+                          className="w-24 border border-slate-200 rounded-lg p-2 text-center text-slate-800 font-black outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-sm"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </Modal>
+
+        {/* Edit Assignment Modal */}
+        <Modal
+          isOpen={!!editAssignment}
+          onClose={() => setEditAssignment(null)}
+          title="Edit Delivery Assignment"
+          subtitle="Update driver, helper crew, assigned vehicle, route, and loaded cargo"
+          width="2xl"
+          actions={
+            <div className="flex gap-4 w-full">
+              <Button 
+                variant="secondary" 
+                onClick={() => setEditAssignment(null)} 
+                fullWidth 
+                disabled={isSavingEdit}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="primary" 
+                onClick={handleSaveEdit} 
+                fullWidth 
+                disabled={isSavingEdit}
+              >
+                {isSavingEdit ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
+          }
+        >
+          <div className="space-y-6">
+            {/* Status & Date */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2">
+                  Assignment Status
+                </label>
+                <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200/70">
+                  {(["PENDING", "ACTIVE", "COMPLETED"] as const).map(st => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setEditStatus(st)}
+                      className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${
+                        editStatus === st
+                          ? st === "COMPLETED"
+                            ? "bg-emerald-600 text-white shadow-sm"
+                            : st === "ACTIVE"
+                            ? "bg-sky-600 text-white shadow-sm"
+                            : "bg-amber-500 text-white shadow-sm"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      {st}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2">
+                  Assignment Date
+                </label>
+                <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-2.5">
+                  <Calendar className="w-4 h-4 text-slate-400" />
+                  <input
+                    type="date"
+                    value={editDate}
+                    onChange={e => setEditDate(e.target.value)}
+                    className="w-full text-sm font-semibold text-slate-800 outline-none bg-transparent cursor-pointer"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Driver & Helper */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2">
+                  Select Driver *
+                </label>
+                <select
+                  value={editDriver}
+                  onChange={e => setEditDriver(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all appearance-none cursor-pointer"
+                >
+                  <option value="" disabled>Choose Driver</option>
+                  {realStaff.filter(s => s.role.toUpperCase() === "DRIVER").map(d => {
+                    const isAssigned = realAssignments.some(
+                      a => a.id !== editAssignment?.id && (a.driver_id === d.id || a.helper_id === d.id) && a.status !== "COMPLETED"
+                    );
+                    return (
+                      <option key={d.id} value={d.id} disabled={isAssigned}>
+                        {d.name} {isAssigned ? "(Already on route)" : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2">
+                  Select Helper (Optional)
+                </label>
+                <select
+                  value={editHelper}
+                  onChange={e => setEditHelper(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all appearance-none cursor-pointer"
+                >
+                  <option value="">No Helper Assigned</option>
+                  {realStaff.filter(s => s.role.toUpperCase() === "HELPER").map(d => {
+                    const isAssigned = realAssignments.some(
+                      a => a.id !== editAssignment?.id && (a.driver_id === d.id || a.helper_id === d.id) && a.status !== "COMPLETED"
+                    );
+                    return (
+                      <option key={d.id} value={d.id} disabled={isAssigned}>
+                        {d.name} {isAssigned ? "(Already assigned)" : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            </div>
+
+            {/* Vehicle & Route */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2">
+                  Select Vehicle *
+                </label>
+                <select
+                  value={editVehicle}
+                  onChange={e => setEditVehicle(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all appearance-none cursor-pointer"
+                >
+                  <option value="" disabled>Choose Vehicle</option>
+                  {realVehicles.map(v => {
+                    const isAssigned = realAssignments.some(
+                      a => a.id !== editAssignment?.id && a.vehicle_id === v.id && a.status !== "COMPLETED"
+                    );
+                    return (
+                      <option key={v.id} value={v.id} disabled={isAssigned}>
+                        {v.plate_number} {isAssigned ? "(Already in use)" : ""}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2">
+                  Select Delivery Route *
+                </label>
+                <select
+                  value={editRoute}
+                  onChange={e => setEditRoute(e.target.value)}
+                  className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all appearance-none cursor-pointer"
+                >
+                  <option value="" disabled>Choose Route</option>
+                  {realRoutes.map(r => (
+                    <option key={r.id} value={r.id}>{r.name} ({r.area || "General Area"})</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Stock Allocation */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-700">
+                  Update Cargo Stock Allocation
+                </label>
+                <span className="text-[11px] font-bold text-slate-400">Bottles / Crates loaded</span>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/70 p-5 rounded-2xl border border-slate-200/60">
+                {inventoryTypes.length === 0 ? (
+                  <p className="text-sm text-slate-500 font-medium">No inventory types configured. Add them in Inventory.</p>
+                ) : (
+                  inventoryTypes.map(inv => (
+                    <div key={inv.id} className="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-200/60 shadow-xs">
+                      <div>
+                        <span className="font-bold text-slate-800 text-sm block">{inv.name}</span>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Warehouse stock</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          value={editStock[inv.id] ?? ""}
+                          onChange={e => setEditStock(prev => ({ ...prev, [inv.id]: parseInt(e.target.value) || 0 }))}
                           className="w-24 border border-slate-200 rounded-lg p-2 text-center text-slate-800 font-black outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-sm"
                           placeholder="0"
                         />
@@ -1020,6 +1293,7 @@ function AssignmentCard({
   status,
   progress,
   date,
+  onEdit,
   onAssign,
   onTrack,
   onRecon,
@@ -1076,15 +1350,26 @@ function AssignmentCard({
             </div>
           </div>
 
-          {onDelete && (
-            <button
-              onClick={onDelete}
-              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
-              title="Delete Assignment"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
+          <div className="flex items-center gap-1">
+            {onEdit && (
+              <button
+                onClick={onEdit}
+                className="p-2 text-slate-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"
+                title="Edit Assignment"
+              >
+                <Edit3 className="w-4 h-4" />
+              </button>
+            )}
+            {onDelete && (
+              <button
+                onClick={onDelete}
+                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"
+                title="Delete Assignment"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Crew & Route Details */}

@@ -77,18 +77,51 @@ def get_assignment(
 def update_assignment(
     assignment_id: str,
     assignment_in: schemas.AssignmentUpdate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(deps.get_current_active_user)
+    db: Session = Depends(get_db)
 ):
     db_assignment = db.query(models.Assignment).filter(models.Assignment.id == assignment_id).first()
     if not db_assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
         
+    if assignment_in.vehicle_id is not None:
+        db_assignment.vehicle_id = assignment_in.vehicle_id
+    if assignment_in.driver_id is not None:
+        db_assignment.driver_id = assignment_in.driver_id
+    if assignment_in.helper_id is not None:
+        db_assignment.helper_id = assignment_in.helper_id if assignment_in.helper_id != "" else None
+    if assignment_in.route_id is not None:
+        db_assignment.route_id = assignment_in.route_id
+    if assignment_in.date is not None:
+        db_assignment.date = assignment_in.date
     if assignment_in.status is not None:
         db_assignment.status = assignment_in.status
-    if assignment_in.helper_id is not None:
-        db_assignment.helper_id = assignment_in.helper_id
         
+    if assignment_in.allocations is not None:
+        # Restore previously allocated stock back to warehouse inventory
+        for alloc in db_assignment.allocations:
+            crud.adjust_inventory_stock(
+                db,
+                inv_type_id=alloc.inventory_type_id,
+                stock_adj=schemas.StockAdjust(add_full=alloc.allocated_count, add_empty=0, add_damaged=0)
+            )
+            db.delete(alloc)
+            
+        db.flush()
+        
+        # Insert newly allocated items and deduct from warehouse inventory
+        for alloc in assignment_in.allocations:
+            db_alloc = models.Allocation(
+                assignment_id=db_assignment.id,
+                inventory_type_id=alloc.inventory_type_id,
+                allocated_count=alloc.allocated_count
+            )
+            db.add(db_alloc)
+            crud.adjust_inventory_stock(
+                db,
+                inv_type_id=alloc.inventory_type_id,
+                stock_adj=schemas.StockAdjust(add_full=-alloc.allocated_count, add_empty=0, add_damaged=0)
+            )
+            
     db.commit()
     db.refresh(db_assignment)
     return db_assignment
