@@ -27,11 +27,12 @@ class UserBase(BaseModel):
     name: str
     username: Optional[str] = None
     role: str
-    # Validate phone to be 8-15 digits, optionally starting with +
-    phone: Optional[str] = Field(None, pattern=r"^\+?[0-9]{8,15}$")
+    # Validate phone to be 10 digits
+    phone: Optional[str] = None
     address: Optional[str] = None
     id_proof_url: Optional[str] = None
     assigned_vehicle_id: Optional[str] = None
+    driving_license: Optional[str] = None
     is_active: Optional[bool] = True
     token_version: Optional[int] = 1
 
@@ -50,6 +51,7 @@ class UserResponse(BaseModel):
     address: Optional[str] = None
     id_proof_url: Optional[str] = None
     assigned_vehicle_id: Optional[str] = None
+    driving_license: Optional[str] = None
     is_active: Optional[bool] = True
     token_version: Optional[int] = 1
     created_at: Optional[Any] = None

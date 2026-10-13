@@ -11,11 +11,10 @@ import {
   Building2, 
   Wallet, 
   Package, 
-  CheckCircle2,
-  Sparkles,
+  CheckCircle2, 
   ShieldAlert,
-  AlertTriangle,
-  ArrowRight
+  AlertCircle,
+  Check
 } from "lucide-react";
 import { 
   getInventoryTypes, 
@@ -24,15 +23,14 @@ import {
   getSettings, 
   updateSettings 
 } from "@/lib/api";
+import { sanitizePhone } from "@/lib/validation";
 import { toast } from "react-hot-toast";
 
 const DEFAULT_SETTINGS = {
   company_name: "",
-  gstin: "",
   support_email: "",
   dispatch_hotline: "",
   central_address: "",
-  gst_enabled: true,
   loyalty_rate: 0.50,
   upi_id: ""
 };
@@ -40,7 +38,7 @@ const DEFAULT_SETTINGS = {
 export default function SettingsPage() {
   const router = useRouter();
   const { currentUserRole } = useStore();
-  const [activeTab, setActiveTab] = useState<"business" | "billing" | "system">("business");
+  const [activeTab, setActiveTab] = useState<"business" | "billing">("business");
   const [loading, setLoading] = useState(false);
   const [inventoryTypes, setInventoryTypes] = useState<InventoryType[]>([]);
 
@@ -54,14 +52,12 @@ export default function SettingsPage() {
 
   // Business Profile States
   const [companyName, setCompanyName] = useState(DEFAULT_SETTINGS.company_name);
-  const [gstin, setGstin] = useState(DEFAULT_SETTINGS.gstin);
   const [supportEmail, setSupportEmail] = useState(DEFAULT_SETTINGS.support_email);
   const [dispatchHotline, setDispatchHotline] = useState(DEFAULT_SETTINGS.dispatch_hotline);
   const [centralAddress, setCentralAddress] = useState(DEFAULT_SETTINGS.central_address);
   const [upiId, setUpiId] = useState(DEFAULT_SETTINGS.upi_id);
 
   // Billing States
-  const [gstEnabled, setGstEnabled] = useState(DEFAULT_SETTINGS.gst_enabled);
   const [loyaltyRate, setLoyaltyRate] = useState(DEFAULT_SETTINGS.loyalty_rate);
 
   // Load Settings on Mount
@@ -72,12 +68,10 @@ export default function SettingsPage() {
       if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed.company_name) setCompanyName(parsed.company_name);
-        if (parsed.gstin) setGstin(parsed.gstin);
         if (parsed.support_email) setSupportEmail(parsed.support_email);
         if (parsed.dispatch_hotline) setDispatchHotline(parsed.dispatch_hotline);
         if (parsed.central_address) setCentralAddress(parsed.central_address);
         if (parsed.upi_id) setUpiId(parsed.upi_id);
-        if (parsed.gst_enabled !== undefined) setGstEnabled(parsed.gst_enabled === true || parsed.gst_enabled === "true");
         if (parsed.loyalty_rate !== undefined) setLoyaltyRate(Number(parsed.loyalty_rate));
       }
     } catch (e) {}
@@ -87,12 +81,10 @@ export default function SettingsPage() {
       .then(res => {
         if (res) {
           if (res.company_name) setCompanyName(res.company_name);
-          if (res.gstin) setGstin(res.gstin);
           if (res.support_email) setSupportEmail(res.support_email);
           if (res.dispatch_hotline) setDispatchHotline(res.dispatch_hotline);
           if (res.central_address) setCentralAddress(res.central_address);
           if (res.upi_id) setUpiId(res.upi_id);
-          if (res.gst_enabled !== undefined) setGstEnabled(res.gst_enabled === true || res.gst_enabled === "true");
           if (res.loyalty_rate !== undefined) setLoyaltyRate(Number(res.loyalty_rate));
           try {
             localStorage.setItem("flyera_system_settings", JSON.stringify(res));
@@ -109,15 +101,20 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     setLoading(true);
+    const cleanHotline = sanitizePhone(dispatchHotline);
+    if (dispatchHotline.trim() && cleanHotline.length !== 10) {
+      toast.error("Dispatch hotline must be a valid 10-digit mobile number");
+      setLoading(false);
+      return;
+    }
+
     try {
       const settingsPayload = {
         company_name: companyName,
-        gstin: gstin,
         support_email: supportEmail,
-        dispatch_hotline: dispatchHotline,
+        dispatch_hotline: cleanHotline || "",
         central_address: centralAddress,
         upi_id: upiId,
-        gst_enabled: String(gstEnabled),
         loyalty_rate: String(loyaltyRate)
       };
 
@@ -160,12 +157,10 @@ export default function SettingsPage() {
       if (cached) {
         const parsed = JSON.parse(cached);
         setCompanyName(parsed.company_name || DEFAULT_SETTINGS.company_name);
-        setGstin(parsed.gstin || DEFAULT_SETTINGS.gstin);
         setSupportEmail(parsed.support_email || DEFAULT_SETTINGS.support_email);
         setDispatchHotline(parsed.dispatch_hotline || DEFAULT_SETTINGS.dispatch_hotline);
         setCentralAddress(parsed.central_address || DEFAULT_SETTINGS.central_address);
         setUpiId(parsed.upi_id || DEFAULT_SETTINGS.upi_id);
-        setGstEnabled(parsed.gst_enabled === true || parsed.gst_enabled === "true");
         setLoyaltyRate(Number(parsed.loyalty_rate) || DEFAULT_SETTINGS.loyalty_rate);
         toast("Changes discarded", { icon: "↩️" });
         return;
@@ -218,20 +213,19 @@ export default function SettingsPage() {
         />
 
         <div className="flex flex-col lg:flex-row gap-8">
-          {/* Frosted Segmented Navigation */}
+          {/* Segmented Navigation */}
           <div className="w-full lg:w-72 shrink-0">
             <div className="glass-panel p-2 flex lg:flex-col gap-1.5 overflow-x-auto shadow-sm">
               {[
                 { id: "business", label: "Business Profile", icon: Building2, desc: "Organization & Contact" },
-                { id: "billing", label: "Pricing & Billing", icon: Wallet, desc: "Tier rates & GST taxes" },
-                { id: "system", label: "Production Reset", icon: AlertTriangle, desc: "Factory wipe & superuser" },
+                { id: "billing", label: "Pricing & Billing", icon: Wallet, desc: "Tier rates & loyalty points" },
               ].map(tab => {
                 const isActive = activeTab === tab.id;
                 return (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as any)}
-                    className={`flex items-center gap-3.5 px-4 py-3 rounded-2xl transition-all duration-200 text-left whitespace-nowrap lg:whitespace-normal ${
+                    className={`flex items-center gap-3.5 px-4 py-3 rounded-2xl transition-all duration-200 text-left whitespace-nowrap lg:whitespace-normal cursor-pointer ${
                       isActive
                         ? "bg-white text-slate-900 shadow-sm border border-slate-200/60"
                         : "text-slate-500 hover:text-slate-800 hover:bg-white/50"
@@ -267,7 +261,7 @@ export default function SettingsPage() {
                     </span>
                     <h2 className="text-xl sm:text-2xl font-black text-slate-900">Company Information</h2>
                     <p className="text-xs sm:text-sm font-semibold text-slate-600 mt-1">
-                      Information displayed on customer digital delivery notes and invoices
+                      Information displayed on customer digital delivery notes and communications
                     </p>
                   </div>
 
@@ -287,19 +281,6 @@ export default function SettingsPage() {
 
                     <div>
                       <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2">
-                        GSTIN / Registration Number
-                      </label>
-                      <input
-                        type="text"
-                        value={gstin}
-                        onChange={e => setGstin(e.target.value)}
-                        placeholder="e.g. GSTIN-27AAACH7409R1ZZ"
-                        className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-sm shadow-xs"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2">
                         Official Support Email
                       </label>
                       <input
@@ -312,16 +293,60 @@ export default function SettingsPage() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2">
-                        Dispatch Hotline
-                      </label>
-                      <input
-                        type="text"
-                        value={dispatchHotline}
-                        onChange={e => setDispatchHotline(e.target.value)}
-                        placeholder="+91 98765 43210"
-                        className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-sm shadow-xs"
-                      />
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-xs font-black uppercase tracking-wider text-slate-700">
+                          Dispatch Hotline
+                        </label>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors ${
+                          dispatchHotline.length === 10
+                            ? "text-emerald-700 bg-emerald-50 border border-emerald-200"
+                            : dispatchHotline.length > 0
+                            ? "text-amber-700 bg-amber-50 border border-amber-200"
+                            : "text-slate-400"
+                        }`}>
+                          {dispatchHotline.length}/10 digits
+                        </span>
+                      </div>
+                      <div className="relative flex items-center">
+                        <div className="absolute left-3.5 flex items-center gap-1.5 text-xs font-bold text-slate-500 select-none border-r border-slate-200 pr-2.5 z-10 pointer-events-none">
+                          <span>+91</span>
+                        </div>
+                        <input
+                          type="tel"
+                          inputMode="numeric"
+                          maxLength={10}
+                          value={dispatchHotline}
+                          onChange={e => setDispatchHotline(sanitizePhone(e.target.value))}
+                          placeholder="98765 43210"
+                          className={`w-full border rounded-xl pl-16 pr-10 py-3 bg-white text-slate-800 font-mono font-semibold outline-none transition-all text-sm shadow-xs ${
+                            dispatchHotline.length > 0 && dispatchHotline.length < 10
+                              ? "border-rose-400 ring-4 ring-rose-400/10 focus:border-rose-500"
+                              : dispatchHotline.length === 10
+                              ? "border-emerald-400 ring-4 ring-emerald-400/10 focus:border-emerald-500"
+                              : "border-slate-200 focus:border-primary focus:ring-4 focus:ring-primary/10"
+                          }`}
+                        />
+                        {dispatchHotline.length === 10 && (
+                          <div className="absolute right-3 text-emerald-500" title="Valid 10-digit number">
+                            <CheckCircle2 className="w-4 h-4" />
+                          </div>
+                        )}
+                      </div>
+                      {dispatchHotline.length > 0 && dispatchHotline.length < 10 ? (
+                        <p className="text-[11px] text-rose-500 font-semibold mt-1.5 flex items-center gap-1">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          Must be exactly 10 digits ({dispatchHotline.length}/10 entered)
+                        </p>
+                      ) : dispatchHotline.length === 10 ? (
+                        <p className="text-[11px] text-emerald-600 font-semibold mt-1.5 flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5 shrink-0" />
+                          Valid 10-digit hotline number
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-slate-400 mt-1.5">
+                          10-digit customer support & dispatch number
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -359,31 +384,13 @@ export default function SettingsPage() {
                     <span className="text-xs font-black uppercase tracking-wider text-slate-600 block mb-1">
                       Tariff & Pricing Engine
                     </span>
-                    <h2 className="text-xl sm:text-2xl font-black text-slate-900">Pricing Tiers & Tax Rules</h2>
+                    <h2 className="text-xl sm:text-2xl font-black text-slate-900">Pricing Tiers & Rates</h2>
                     <p className="text-xs sm:text-sm font-semibold text-slate-600 mt-1">
-                      Configure standard retail, wholesale, and premium client rates
+                      Configure standard retail, wholesale, and premium client product rates
                     </p>
                   </div>
 
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100 shadow-xs">
-                      <div>
-                        <h4 className="font-black text-slate-800 text-sm sm:text-base">Automated GST Invoicing</h4>
-                        <p className="text-xs sm:text-sm text-slate-600 font-semibold mt-0.5">
-                          Calculate statutory 18% GST on all commercial business invoices
-                        </p>
-                      </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          className="sr-only peer" 
-                          checked={gstEnabled}
-                          onChange={e => setGstEnabled(e.target.checked)}
-                        />
-                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                      </label>
-                    </div>
-
                     <div className="flex items-center justify-between p-4 bg-white rounded-2xl border border-slate-100 shadow-xs">
                       <div>
                         <h4 className="font-black text-slate-800 text-sm sm:text-base">Loyalty Points Redemption Value</h4>
@@ -481,60 +488,20 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              {activeTab === "system" && (
-                <div className="space-y-6 animate-fade-in">
-                  <div className="border-b border-rose-100 pb-5">
-                    <span className="text-xs font-black uppercase tracking-wider text-rose-600 block mb-1">
-                      Danger Zone
-                    </span>
-                    <h2 className="text-xl sm:text-2xl font-black text-slate-900">System Maintenance & Factory Reset</h2>
-                    <p className="text-xs sm:text-sm font-semibold text-slate-600 mt-1">
-                      Wipe testing records and initialize a fresh production database with a new superuser
-                    </p>
-                  </div>
-
-                  <div className="p-6 bg-rose-50/80 border border-rose-200 rounded-2xl space-y-4">
-                    <div className="flex items-start gap-3.5">
-                      <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0 border border-rose-200">
-                        <AlertTriangle className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h3 className="text-base font-black text-rose-950">Clean Production Setup Console</h3>
-                        <p className="text-xs text-rose-800 font-semibold mt-1 leading-relaxed">
-                          This specialized console clears all existing mock clients, deliveries, allocations, glass records, and staff logins. It then configures your primary Superuser account with your chosen username and secure password for live deployment.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="pt-3 border-t border-rose-200/60 flex flex-col sm:flex-row gap-3">
-                      <Button
-                        variant="danger"
-                        onClick={() => router.push("/setup")}
-                        icon={<ArrowRight className="w-4 h-4" />}
-                      >
-                        Open Production Setup & Superuser Console
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* Bottom Actions */}
-              {activeTab !== "system" && (
-                <div className="mt-8 pt-5 border-t border-slate-100 flex justify-end gap-3">
-                  <Button variant="secondary" onClick={handleDiscard}>
-                    Discard Changes
-                  </Button>
-                  <Button
-                    variant="primary"
-                    onClick={handleSave}
-                    disabled={loading}
-                    icon={<Save className="w-4 h-4" />}
-                  >
-                    {loading ? "Saving..." : "Save Settings"}
-                  </Button>
-                </div>
-              )}
+              <div className="mt-8 pt-5 border-t border-slate-100 flex justify-end gap-3">
+                <Button variant="secondary" onClick={handleDiscard}>
+                  Discard Changes
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={handleSave}
+                  disabled={loading}
+                  icon={<Save className="w-4 h-4" />}
+                >
+                  {loading ? "Saving..." : "Save Settings"}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

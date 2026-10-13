@@ -144,12 +144,17 @@ def adjust_inventory_stock(db: Session, inv_type_id: str, stock_adj: schemas.Sto
         
     stock = db.query(models.Stock).filter(models.Stock.inventory_type_id == inv_type_id).first()
     if not stock:
-        stock = models.Stock(inventory_type_id=inv_type_id)
+        stock = models.Stock(
+            inventory_type_id=inv_type_id,
+            full_count=0,
+            empty_count=0,
+            damaged_count=0
+        )
         db.add(stock)
         
-    stock.full_count += stock_adj.add_full
-    stock.empty_count += stock_adj.add_empty
-    stock.damaged_count += stock_adj.add_damaged
+    stock.full_count = (stock.full_count or 0) + stock_adj.add_full
+    stock.empty_count = (stock.empty_count or 0) + stock_adj.add_empty
+    stock.damaged_count = (stock.damaged_count or 0) + stock_adj.add_damaged
     
     db.commit()
     db.refresh(inv_type)

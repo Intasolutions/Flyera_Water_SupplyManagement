@@ -24,9 +24,18 @@ import {
   Recycle,
   CheckCircle2,
   Eye,
-  EyeOff
+  EyeOff,
+  Copy,
+  Check,
+  CreditCard,
+  MapPin,
+  Calendar,
+  AlertCircle,
+  ExternalLink,
+  FileText
 } from "lucide-react";
 import { getUsers, createUser, updateUser, deleteUser, getVehicles, User, Vehicle } from "@/lib/api";
+import { sanitizePhone, isValidPhone, isValidDrivingLicense, formatPhoneDisplay } from "@/lib/validation";
 import { toast } from "react-hot-toast";
 import { useConfirm } from "@/lib/useConfirm";
 
@@ -39,6 +48,11 @@ export default function StaffPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
+  
+  // View Modal State
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [selectedStaff, setSelectedStaff] = useState<User | null>(null);
+  
   const confirm = useConfirm();
 
   // Form states
@@ -50,7 +64,9 @@ export default function StaffPage() {
   const [newRole, setNewRole] = useState("DRIVER");
   const [newAddress, setNewAddress] = useState("");
   const [newIdProofUrl, setNewIdProofUrl] = useState("");
-  const [newAssignedVehicle, setNewAssignedVehicle] = useState("");
+  const [newDrivingLicense, setNewDrivingLicense] = useState("");
+  const [phoneTouched, setPhoneTouched] = useState(false);
+  const [dlTouched, setDlTouched] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
@@ -80,7 +96,41 @@ export default function StaffPage() {
     }
   };
 
+  // Mobile number input sanitization (10 digits only, auto-strips leading 0 and country code)
+  const handlePhoneChange = (val: string) => {
+    setPhoneTouched(true);
+    const cleaned = sanitizePhone(val);
+    setNewPhone(cleaned);
+  };
+
+  // Driving license input handler (uppercase, alphanumeric, max 18 chars)
+  const handleDlChange = (val: string) => {
+    setDlTouched(true);
+    setNewDrivingLicense(val.toUpperCase().slice(0, 18));
+  };
+
+  // Validation feedback
+  const phoneError = useMemo(() => {
+    if (!phoneTouched) return "";
+    if (!newPhone.trim()) return "Mobile number is required.";
+    if (newPhone.trim().length < 10) {
+      return `Must be exactly 10 digits (${newPhone.trim().length}/10 entered).`;
+    }
+    return "";
+  }, [newPhone, phoneTouched]);
+
+  const dlError = useMemo(() => {
+    if (!dlTouched || !newDrivingLicense.trim()) return "";
+    if (!isValidDrivingLicense(newDrivingLicense)) {
+      return "Invalid DL format (e.g. MH1420110012345 or DL-0420110012345).";
+    }
+    return "";
+  }, [newDrivingLicense, dlTouched]);
+
   const handleSaveStaff = async () => {
+    setPhoneTouched(true);
+    setDlTouched(true);
+
     if (!newName.trim()) {
       toast.error("Please enter a staff name");
       return;
@@ -91,15 +141,26 @@ export default function StaffPage() {
       return;
     }
 
+    const cleanPhone = sanitizePhone(newPhone);
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      toast.error("Please enter a valid 10-digit mobile number");
+      return;
+    }
+
+    if (newDrivingLicense.trim() && !isValidDrivingLicense(newDrivingLicense)) {
+      toast.error("Please enter a valid Driving License number or leave it blank");
+      return;
+    }
+
     try {
       const payload: any = {
         name: newName.trim(),
         role: newRole,
-        phone: newPhone.trim() || null,
+        phone: cleanPhone,
         username: newUsername.trim() || null,
         address: newAddress.trim() || null,
         id_proof_url: newIdProofUrl || null,
-        assigned_vehicle_id: newRole === "GLASS_DRIVER" || newRole === "DRIVER" ? (newAssignedVehicle || null) : null,
+        driving_license: newDrivingLicense.trim() ? newDrivingLicense.trim().replace(/\s+/g, '') : null,
       };
       
       if (editId) {
@@ -114,6 +175,12 @@ export default function StaffPage() {
       await fetchStaff();
       setModalOpen(false);
       resetForm();
+
+      // Automatically populate search filter with the newly created/saved phone number
+      if (cleanPhone) {
+        setSearchQuery(cleanPhone);
+        setRoleFilter("all"); // Reset role filter so created member is immediately visible!
+      }
     } catch (error: any) {
       console.error("Failed to save staff:", error);
       toast.error(error.message || "Failed to save staff member");
@@ -125,11 +192,14 @@ export default function StaffPage() {
     setNewName("");
     setNewUsername("");
     setNewPassword("");
+    setShowPassword(false);
     setNewPhone("");
     setNewRole("DRIVER");
     setNewAddress("");
     setNewIdProofUrl("");
-    setNewAssignedVehicle("");
+    setNewDrivingLicense("");
+    setPhoneTouched(false);
+    setDlTouched(false);
   };
 
   const handleEditClick = (s: User) => {
@@ -137,12 +207,20 @@ export default function StaffPage() {
     setNewName(s.name);
     setNewUsername(s.username || "");
     setNewPassword("");
-    setNewPhone(s.phone || "");
+    setShowPassword(false);
+    setNewPhone(s.phone ? sanitizePhone(s.phone) : "");
     setNewRole(s.role);
     setNewAddress(s.address || "");
     setNewIdProofUrl(s.id_proof_url || "");
-    setNewAssignedVehicle(s.assigned_vehicle_id || "");
+    setNewDrivingLicense(s.driving_license || "");
+    setPhoneTouched(false);
+    setDlTouched(false);
     setModalOpen(true);
+  };
+
+  const handleViewClick = (s: User) => {
+    setSelectedStaff(s);
+    setViewModalOpen(true);
   };
 
   const handleAddClick = () => {
@@ -195,13 +273,24 @@ export default function StaffPage() {
     }
   };
 
-  // Filter dynamically
+  // Filter dynamically - smart phone matching strips leading 0s and formatting
   const filteredStaff = useMemo(() => {
+    const rawQuery = searchQuery.trim().toLowerCase();
+    const queryDigits = searchQuery.replace(/\D/g, "").replace(/^0+/, "");
+
     return staff.filter(s => {
-      const matchesSearch = 
-        (s.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.username || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s.phone || "").toLowerCase().includes(searchQuery.toLowerCase());
+      const nameMatch = (s.name || "").toLowerCase().includes(rawQuery);
+      const usernameMatch = (s.username || "").toLowerCase().includes(rawQuery);
+      const dlMatch = (s.driving_license || "").toLowerCase().includes(rawQuery);
+      const rawPhoneMatch = (s.phone || "").toLowerCase().includes(rawQuery);
+
+      const staffDigits = (s.phone || "").replace(/\D/g, "").replace(/^0+/, "");
+      const phoneDigitsMatch = queryDigits.length >= 3 && (
+        staffDigits.includes(queryDigits) ||
+        queryDigits.includes(staffDigits)
+      );
+
+      const matchesSearch = !rawQuery || nameMatch || usernameMatch || dlMatch || rawPhoneMatch || phoneDigitsMatch;
       
       const matchesRole = 
         roleFilter === "all" || s.role.toUpperCase() === roleFilter.toUpperCase();
@@ -231,7 +320,7 @@ export default function StaffPage() {
               <button
                 onClick={() => fetchStaff()}
                 title="Refresh staff"
-                className="p-2.5 bg-white border border-gray-200 hover:border-primary rounded-xl shadow-sm text-text-muted hover:text-primary transition-all active:scale-95"
+                className="p-2.5 bg-white border border-gray-200 hover:border-primary rounded-xl shadow-sm text-text-muted hover:text-primary transition-all active:scale-95 cursor-pointer"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-primary" : ""}`} />
               </button>
@@ -297,7 +386,7 @@ export default function StaffPage() {
               <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-text-muted" />
               <input 
                 type="text" 
-                placeholder="Search staff by name, phone, or username..." 
+                placeholder="Search staff by name, phone, or DL..." 
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 className="w-full pl-10 pr-4 py-2.5 bg-surface border border-gray-200 rounded-xl outline-none text-text text-sm font-medium focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all shadow-sm"
@@ -308,7 +397,7 @@ export default function StaffPage() {
               <div className="flex bg-surface border border-gray-200 rounded-xl p-1 shadow-sm text-xs font-bold flex-wrap">
                 <button
                   onClick={() => setRoleFilter("all")}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                     roleFilter === "all" ? "bg-white shadow text-primary font-black" : "text-text-muted hover:text-text"
                   }`}
                 >
@@ -316,7 +405,7 @@ export default function StaffPage() {
                 </button>
                 <button
                   onClick={() => setRoleFilter("WATER_STAFF")}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                     roleFilter === "WATER_STAFF" ? "bg-white shadow text-sky-600 font-black" : "text-text-muted hover:text-text"
                   }`}
                 >
@@ -324,7 +413,7 @@ export default function StaffPage() {
                 </button>
                 <button
                   onClick={() => setRoleFilter("DRIVER")}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                     roleFilter === "DRIVER" ? "bg-white shadow text-blue-600 font-black" : "text-text-muted hover:text-text"
                   }`}
                 >
@@ -332,7 +421,7 @@ export default function StaffPage() {
                 </button>
                 <button
                   onClick={() => setRoleFilter("HELPER")}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                     roleFilter === "HELPER" ? "bg-white shadow text-cyan-600 font-black" : "text-text-muted hover:text-text"
                   }`}
                 >
@@ -340,7 +429,7 @@ export default function StaffPage() {
                 </button>
                 <button
                   onClick={() => setRoleFilter("GLASS_DRIVER")}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                     roleFilter === "GLASS_DRIVER" ? "bg-white shadow text-purple-600 font-black" : "text-text-muted hover:text-text"
                   }`}
                 >
@@ -348,7 +437,7 @@ export default function StaffPage() {
                 </button>
                 <button
                   onClick={() => setRoleFilter("ADMIN")}
-                  className={`px-3 py-1.5 rounded-lg transition-all ${
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
                     roleFilter === "ADMIN" ? "bg-white shadow text-amber-600 font-black" : "text-text-muted hover:text-text"
                   }`}
                 >
@@ -359,7 +448,7 @@ export default function StaffPage() {
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="text-xs font-bold text-primary hover:underline px-2 py-1 shrink-0"
+                  className="text-xs font-bold text-primary hover:underline px-2 py-1 shrink-0 cursor-pointer"
                 >
                   Clear
                 </button>
@@ -377,6 +466,7 @@ export default function StaffPage() {
                 key={s.id} 
                 staff={s} 
                 assignedVehiclePlate={assignedVeh?.plate_number}
+                onView={() => handleViewClick(s)}
                 onEdit={() => handleEditClick(s)} 
                 onDelete={() => handleDeleteStaff(s.id, s.name)} 
               />
@@ -392,7 +482,12 @@ export default function StaffPage() {
                   ? "No staff match your current filter criteria."
                   : "Start onboarding drivers and helpers to assign deliveries."}
               </p>
-              <div className="mt-4">
+              <div className="mt-4 flex justify-center gap-2">
+                {searchQuery && (
+                  <Button variant="secondary" onClick={() => setSearchQuery("")} size="sm">
+                    Clear Search
+                  </Button>
+                )}
                 <Button onClick={handleAddClick} icon={<Plus className="w-4 h-4" />} size="sm">
                   Add Staff Member
                 </Button>
@@ -406,7 +501,7 @@ export default function StaffPage() {
           isOpen={modalOpen}
           onClose={() => setModalOpen(false)}
           title={editId ? "Update Staff Profile" : "Register Staff Member"}
-          subtitle={editId ? "Modify roles, contact number, or vehicle link." : "Create credentials and roles for fleet operators."}
+          subtitle={editId ? "Modify roles, contact number, or driving credentials." : "Create credentials and roles for fleet operators."}
           width="2xl"
           actions={
             <div className="flex gap-3 w-full">
@@ -423,7 +518,7 @@ export default function StaffPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
-                  Full Name
+                  Full Name <span className="text-rose-500">*</span>
                 </label>
                 <input 
                   type="text" 
@@ -435,7 +530,7 @@ export default function StaffPage() {
               </div>
               <div>
                 <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
-                  Role
+                  Role <span className="text-rose-500">*</span>
                 </label>
                 <select 
                   value={newRole} 
@@ -467,7 +562,7 @@ export default function StaffPage() {
               </div>
               <div>
                 <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
-                  Password {editId ? "(Leave blank to keep unchanged)" : ""}
+                  Password {editId ? "(Leave blank to keep unchanged)" : <span className="text-rose-500">*</span>}
                 </label>
                 <div className="relative">
                   <input 
@@ -481,7 +576,7 @@ export default function StaffPage() {
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     aria-label={showPassword ? "Hide password" : "Show password"}
-                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-text-muted hover:text-text transition-colors focus:outline-none"
+                    className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-text-muted hover:text-text transition-colors focus:outline-none cursor-pointer"
                   >
                     {showPassword ? (
                       <EyeOff className="w-4 h-4" />
@@ -493,36 +588,120 @@ export default function StaffPage() {
               </div>
             </div>
 
+            {/* Mobile Number & Driving License (Assign Vehicle removed per instructions) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Mobile Number Field with 10-digit validation */}
               <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
-                  Phone Number
-                </label>
-                <input 
-                  type="text" 
-                  placeholder="+91 98765 43210" 
-                  value={newPhone} 
-                  onChange={e => setNewPhone(e.target.value)} 
-                  className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium" 
-                />
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-text-muted">
+                    Mobile Number <span className="text-rose-500">*</span>
+                  </label>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors ${
+                    newPhone.length === 10
+                      ? "text-emerald-700 bg-emerald-50 border border-emerald-200"
+                      : newPhone.length > 0
+                      ? "text-amber-700 bg-amber-50 border border-amber-200"
+                      : "text-slate-400"
+                  }`}>
+                    {newPhone.length}/10 digits
+                  </span>
+                </div>
+                
+                <div className="relative flex items-center">
+                  <div className="absolute left-3.5 flex items-center gap-1.5 text-xs font-bold text-slate-500 select-none border-r border-slate-200 pr-2.5 z-10 pointer-events-none">
+                    <span>+91</span>
+                  </div>
+                  <input 
+                    type="tel" 
+                    inputMode="numeric"
+                    maxLength={10}
+                    placeholder="98765 43210" 
+                    value={newPhone} 
+                    onChange={e => handlePhoneChange(e.target.value)} 
+                    onBlur={() => setPhoneTouched(true)}
+                    className={`w-full bg-surface border rounded-xl pl-16 pr-10 py-3 outline-none text-text font-mono font-medium tracking-wide transition-all ${
+                      phoneError
+                        ? "border-rose-400 ring-4 ring-rose-400/10 focus:border-rose-500"
+                        : newPhone.length === 10
+                        ? "border-emerald-400 ring-4 ring-emerald-400/10 focus:border-emerald-500"
+                        : "border-gray-200 focus:border-primary focus:ring-4 focus:ring-primary/10"
+                    }`} 
+                  />
+                  {newPhone.length === 10 && (
+                    <div className="absolute right-3 text-emerald-500" title="Valid 10-digit number">
+                      <CheckCircle2 className="w-4 h-4" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Professional UI Error / Info Message */}
+                {phoneError ? (
+                  <p className="text-[11px] text-rose-500 font-semibold mt-1.5 flex items-center gap-1 animate-in fade-in duration-200">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    {phoneError}
+                  </p>
+                ) : newPhone.length === 10 ? (
+                  <p className="text-[11px] text-emerald-600 font-semibold mt-1.5 flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5 shrink-0" />
+                    Valid 10-digit mobile number
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-text-muted mt-1.5">
+                    Enter 10-digit mobile number (digits only)
+                  </p>
+                )}
               </div>
 
+              {/* Driving License Field (Optional) with Validation */}
               <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
-                  Assign Vehicle (For Drivers)
-                </label>
-                <select 
-                  value={newAssignedVehicle} 
-                  onChange={e => setNewAssignedVehicle(e.target.value)} 
-                  className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium appearance-none cursor-pointer"
-                >
-                  <option value="">No Vehicle Assigned</option>
-                  {vehicles.map(v => (
-                    <option key={v.id} value={v.id}>
-                      {v.plate_number} ({v.model || "Truck"})
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-text-muted">
+                    Driving License (DL)
+                  </label>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1.5 py-0.5 bg-slate-100 rounded">
+                    Optional
+                  </span>
+                </div>
+
+                <div className="relative flex items-center">
+                  <input 
+                    type="text" 
+                    placeholder="e.g. MH1420110012345" 
+                    value={newDrivingLicense} 
+                    onChange={e => handleDlChange(e.target.value)} 
+                    onBlur={() => setDlTouched(true)}
+                    maxLength={18}
+                    className={`w-full bg-surface border rounded-xl px-4 py-3 outline-none text-text font-mono font-medium uppercase tracking-wider transition-all ${
+                      dlError
+                        ? "border-rose-400 ring-4 ring-rose-400/10 focus:border-rose-500"
+                        : newDrivingLicense && !dlError
+                        ? "border-blue-400 ring-4 ring-blue-400/10 focus:border-blue-500"
+                        : "border-gray-200 focus:border-primary focus:ring-4 focus:ring-primary/10"
+                    }`} 
+                  />
+                  {newDrivingLicense && !dlError && (
+                    <div className="absolute right-3 text-blue-500" title="Valid Driving License">
+                      <CheckCircle2 className="w-4 h-4" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Professional UI Error / Info Message */}
+                {dlError ? (
+                  <p className="text-[11px] text-rose-500 font-semibold mt-1.5 flex items-center gap-1 animate-in fade-in duration-200">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    {dlError}
+                  </p>
+                ) : newDrivingLicense && !dlError ? (
+                  <p className="text-[11px] text-blue-600 font-semibold mt-1.5 flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5 shrink-0" />
+                    Valid Driving License format
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-text-muted mt-1.5">
+                    State code + RTO + number (e.g. MH1420110012345)
+                  </p>
+                )}
               </div>
             </div>
 
@@ -540,6 +719,248 @@ export default function StaffPage() {
             </div>
           </div>
         </Modal>
+
+        {/* View Staff Details Modal */}
+        <Modal
+          isOpen={viewModalOpen}
+          onClose={() => setViewModalOpen(false)}
+          title="Staff Personnel Profile"
+          subtitle={selectedStaff ? `Comprehensive profile & credentials for ${selectedStaff.name}.` : "Staff overview"}
+          width="2xl"
+          actions={
+            <div className="flex gap-3 w-full">
+              <Button 
+                variant="secondary" 
+                onClick={() => setViewModalOpen(false)} 
+                className="flex-1 font-bold"
+              >
+                Close
+              </Button>
+              <Button 
+                variant="primary" 
+                onClick={() => {
+                  if (selectedStaff) {
+                    setViewModalOpen(false);
+                    handleEditClick(selectedStaff);
+                  }
+                }} 
+                icon={<Edit2 className="w-4 h-4" />}
+                className="flex-1 font-bold"
+              >
+                Edit Profile
+              </Button>
+            </div>
+          }
+        >
+          {selectedStaff && (() => {
+            const assignedVeh = vehicles.find(v => v.id === selectedStaff.assigned_vehicle_id);
+            const roleInfo = {
+              WATER_STAFF: { label: "Water Staff (Operations / Desk)", badge: "bg-sky-50 text-sky-700 border-sky-200" },
+              DRIVER: { label: "Water Delivery Driver", badge: "bg-blue-50 text-blue-700 border-blue-200" },
+              HELPER: { label: "Route Helper (Water Fleet)", badge: "bg-cyan-50 text-cyan-700 border-cyan-200" },
+              GLASS_DRIVER: { label: "Glass Collection Driver", badge: "bg-purple-50 text-purple-700 border-purple-200" },
+              GLASS_STAFF: { label: "Godown Worker (Glass)", badge: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+              ADMIN: { label: "System Administrator (Owner)", badge: "bg-amber-50 text-amber-700 border-amber-200" },
+            }[selectedStaff.role.toUpperCase()] || { label: selectedStaff.role, badge: "bg-gray-50 text-gray-700 border-gray-200" };
+
+            const initials = selectedStaff.name
+              .split(" ")
+              .map(p => p[0])
+              .slice(0, 2)
+              .join("")
+              .toUpperCase();
+
+            return (
+              <div className="space-y-5 py-1">
+                {/* Hero Header Card */}
+                <div className="p-5 bg-gradient-to-br from-slate-50 via-sky-50/40 to-blue-50/30 rounded-2xl border border-slate-200/90 shadow-xs flex flex-col sm:flex-row items-center sm:items-start gap-4 text-center sm:text-left">
+                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-sky-600 to-blue-500 text-white font-black text-xl flex items-center justify-center shadow-md shrink-0">
+                    {initials}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-1">
+                      <h2 className="text-xl font-black text-slate-900 tracking-tight">
+                        {selectedStaff.name}
+                      </h2>
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Active Account
+                      </span>
+                    </div>
+                    <p className="text-xs font-semibold text-slate-500 mb-2">
+                      @{selectedStaff.username || "no-login-handle"}
+                    </p>
+                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-lg border ${roleInfo.badge}`}>
+                        {roleInfo.label}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Grid of Key Info */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {/* Mobile Number Card */}
+                  <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs hover:border-sky-300 transition-colors">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-sky-600" />
+                        Mobile Number
+                      </span>
+                      {selectedStaff.phone && (
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                          10-Digit Verified
+                        </span>
+                      )}
+                    </div>
+                    {selectedStaff.phone ? (
+                      <div className="flex items-center justify-between gap-2 mt-1">
+                        <span className="font-mono font-bold text-base text-slate-800">
+                          {formatPhoneDisplay(selectedStaff.phone)}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(selectedStaff.phone || "");
+                              toast.success("Phone number copied!");
+                            }}
+                            title="Copy number"
+                            className="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
+                          <a
+                            href={`tel:+91${selectedStaff.phone}`}
+                            title="Call staff"
+                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                          >
+                            <Phone className="w-4 h-4" />
+                          </a>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-400 italic">No mobile number listed</p>
+                    )}
+                  </div>
+
+                  {/* Driving License Card */}
+                  <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs hover:border-sky-300 transition-colors">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <CreditCard className="w-3.5 h-3.5 text-blue-600" />
+                        Driving License
+                      </span>
+                      {selectedStaff.driving_license ? (
+                        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                          Recorded
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-medium text-slate-400 bg-slate-50 px-2 py-0.5 rounded-full">
+                          Optional / None
+                        </span>
+                      )}
+                    </div>
+                    {selectedStaff.driving_license ? (
+                      <div className="flex items-center justify-between gap-2 mt-1">
+                        <span className="font-mono font-extrabold text-base tracking-wider text-slate-800">
+                          {selectedStaff.driving_license}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(selectedStaff.driving_license || "");
+                            toast.success("DL number copied!");
+                          }}
+                          title="Copy DL"
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                        >
+                          <Copy className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-slate-400 italic">Not provided</p>
+                    )}
+                  </div>
+
+                  {/* Residential Address Card */}
+                  <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs sm:col-span-2">
+                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-rose-500" />
+                      Residential Address
+                    </span>
+                    <p className="text-sm font-medium text-slate-700">
+                      {selectedStaff.address || (
+                        <span className="text-slate-400 italic">No residential address recorded on file</span>
+                      )}
+                    </p>
+                  </div>
+
+                  {/* Assigned Vehicle (If present in database) */}
+                  {assignedVeh && (
+                    <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-200/80 shadow-xs sm:col-span-2 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-700">
+                          <Truck className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-black uppercase tracking-wider text-emerald-800 block">
+                            Assigned Delivery Vehicle
+                          </span>
+                          <span className="font-mono font-bold text-sm text-slate-800">
+                            {assignedVeh.plate_number} ({assignedVeh.model || "Truck"})
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-xs font-bold text-emerald-700 bg-white px-3 py-1 rounded-lg border border-emerald-200 shadow-2xs">
+                        Fleet Vehicle
+                      </span>
+                    </div>
+                  )}
+
+                  {/* ID Proof Document if uploaded */}
+                  {selectedStaff.id_proof_url && (
+                    <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs sm:col-span-2 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl bg-slate-100 text-slate-700">
+                          <FileText className="w-5 h-5 text-primary" />
+                        </div>
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 block">
+                            Identity Document
+                          </span>
+                          <span className="text-[11px] text-slate-400">
+                            Uploaded credential attachment
+                          </span>
+                        </div>
+                      </div>
+                      <a
+                        href={selectedStaff.id_proof_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline px-3 py-1.5 rounded-xl bg-primary/5 hover:bg-primary/10 transition-colors"
+                      >
+                        <span>View Document</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  )}
+
+                  {/* System Meta */}
+                  <div className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/60 sm:col-span-2 flex flex-wrap items-center justify-between text-[11px] text-slate-500 font-medium">
+                    <span className="flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                      Registered: {selectedStaff.created_at ? new Date(selectedStaff.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Active"}
+                    </span>
+                    <span className="text-slate-400">
+                      ID: <span className="font-mono text-slate-600">{selectedStaff.id}</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </Modal>
       </main>
     </div>
   );
@@ -548,11 +969,13 @@ export default function StaffPage() {
 function StaffCard({ 
   staff, 
   assignedVehiclePlate, 
+  onView,
   onEdit, 
   onDelete 
 }: { 
   staff: User; 
   assignedVehiclePlate?: string; 
+  onView: () => void;
   onEdit: () => void; 
   onDelete: () => void; 
 }) {
@@ -575,7 +998,7 @@ function StaffCard({
     .toUpperCase();
 
   return (
-    <div className="glass-panel p-5 rounded-3xl hover:shadow-md transition-all border border-black/5 flex flex-col justify-between group relative overflow-hidden">
+    <div className="glass-panel p-5 rounded-3xl hover:shadow-md transition-all border border-black/5 flex flex-col justify-between group relative overflow-hidden bg-white">
       <div>
         <div className="flex justify-between items-start mb-3 gap-2">
           <div className="flex items-center gap-3">
@@ -598,13 +1021,31 @@ function StaffCard({
         </div>
 
         <div className="space-y-2 py-3 border-y border-black/5 my-3 text-xs">
-          <div className="flex items-center gap-2 text-text-muted">
-            <Phone className="w-3.5 h-3.5 text-text-muted" />
-            <span className="font-semibold text-text">{staff.phone || "No phone listed"}</span>
+          <div className="flex items-center justify-between text-text-muted">
+            <div className="flex items-center gap-2">
+              <Phone className="w-3.5 h-3.5 text-sky-600" />
+              <span className="font-semibold text-text font-mono">
+                {formatPhoneDisplay(staff.phone)}
+              </span>
+            </div>
+            {staff.phone && staff.phone.replace(/\D/g, "").length === 10 && (
+              <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100">
+                10-digit
+              </span>
+            )}
           </div>
 
+          {staff.driving_license && (
+            <div className="flex items-center gap-2 pt-0.5">
+              <span className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-lg font-mono">
+                <CreditCard className="w-3 h-3 text-blue-600" />
+                DL: {staff.driving_license}
+              </span>
+            </div>
+          )}
+
           {assignedVehiclePlate ? (
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-2 pt-0.5">
               <span className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-100 px-2.5 py-0.5 rounded-lg">
                 <Truck className="w-3.5 h-3.5 text-emerald-600" />
                 Vehicle: {assignedVehiclePlate}
@@ -618,13 +1059,23 @@ function StaffCard({
         </div>
       </div>
 
-      <div className="flex gap-2 pt-1">
+      {/* Action Buttons: View, Edit, Delete */}
+      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-black/5 mt-2">
+        <Button 
+          variant="secondary" 
+          size="sm" 
+          onClick={onView} 
+          icon={<Eye className="w-3.5 h-3.5 text-sky-600" />}
+          className="hover:border-sky-300 hover:bg-sky-50/60 hover:text-sky-700 font-bold text-xs"
+        >
+          View
+        </Button>
         <Button 
           variant="secondary" 
           size="sm" 
           onClick={onEdit} 
-          icon={<Edit2 className="w-3.5 h-3.5" />}
-          className="flex-1"
+          icon={<Edit2 className="w-3.5 h-3.5 text-blue-600" />}
+          className="hover:border-blue-300 hover:bg-blue-50/60 hover:text-blue-700 font-bold text-xs"
         >
           Edit
         </Button>
@@ -633,7 +1084,7 @@ function StaffCard({
           size="sm" 
           onClick={onDelete} 
           icon={<Trash2 className="w-3.5 h-3.5" />}
-          className="flex-1"
+          className="font-bold text-xs"
         >
           Delete
         </Button>

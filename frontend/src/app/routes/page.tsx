@@ -19,9 +19,24 @@ import {
   Compass, 
   Layers, 
   X,
-  ExternalLink
+  ExternalLink,
+  UserPlus,
+  Phone,
+  Check,
+  CheckCircle2,
+  AlertCircle
 } from "lucide-react";
-import { getRoutes, createRoute, updateRoute, deleteRoute, Route, getClients, Client } from "@/lib/api";
+import { 
+  getRoutes, 
+  createRoute, 
+  updateRoute, 
+  deleteRoute, 
+  Route, 
+  getClients, 
+  updateClient, 
+  Client 
+} from "@/lib/api";
+import { formatPhoneDisplay } from "@/lib/validation";
 import { toast } from "react-hot-toast";
 import { useConfirm } from "@/lib/useConfirm";
 
@@ -35,6 +50,13 @@ export default function RoutesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedAreaFilter, setSelectedAreaFilter] = useState("all");
   const confirm = useConfirm();
+
+  // Assign Clients Modal States
+  const [assignRoute, setAssignRoute] = useState<Route | null>(null);
+  const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
+  const [clientSearchQuery, setClientSearchQuery] = useState("");
+  const [clientFilterTab, setClientFilterTab] = useState<"all" | "assigned" | "unassigned">("all");
+  const [savingAssignments, setSavingAssignments] = useState(false);
 
   // New route state
   const [newRouteName, setNewRouteName] = useState("");
@@ -115,6 +137,83 @@ export default function RoutesPage() {
     }
   };
 
+  // Open Assign Clients Modal
+  const handleOpenAssignModal = (r: Route) => {
+    setAssignRoute(r);
+    const assignedIds = new Set<string>();
+    clients.forEach(c => {
+      if (c.route_id === r.id) {
+        assignedIds.add(c.id);
+      }
+    });
+    setSelectedClientIds(assignedIds);
+    setClientSearchQuery("");
+    setClientFilterTab("all");
+  };
+
+  const handleToggleClient = (clientId: string) => {
+    setSelectedClientIds(prev => {
+      const next = new Set(prev);
+      if (next.has(clientId)) {
+        next.delete(clientId);
+      } else {
+        next.add(clientId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllShown = (clientsToShow: Client[]) => {
+    setSelectedClientIds(prev => {
+      const next = new Set(prev);
+      clientsToShow.forEach(c => next.add(c.id));
+      return next;
+    });
+  };
+
+  const handleDeselectAllShown = (clientsToShow: Client[]) => {
+    setSelectedClientIds(prev => {
+      const next = new Set(prev);
+      clientsToShow.forEach(c => next.delete(c.id));
+      return next;
+    });
+  };
+
+  const handleSaveAssignments = async () => {
+    if (!assignRoute) return;
+    try {
+      setSavingAssignments(true);
+
+      const updates: Promise<any>[] = [];
+
+      clients.forEach(c => {
+        const wasAssigned = c.route_id === assignRoute.id;
+        const isNowSelected = selectedClientIds.has(c.id);
+
+        if (!wasAssigned && isNowSelected) {
+          updates.push(updateClient(c.id, { route_id: assignRoute.id }));
+        } else if (wasAssigned && !isNowSelected) {
+          updates.push(updateClient(c.id, { route_id: null }));
+        }
+      });
+
+      if (updates.length > 0) {
+        await Promise.all(updates);
+        toast.success(`Updated clients for ${assignRoute.name}!`);
+        await fetchData();
+      } else {
+        toast("No changes to client assignments");
+      }
+
+      setAssignRoute(null);
+    } catch (err: any) {
+      console.error("Failed to update route assignments:", err);
+      toast.error(err.message || "Failed to save client assignments");
+    } finally {
+      setSavingAssignments(false);
+    }
+  };
+
   // Distinct Areas
   const uniqueAreas = useMemo(() => {
     const areas = new Set<string>();
@@ -142,6 +241,26 @@ export default function RoutesPage() {
   const totalRoutesCount = routes.length;
   const totalCoveredClients = clients.filter(c => !!c.route_id).length;
   const avgClientsPerRoute = totalRoutesCount > 0 ? (totalCoveredClients / totalRoutesCount).toFixed(1) : "0";
+
+  // Filtered clients for assign modal
+  const filteredModalClients = useMemo(() => {
+    if (!assignRoute) return [];
+    const q = clientSearchQuery.trim().toLowerCase();
+
+    return clients.filter(c => {
+      const isAssignedToThis = c.route_id === assignRoute.id;
+      if (clientFilterTab === "assigned" && !isAssignedToThis) return false;
+      if (clientFilterTab === "unassigned" && !!c.route_id) return false;
+
+      if (q) {
+        const matchesName = (c.name || "").toLowerCase().includes(q);
+        const matchesPhone = (c.phone || "").toLowerCase().includes(q);
+        const matchesAddress = (c.address || "").toLowerCase().includes(q);
+        return matchesName || matchesPhone || matchesAddress;
+      }
+      return true;
+    });
+  }, [clients, assignRoute, clientSearchQuery, clientFilterTab]);
 
   return (
     <div className="flex min-h-screen bg-[#FDFBF7]">
@@ -230,7 +349,7 @@ export default function RoutesPage() {
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -291,6 +410,7 @@ export default function RoutesPage() {
                   key={r.id}
                   route={r}
                   clients={routeClients}
+                  onAssignClients={() => handleOpenAssignModal(r)}
                   onEdit={() => handleEditClick(r)}
                   onDelete={() => handleDeleteClick(r.id)}
                   onViewMore={() => setViewClientsModal({ route: r, clients: routeClients })}
@@ -346,6 +466,206 @@ export default function RoutesPage() {
           </div>
         </Modal>
 
+        {/* Assign Clients to Route Modal */}
+        <Modal
+          isOpen={!!assignRoute}
+          onClose={() => setAssignRoute(null)}
+          title={`Assign Clients to ${assignRoute?.name || "Route"}`}
+          subtitle={`Select which clients should receive deliveries on this route (${assignRoute?.area || "General Zone"}).`}
+          width="2xl"
+          actions={
+            <div className="flex gap-3 w-full">
+              <Button 
+                variant="secondary" 
+                onClick={() => setAssignRoute(null)} 
+                fullWidth
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="primary" 
+                onClick={handleSaveAssignments} 
+                disabled={savingAssignments}
+                fullWidth
+                icon={<CheckCircle2 className="w-4 h-4" />}
+              >
+                {savingAssignments 
+                  ? "Saving Assignments..." 
+                  : `Save Assignments (${selectedClientIds.size} Clients)`}
+              </Button>
+            </div>
+          }
+        >
+          {assignRoute && (() => {
+            const assignedCount = clients.filter(c => c.route_id === assignRoute.id).length;
+            const unassignedCount = clients.filter(c => !c.route_id).length;
+
+            return (
+              <div className="space-y-4">
+                {/* Search & Tabs Toolbar */}
+                <div className="space-y-3 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80">
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search clients by name, phone, or address..."
+                      value={clientSearchQuery}
+                      onChange={e => setClientSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all"
+                    />
+                    {clientSearchQuery && (
+                      <button
+                        onClick={() => setClientSearchQuery("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/60">
+                    {/* Filter Tabs */}
+                    <div className="flex items-center gap-1.5 text-xs font-bold">
+                      <button
+                        onClick={() => setClientFilterTab("all")}
+                        className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                          clientFilterTab === "all"
+                            ? "bg-white shadow-xs text-primary font-black border border-slate-200"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        All ({clients.length})
+                      </button>
+                      <button
+                        onClick={() => setClientFilterTab("assigned")}
+                        className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                          clientFilterTab === "assigned"
+                            ? "bg-white shadow-xs text-emerald-700 font-black border border-slate-200"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        This Route ({assignedCount})
+                      </button>
+                      <button
+                        onClick={() => setClientFilterTab("unassigned")}
+                        className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                          clientFilterTab === "unassigned"
+                            ? "bg-white shadow-xs text-amber-700 font-black border border-slate-200"
+                            : "text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        Unassigned ({unassignedCount})
+                      </button>
+                    </div>
+
+                    {/* Quick Selection Helpers */}
+                    <div className="flex items-center gap-2 text-xs font-semibold">
+                      <button
+                        onClick={() => handleSelectAllShown(filteredModalClients)}
+                        className="text-primary hover:underline cursor-pointer"
+                      >
+                        Select All Shown
+                      </button>
+                      <span className="text-slate-300">|</span>
+                      <button
+                        onClick={() => handleDeselectAllShown(filteredModalClients)}
+                        className="text-slate-500 hover:text-rose-600 hover:underline cursor-pointer"
+                      >
+                        Deselect All
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Clients Selection List */}
+                <div className="max-h-[50vh] overflow-y-auto space-y-2 pr-1 divide-y divide-slate-100">
+                  {filteredModalClients.length === 0 ? (
+                    <div className="text-center py-10 text-slate-400 font-medium text-xs sm:text-sm">
+                      No clients found matching your filter criteria.
+                    </div>
+                  ) : (
+                    filteredModalClients.map(c => {
+                      const isSelected = selectedClientIds.has(c.id);
+                      const isAssignedToThis = c.route_id === assignRoute.id;
+                      const otherRoute = c.route_id && !isAssignedToThis ? routes.find(r => r.id === c.route_id) : null;
+
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => handleToggleClient(c.id)}
+                          className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                            isSelected
+                              ? "bg-sky-50/70 border-sky-300 shadow-xs"
+                              : "bg-white border-slate-200/80 hover:border-slate-300"
+                          }`}
+                        >
+                          <div className="flex items-start gap-3 min-w-0">
+                            {/* Checkbox */}
+                            <div className="pt-0.5 shrink-0">
+                              <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors ${
+                                isSelected 
+                                  ? "bg-primary border-primary text-white" 
+                                  : "border-slate-300 bg-white"
+                              }`}>
+                                {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                              </div>
+                            </div>
+
+                            {/* Client Info */}
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="font-extrabold text-slate-800 text-sm truncate">
+                                  {c.name}
+                                </h4>
+                                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                                  {c.tier || "Standard"}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 mt-1">
+                                {c.phone && (
+                                  <span className="flex items-center gap-1 font-mono font-medium text-slate-700">
+                                    <Phone className="w-3 h-3 text-sky-600" />
+                                    {formatPhoneDisplay(c.phone)}
+                                  </span>
+                                )}
+                                {c.address && (
+                                  <span className="flex items-center gap-1 truncate max-w-xs text-slate-600">
+                                    <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                                    <span className="truncate">{c.address}</span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Route Status Badge */}
+                          <div className="shrink-0 text-right">
+                            {isAssignedToThis ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <Check className="w-3 h-3" />
+                                On This Route
+                              </span>
+                            ) : otherRoute ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 max-w-[120px] truncate" title={`Currently on ${otherRoute.name}`}>
+                                <span>Route: {otherRoute.name}</span>
+                              </span>
+                            ) : (
+                              <span className="px-2 py-1 rounded-md text-[11px] font-medium bg-slate-100 text-slate-500">
+                                Unassigned
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+        </Modal>
+
         {/* View Route Clients Modal */}
         <Modal
           isOpen={!!viewClientsModal}
@@ -354,9 +674,25 @@ export default function RoutesPage() {
           subtitle={`${viewClientsModal?.clients.length || 0} registered delivery locations in this route`}
           width="lg"
           actions={
-            <Button variant="secondary" onClick={() => setViewClientsModal(null)} fullWidth>
-              Close
-            </Button>
+            <div className="flex gap-3 w-full">
+              <Button variant="secondary" onClick={() => setViewClientsModal(null)} fullWidth>
+                Close
+              </Button>
+              {viewClientsModal && (
+                <Button 
+                  variant="primary" 
+                  onClick={() => {
+                    const r = viewClientsModal.route;
+                    setViewClientsModal(null);
+                    handleOpenAssignModal(r);
+                  }}
+                  icon={<UserPlus className="w-4 h-4" />}
+                  fullWidth
+                >
+                  Manage / Assign Clients
+                </Button>
+              )}
+            </div>
           }
         >
           {viewClientsModal && (
@@ -377,13 +713,19 @@ export default function RoutesPage() {
                         <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                         {c.address || "No address provided"}
                       </p>
+                      {c.phone && (
+                        <p className="text-xs text-slate-600 font-mono font-medium flex items-center gap-1.5 mt-1">
+                          <Phone className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                          {formatPhoneDisplay(c.phone)}
+                        </p>
+                      )}
                     </div>
                     <div className="text-right">
                       <span className="text-xs font-black uppercase tracking-wider text-slate-600 block mb-1">
-                        Subscription
+                        Tier
                       </span>
                       <span className="bg-sky-50 text-sky-800 border border-sky-200 px-2.5 py-1 rounded-lg text-xs font-black">
-                        {c.tier}
+                        {c.tier || "Standard"}
                       </span>
                     </div>
                   </div>
@@ -400,12 +742,14 @@ export default function RoutesPage() {
 function RouteCard({
   route,
   clients,
+  onAssignClients,
   onEdit,
   onDelete,
   onViewMore,
 }: {
   route: Route;
   clients: Client[];
+  onAssignClients: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onViewMore: () => void;
@@ -414,7 +758,7 @@ function RouteCard({
   const hasMore = clients.length > 4;
 
   return (
-    <div className="glass-card p-6 flex flex-col justify-between h-full relative group transition-all duration-300 hover:shadow-md border-slate-100">
+    <div className="glass-card p-6 flex flex-col justify-between h-full relative group transition-all duration-300 hover:shadow-md border-slate-100 bg-white rounded-3xl">
       <div>
         {/* Top Header */}
         <div className="flex items-start justify-between gap-3 mb-4">
@@ -461,7 +805,7 @@ function RouteCard({
               {hasMore && (
                 <button
                   onClick={onViewMore}
-                  className="bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-100 px-2.5 py-1 rounded-xl text-xs font-black transition-all shadow-xs active:scale-95"
+                  className="bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-100 px-2.5 py-1 rounded-xl text-xs font-black transition-all shadow-xs active:scale-95 cursor-pointer"
                 >
                   +{clients.length - 4} More
                 </button>
@@ -471,14 +815,25 @@ function RouteCard({
         </div>
       </div>
 
-      {/* Card Actions */}
-      <div className="flex gap-2 pt-4 border-t border-slate-100">
-        <Button variant="secondary" size="sm" onClick={onEdit} className="flex-1" icon={<Edit2 className="w-3.5 h-3.5" />}>
-          Edit
+      {/* Card Actions: Assign Client button + Edit/Delete */}
+      <div className="space-y-2 pt-4 border-t border-slate-100">
+        <Button 
+          variant="secondary" 
+          size="sm" 
+          onClick={onAssignClients} 
+          className="w-full font-bold bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 transition-all hover:scale-[1.01] active:scale-[0.99] flex items-center justify-center gap-2 shadow-2xs py-2.5"
+          icon={<UserPlus className="w-4 h-4 text-sky-600" />}
+        >
+          Assign Clients ({clients.length})
         </Button>
-        <Button variant="danger" size="sm" onClick={onDelete} className="flex-1" icon={<Trash2 className="w-3.5 h-3.5" />}>
-          Delete
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" size="sm" onClick={onEdit} className="flex-1 font-bold text-xs" icon={<Edit2 className="w-3.5 h-3.5" />}>
+            Edit
+          </Button>
+          <Button variant="danger" size="sm" onClick={onDelete} className="flex-1 font-bold text-xs" icon={<Trash2 className="w-3.5 h-3.5" />}>
+            Delete
+          </Button>
+        </div>
       </div>
     </div>
   );

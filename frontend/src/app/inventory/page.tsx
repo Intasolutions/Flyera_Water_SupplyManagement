@@ -34,6 +34,7 @@ export default function InventoryPage() {
   const [addFull, setAddFull] = useState(0);
   const [addEmpty, setAddEmpty] = useState(0);
   const [addDamaged, setAddDamaged] = useState(0);
+  const [adjustingStock, setAdjustingStock] = useState(false);
 
   // Item create/edit states
   const [itemModalOpen, setItemModalOpen] = useState(false);
@@ -61,6 +62,7 @@ export default function InventoryPage() {
   const handleEditStock = async () => {
     if (!editingId) return;
     try {
+      setAdjustingStock(true);
       await adjustInventoryStock(editingId, {
         add_full: addFull,
         add_empty: addEmpty,
@@ -75,6 +77,8 @@ export default function InventoryPage() {
     } catch (error: any) {
       console.error("Failed to update stock:", error);
       toast.error(error.message || "Failed to adjust stock");
+    } finally {
+      setAdjustingStock(false);
     }
   };
 
@@ -386,8 +390,13 @@ export default function InventoryPage() {
               <Button variant="secondary" onClick={() => setEditingId(null)} fullWidth>
                 Cancel
               </Button>
-              <Button variant="primary" onClick={handleEditStock} fullWidth>
-                Update Stock
+              <Button 
+                variant="primary" 
+                onClick={handleEditStock} 
+                disabled={adjustingStock} 
+                fullWidth
+              >
+                {adjustingStock ? "Updating Stock..." : "Update Stock"}
               </Button>
             </div>
           }

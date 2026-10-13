@@ -99,16 +99,25 @@ async function fetcher<T>(endpoint: string, options?: RequestInit, isRetry: bool
   }
 
   if (!response.ok) {
-    let errorMessage = 'An error occurred while fetching data.';
+    let errorMessage = `Server returned error (${response.status})`;
     try {
-      const errorData = await response.json();
-      if (Array.isArray(errorData.detail)) {
-        errorMessage = errorData.detail.map((e: any) => e.msg || JSON.stringify(e)).join(', ');
-      } else {
-        errorMessage = errorData.detail || errorMessage;
+      const text = await response.text();
+      try {
+        const errorData = JSON.parse(text);
+        if (Array.isArray(errorData.detail)) {
+          errorMessage = errorData.detail.map((e: any) => e.msg || JSON.stringify(e)).join(', ');
+        } else if (errorData.detail) {
+          errorMessage = errorData.detail;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+      } catch {
+        if (text && text.trim().length > 0 && text.length < 150) {
+          errorMessage = text.trim();
+        }
       }
     } catch (e) {
-      // Ignore if cannot parse error response
+      // Ignore text read failure
     }
     const isAuthError = response.status === 401 || 
       (response.status === 403 && errorMessage === "Could not validate credentials") || 
@@ -214,6 +223,7 @@ export interface User {
   address?: string | null;
   id_proof_url?: string | null;
   assigned_vehicle_id?: string | null;
+  driving_license?: string | null;
   is_active?: boolean;
   token_version?: number;
   created_at: string;

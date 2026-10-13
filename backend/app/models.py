@@ -19,6 +19,7 @@ class User(Base):
     address = Column(String, nullable=True)
     id_proof_url = Column(String, nullable=True)
     assigned_vehicle_id = Column(String, nullable=True)
+    driving_license = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
     token_version = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -88,15 +89,15 @@ class InventoryType(Base):
 
     @property
     def full(self):
-        return sum(s.full_count for s in self.stocks)
+        return sum((s.full_count or 0) for s in self.stocks)
         
     @property
     def empty(self):
-        return sum(s.empty_count for s in self.stocks)
+        return sum((s.empty_count or 0) for s in self.stocks)
         
     @property
     def damaged(self):
-        return sum(s.damaged_count for s in self.stocks)
+        return sum((s.damaged_count or 0) for s in self.stocks)
 
 class Stock(Base):
     __tablename__ = "stocks"

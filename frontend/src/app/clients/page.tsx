@@ -25,9 +25,12 @@ import {
   CheckCircle2,
   Upload,
   HelpCircle,
-  Link2
+  Link2,
+  AlertCircle,
+  Check
 } from "lucide-react";
 import { getClients, createClient, updateClient, deleteClient, Client, getRoutes, Route, getInventoryTypes, InventoryType } from "@/lib/api";
+import { sanitizePhone, isValidPhone, formatPhoneDisplay } from "@/lib/validation";
 import { toast } from "react-hot-toast";
 import { useConfirm } from "@/lib/useConfirm";
 
@@ -47,6 +50,7 @@ export default function ClientsPage() {
   // Form states
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
+  const [phoneTouched, setPhoneTouched] = useState(false);
   const [newTier, setNewTier] = useState("Standard");
   const [newOptIn, setNewOptIn] = useState(true);
   const [newRouteId, setNewRouteId] = useState("");
@@ -169,10 +173,17 @@ export default function ClientsPage() {
       return;
     }
 
+    const cleanPhone = sanitizePhone(newPhone);
+    if (newPhone.trim() && cleanPhone.length !== 10) {
+      setPhoneTouched(true);
+      toast.error("Contact phone must be exactly 10 digits");
+      return;
+    }
+
     try {
       const payload: Partial<Client> = {
         name: newName.trim(),
-        phone: newPhone.trim() || null,
+        phone: cleanPhone || null,
         address: newAddress.trim() || null,
         tier: newTier,
         opt_in_loyalty: newOptIn,
@@ -202,6 +213,7 @@ export default function ClientsPage() {
     setEditId(null);
     setNewName("");
     setNewPhone("");
+    setPhoneTouched(false);
     setNewAddress("");
     setNewTier("Standard");
     setNewOptIn(true);
@@ -215,7 +227,8 @@ export default function ClientsPage() {
   const handleEditClick = (c: Client) => {
     setEditId(c.id);
     setNewName(c.name);
-    setNewPhone(c.phone || "");
+    setNewPhone(c.phone ? sanitizePhone(c.phone) : "");
+    setPhoneTouched(false);
     setNewAddress(c.address || "");
     setNewTier(c.tier || "Standard");
     setNewOptIn(c.opt_in_loyalty);
@@ -453,16 +466,64 @@ export default function ClientsPage() {
                 />
               </div>
               <div>
-                <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
-                  Contact Phone
-                </label>
-                <input 
-                  type="text" 
-                  placeholder="+91 98765 43210" 
-                  value={newPhone} 
-                  onChange={e => setNewPhone(e.target.value)} 
-                  className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium" 
-                />
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold uppercase tracking-wider text-text-muted">
+                    Contact Phone
+                  </label>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors ${
+                    newPhone.length === 10
+                      ? "text-emerald-700 bg-emerald-50 border border-emerald-200"
+                      : newPhone.length > 0
+                      ? "text-amber-700 bg-amber-50 border border-amber-200"
+                      : "text-slate-400"
+                  }`}>
+                    {newPhone.length}/10 digits
+                  </span>
+                </div>
+                <div className="relative flex items-center">
+                  <div className="absolute left-3.5 flex items-center gap-1.5 text-xs font-bold text-slate-500 select-none border-r border-slate-200 pr-2.5 z-10 pointer-events-none">
+                    <span>+91</span>
+                  </div>
+                  <input 
+                    type="tel" 
+                    inputMode="numeric"
+                    maxLength={10}
+                    placeholder="98765 43210" 
+                    value={newPhone} 
+                    onChange={e => {
+                      setPhoneTouched(true);
+                      setNewPhone(sanitizePhone(e.target.value));
+                    }} 
+                    onBlur={() => setPhoneTouched(true)}
+                    className={`w-full bg-surface border rounded-xl pl-16 pr-10 py-3 outline-none text-text font-mono font-medium tracking-wide transition-all ${
+                      phoneTouched && newPhone.length > 0 && newPhone.length < 10
+                        ? "border-rose-400 ring-4 ring-rose-400/10 focus:border-rose-500"
+                        : newPhone.length === 10
+                        ? "border-emerald-400 ring-4 ring-emerald-400/10 focus:border-emerald-500"
+                        : "border-gray-200 focus:border-primary focus:ring-4 focus:ring-primary/10"
+                    }`} 
+                  />
+                  {newPhone.length === 10 && (
+                    <div className="absolute right-3 text-emerald-500" title="Valid 10-digit number">
+                      <CheckCircle2 className="w-4 h-4" />
+                    </div>
+                  )}
+                </div>
+                {phoneTouched && newPhone.length > 0 && newPhone.length < 10 ? (
+                  <p className="text-[11px] text-rose-500 font-semibold mt-1.5 flex items-center gap-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    Must be exactly 10 digits ({newPhone.length}/10 entered)
+                  </p>
+                ) : newPhone.length === 10 ? (
+                  <p className="text-[11px] text-emerald-600 font-semibold mt-1.5 flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5 shrink-0" />
+                    Valid 10-digit mobile number
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-text-muted mt-1.5">
+                    10-digit mobile number (digits only)
+                  </p>
+                )}
               </div>
             </div>
 

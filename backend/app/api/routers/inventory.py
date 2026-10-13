@@ -33,6 +33,7 @@ def delete_inventory_type(inv_type_id: str, db: Session = Depends(get_db)):
     return {"message": "Inventory Type deleted successfully"}
 
 @router.post("/{inv_type_id}/stock", response_model=schemas.InventoryTypeResponse)
+@router.post("/{inv_type_id}/stock/", response_model=schemas.InventoryTypeResponse, include_in_schema=False)
 def adjust_inventory_stock(inv_type_id: str, stock_adj: schemas.StockAdjust, db: Session = Depends(get_db)):
     db_inv_type = crud.adjust_inventory_stock(db=db, inv_type_id=inv_type_id, stock_adj=stock_adj)
     if db_inv_type is None:
