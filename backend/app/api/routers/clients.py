@@ -37,5 +37,9 @@ def delete_client(client_id: str, db: Session = Depends(get_db)):
     db_client = crud.get_client(db, client_id=client_id)
     if db_client is None:
         raise HTTPException(status_code=404, detail="Client not found")
-    crud.delete_client(db=db, client_id=client_id)
-    return {"message": "Client deleted successfully"}
+    try:
+        crud.delete_client(db=db, client_id=client_id)
+        return {"message": "Client deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete client: {str(e)}")

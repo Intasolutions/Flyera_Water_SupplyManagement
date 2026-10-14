@@ -29,8 +29,12 @@ def delete_inventory_type(inv_type_id: str, db: Session = Depends(get_db)):
     db_inv_type = crud.get_inventory_type(db, inv_type_id=inv_type_id)
     if db_inv_type is None:
         raise HTTPException(status_code=404, detail="Inventory Type not found")
-    crud.delete_inventory_type(db=db, inv_type_id=inv_type_id)
-    return {"message": "Inventory Type deleted successfully"}
+    try:
+        crud.delete_inventory_type(db=db, inv_type_id=inv_type_id)
+        return {"message": "Inventory Type deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete inventory type: {str(e)}")
 
 @router.post("/{inv_type_id}/stock", response_model=schemas.InventoryTypeResponse)
 @router.post("/{inv_type_id}/stock/", response_model=schemas.InventoryTypeResponse, include_in_schema=False)

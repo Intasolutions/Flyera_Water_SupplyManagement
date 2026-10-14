@@ -204,16 +204,28 @@ def delete_assignment(
     if not db_assignment:
         raise HTTPException(status_code=404, detail="Assignment not found")
     
-    # Restore stock for allocations
-    for alloc in db_assignment.allocations:
-        crud.adjust_inventory_stock(
-            db, 
-            inv_type_id=alloc.inventory_type_id, 
-            stock_adj=schemas.StockAdjust(add_full=alloc.allocated_count, add_empty=0, add_damaged=0)
-        )
-        db.delete(alloc)
+    try:
+        # Restore stock only for non-completed shifts (since completed shifts have already reconciled returned/full stock)
+        if db_assignment.status != "COMPLETED":
+            for alloc in db_assignment.allocations:
+                stock = db.query(models.Stock).filter(models.Stock.inventory_type_id == alloc.inventory_type_id).first()
+                if stock:
+                    stock.full_count = (stock.full_count or 0) + (alloc.allocated_count or 0)
         
-    db.delete(db_assignment)
-    db.commit()
-    return {"message": "Assignment deleted successfully"}
+        # Explicitly delete all delivery items and deliveries for this assignment
+        for delivery in list(db_assignment.deliveries):
+            for item in list(delivery.items):
+                db.delete(item)
+            db.delete(delivery)
+            
+        # Explicitly delete allocations
+        for alloc in list(db_assignment.allocations):
+            db.delete(alloc)
+            
+        db.delete(db_assignment)
+        db.commit()
+        return {"message": "Assignment deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete assignment: {str(e)}")
 

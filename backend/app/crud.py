@@ -71,6 +71,12 @@ def update_client(db: Session, client_id: str, client_update: schemas.ClientUpda
 def delete_client(db: Session, client_id: str):
     db_client = get_client(db, client_id)
     if db_client:
+        # Explicitly delete any deliveries and delivery items associated with this client
+        deliveries = db.query(models.Delivery).filter(models.Delivery.client_id == client_id).all()
+        for d in deliveries:
+            for item in d.items:
+                db.delete(item)
+            db.delete(d)
         db.delete(db_client)
         db.commit()
     return db_client
@@ -133,6 +139,12 @@ def update_inventory_type(db: Session, inv_type_id: str, inv_update: schemas.Inv
 def delete_inventory_type(db: Session, inv_type_id: str):
     db_inv_type = get_inventory_type(db, inv_type_id)
     if db_inv_type:
+        for stock in list(db_inv_type.stocks):
+            db.delete(stock)
+        for alloc in list(db_inv_type.allocations):
+            db.delete(alloc)
+        for ditem in list(db_inv_type.delivery_items):
+            db.delete(ditem)
         db.delete(db_inv_type)
         db.commit()
     return db_inv_type

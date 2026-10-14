@@ -92,16 +92,47 @@ def delete_delivery_by_client(
     if not db_delivery:
         raise HTTPException(status_code=404, detail="Delivery record not found for this client")
         
-    client = db.query(models.Client).filter(models.Client.id == client_id).first()
-    if client and client.opt_in_loyalty:
+    try:
+        client = db.query(models.Client).filter(models.Client.id == client_id).first()
+        if client and client.opt_in_loyalty:
+            for item in db_delivery.items:
+                inv_type = db.query(models.InventoryType).filter(models.InventoryType.id == item.inventory_type_id).first()
+                if inv_type:
+                    client.loyalty_points = max(0, client.loyalty_points - (item.delivered_full * inv_type.points_value))
+                    
         for item in db_delivery.items:
-            inv_type = db.query(models.InventoryType).filter(models.InventoryType.id == item.inventory_type_id).first()
-            if inv_type:
-                client.loyalty_points = max(0, client.loyalty_points - (item.delivered_full * inv_type.points_value))
-                
-    for item in db_delivery.items:
-        db.delete(item)
-    db.delete(db_delivery)
-    db.commit()
-    return {"message": "Delivery reverted successfully"}
+            db.delete(item)
+        db.delete(db_delivery)
+        db.commit()
+        return {"message": "Delivery reverted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete delivery: {str(e)}")
+
+@router.delete("/{delivery_id}")
+def delete_delivery(
+    delivery_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_active_user)
+):
+    db_delivery = db.query(models.Delivery).filter(models.Delivery.id == delivery_id).first()
+    if not db_delivery:
+        raise HTTPException(status_code=404, detail="Delivery record not found")
+        
+    try:
+        client = db.query(models.Client).filter(models.Client.id == db_delivery.client_id).first()
+        if client and client.opt_in_loyalty:
+            for item in db_delivery.items:
+                inv_type = db.query(models.InventoryType).filter(models.InventoryType.id == item.inventory_type_id).first()
+                if inv_type:
+                    client.loyalty_points = max(0, client.loyalty_points - (item.delivered_full * inv_type.points_value))
+                    
+        for item in db_delivery.items:
+            db.delete(item)
+        db.delete(db_delivery)
+        db.commit()
+        return {"message": "Delivery deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete delivery: {str(e)}")
 

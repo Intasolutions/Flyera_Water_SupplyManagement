@@ -256,8 +256,8 @@ export default function DeliveriesPage() {
         const refreshed = await getAssignments();
         setRealAssignments(refreshed);
         toast.success("Assignment deleted.");
-      } catch (e) {
-        toast.error("Failed to delete assignment.");
+      } catch (e: any) {
+        toast.error(e?.message || "Failed to delete assignment.");
         console.error(e);
       }
     }

@@ -1,3 +1,4 @@
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
@@ -30,5 +31,16 @@ def delete_vehicle(vehicle_id: str, db: Session = Depends(get_db)):
     db_vehicle = crud.get_vehicle(db, vehicle_id=vehicle_id)
     if db_vehicle is None:
         raise HTTPException(status_code=404, detail="Vehicle not found")
-    crud.delete_vehicle(db=db, vehicle_id=vehicle_id)
-    return {"message": "Vehicle deleted successfully"}
+    from app import models
+    assignment_count = db.query(models.Assignment).filter(models.Assignment.vehicle_id == vehicle_id).count()
+    if assignment_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete vehicle because it is assigned to existing delivery shifts. Please delete or reassign those shifts first."
+        )
+    try:
+        crud.delete_vehicle(db=db, vehicle_id=vehicle_id)
+        return {"message": "Vehicle deleted successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete vehicle: {str(e)}")

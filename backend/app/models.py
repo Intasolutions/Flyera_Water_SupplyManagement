@@ -57,7 +57,7 @@ class Client(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     route = relationship("Route", back_populates="clients")
-    deliveries = relationship("Delivery", back_populates="client")
+    deliveries = relationship("Delivery", back_populates="client", cascade="all, delete-orphan")
 
 class Vehicle(Base):
     __tablename__ = "vehicles"
@@ -83,9 +83,9 @@ class InventoryType(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    stocks = relationship("Stock", back_populates="inventory_type")
-    allocations = relationship("Allocation", back_populates="inventory_type")
-    delivery_items = relationship("DeliveryItem", back_populates="inventory_type")
+    stocks = relationship("Stock", back_populates="inventory_type", cascade="all, delete-orphan")
+    allocations = relationship("Allocation", back_populates="inventory_type", cascade="all, delete-orphan")
+    delivery_items = relationship("DeliveryItem", back_populates="inventory_type", cascade="all, delete-orphan")
 
     @property
     def full(self):
@@ -129,8 +129,8 @@ class Assignment(Base):
     helper = relationship("User", foreign_keys=[helper_id], back_populates="helper_assignments")
     route = relationship("Route", back_populates="assignments")
     
-    allocations = relationship("Allocation", back_populates="assignment")
-    deliveries = relationship("Delivery", back_populates="assignment")
+    allocations = relationship("Allocation", back_populates="assignment", cascade="all, delete-orphan")
+    deliveries = relationship("Delivery", back_populates="assignment", cascade="all, delete-orphan")
 
     @property
     def deliveries_count(self) -> int:
@@ -162,7 +162,7 @@ class Delivery(Base):
 
     assignment = relationship("Assignment", back_populates="deliveries")
     client = relationship("Client", back_populates="deliveries")
-    items = relationship("DeliveryItem", back_populates="delivery")
+    items = relationship("DeliveryItem", back_populates="delivery", cascade="all, delete-orphan")
 
 class DeliveryItem(Base):
     __tablename__ = "delivery_items"
