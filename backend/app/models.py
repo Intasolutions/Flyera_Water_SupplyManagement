@@ -157,8 +157,9 @@ class Delivery(Base):
     assignment_id = Column(String, ForeignKey("assignments.id"), nullable=False)
     client_id = Column(String, ForeignKey("clients.id"), nullable=False)
     total_amount = Column(Float, default=0)
+    paid_amount = Column(Float, default=0.0)
     payment_method = Column(String, nullable=True)
-    status = Column(String, default="COMPLETED") # "COMPLETED", "PENDING_PAYMENT", "CREDITED", "SKIPPED"
+    status = Column(String, default="COMPLETED") # "COMPLETED", "PARTIAL_PAID", "PENDING_PAYMENT", "CREDITED", "SKIPPED"
     upi_reference = Column(String, nullable=True)
     verified_at = Column(DateTime, nullable=True)
     verified_by = Column(String, nullable=True)

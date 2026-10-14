@@ -272,6 +272,7 @@ class DeliveryBase(BaseModel):
     assignment_id: str
     client_id: str
     total_amount: float = 0
+    paid_amount: float = 0.0
     payment_method: Optional[str] = None
     status: str = "COMPLETED"
 
@@ -295,6 +296,7 @@ class DeliveryVerifyRequest(BaseModel):
     amount_paid: Optional[float] = None
     upi_reference: Optional[str] = None
     notes: Optional[str] = None
+    payment_mode: Optional[str] = "UPI"
 
 # --- Glass Business Schemas ---
 

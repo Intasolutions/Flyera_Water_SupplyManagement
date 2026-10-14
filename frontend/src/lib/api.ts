@@ -374,6 +374,7 @@ export interface Delivery {
   assignment_id: string;
   client_id: string;
   total_amount: number;
+  paid_amount?: number;
   payment_method?: string;
   status: string;
   upi_reference?: string;
@@ -391,7 +392,7 @@ export const createDelivery = (data: any) =>
   });
 export const getPendingDoorstepDeliveries = (includeAll?: boolean) =>
   fetcher<Delivery[]>(`/deliveries/pending-doorstep${includeAll ? '?include_all=true' : ''}`);
-export const verifyDoorstepDelivery = (deliveryId: string, data: { action: "VERIFY_PAID" | "MARK_CREDITED"; amount_paid?: number; upi_reference?: string; notes?: string }) =>
+export const verifyDoorstepDelivery = (deliveryId: string, data: { action: "VERIFY_PAID" | "MARK_CREDITED"; amount_paid?: number; upi_reference?: string; notes?: string; payment_mode?: string }) =>
   fetcher<Delivery>(`/deliveries/${deliveryId}/verify`, {
     method: 'POST',
     body: JSON.stringify(data),

@@ -183,17 +183,21 @@ export default function DeliveriesPage() {
   };
 
   const handleOpenDoorstepModal = (d: Delivery) => {
+    const client = realClients.find(c => c.id === d.client_id);
+    const clientCredit = Number(client?.credit_amount) || 0;
+    const unpaidDelivery = Math.max(0, Number(d.total_amount || 0) - Number(d.paid_amount || 0));
+    const defaultAmt = unpaidDelivery > 0 ? unpaidDelivery : (clientCredit > 0 ? clientCredit : d.total_amount);
+
     setSelectedDoorstepDelivery(d);
-    setVerifyAmount(d.total_amount);
+    setVerifyAmount(defaultAmt);
     setVerifyUpiRef(d.upi_reference || "");
     setVerifyNotes(d.notes || "");
     
     // Generate scannable dynamic UPI QR for this delivery
-    const client = realClients.find(c => c.id === d.client_id);
     const note = encodeURIComponent(`Bill-${d.id.slice(0, 6)} - ${client?.name || "Client"}`);
     const upiId = systemSettings.upi_id || "flyera@okhdfcbank";
     const company = encodeURIComponent(systemSettings.company_name || "Flyera Logistics");
-    const upiUri = `upi://pay?pa=${upiId}&pn=${company}&am=${d.total_amount.toFixed(2)}&tn=${note}&cu=INR`;
+    const upiUri = `upi://pay?pa=${upiId}&pn=${company}&am=${(defaultAmt || d.total_amount).toFixed(2)}&tn=${note}&cu=INR`;
     
     QRCode.toDataURL(upiUri, { width: 220, margin: 1 })
       .then(setModalQrUrl)
@@ -214,13 +218,18 @@ export default function DeliveriesPage() {
 
     setIsVerifying(true);
     try {
-      await verifyDoorstepDelivery(selectedDoorstepDelivery.id, {
+      const res = await verifyDoorstepDelivery(selectedDoorstepDelivery.id, {
         action: "VERIFY_PAID",
         amount_paid: amt,
         upi_reference: verifyUpiRef.trim(),
-        notes: verifyNotes.trim() || undefined
+        notes: verifyNotes.trim() || undefined,
+        payment_mode: "UPI"
       });
-      toast.success(`Payment verified! ₹${amt} credited & deducted from client dues.`);
+      if (res.status === "COMPLETED") {
+        toast.success(`Payment verified! ₹${amt} credited. Zero balance reached — delivery marked COMPLETED!`);
+      } else {
+        toast.success(`Partial payment verified! ₹${amt} credited via UPI to vehicle shift. Balance updated.`);
+      }
       setSelectedDoorstepDelivery(null);
       await fetchRealData();
     } catch (err: any) {
@@ -534,16 +543,24 @@ export default function DeliveriesPage() {
 
   // Doorstep Slip QR Metrics and Memoized filter
   const pendingDoorstepCount = useMemo(() => {
-    return doorstepDeliveries.filter(d => 
-      d.status === "PENDING_PAYMENT" || d.status === "PENDING" || d.status === "PENDING_VERIFICATION"
-    ).length;
-  }, [doorstepDeliveries]);
+    return doorstepDeliveries.filter(d => {
+      const c = realClients.find(cl => cl.id === d.client_id);
+      return d.status !== "COMPLETED" || (c?.credit_amount || 0) > 0;
+    }).length;
+  }, [doorstepDeliveries, realClients]);
 
   const totalDoorstepPendingAmount = useMemo(() => {
     return doorstepDeliveries
-      .filter(d => d.status === "PENDING_PAYMENT" || d.status === "PENDING" || d.status === "PENDING_VERIFICATION")
-      .reduce((sum, d) => sum + (d.total_amount || 0), 0);
-  }, [doorstepDeliveries]);
+      .filter(d => {
+        const c = realClients.find(cl => cl.id === d.client_id);
+        return d.status !== "COMPLETED" || (c?.credit_amount || 0) > 0;
+      })
+      .reduce((sum, d) => {
+        const c = realClients.find(cl => cl.id === d.client_id);
+        const unpaid = Math.max(0, (d.total_amount || 0) - (d.paid_amount || 0));
+        return sum + (unpaid > 0 ? unpaid : (c?.credit_amount || 0));
+      }, 0);
+  }, [doorstepDeliveries, realClients]);
 
   const filteredDoorstepDeliveries = useMemo(() => {
     return doorstepDeliveries.filter(d => {
@@ -552,12 +569,16 @@ export default function DeliveriesPage() {
       const driver = realStaff.find(s => s.id === assignment?.driver_id);
       const vehicle = realVehicles.find(v => v.id === assignment?.vehicle_id);
 
+      const clientCredit = Number(client?.credit_amount) || 0;
+      const deliveryDue = Math.max(0, (d.total_amount || 0) - (d.paid_amount || 0));
+      const isSettled = d.status === "COMPLETED" && clientCredit <= 0 && deliveryDue <= 0;
+
       if (doorstepFilter === "PENDING") {
-        if (d.status === "COMPLETED" || d.status === "CREDITED") return false;
+        if (isSettled || d.status === "CREDITED") return false;
       } else if (doorstepFilter === "CREDITED") {
-        if (d.status !== "CREDITED") return false;
+        if (d.status !== "CREDITED" && d.status !== "PARTIAL_PAID") return false;
       } else if (doorstepFilter === "COMPLETED") {
-        if (d.status !== "COMPLETED") return false;
+        if (!isSettled) return false;
       }
 
       if (doorstepSearch.trim()) {
@@ -1604,12 +1625,21 @@ export default function DeliveriesPage() {
               let totalUpi = 0;
               let totalPendingSlip = 0;
               (assignmentObj as any).deliveries?.forEach((d: any) => {
-                if (d.payment_method === "Cash") {
-                  totalCash += d.total_amount || 0;
-                } else if (d.payment_method === "Pay Later (Slip QR)" || d.status === "PENDING_PAYMENT") {
-                  totalPendingSlip += d.total_amount || 0;
-                } else {
-                  totalUpi += d.total_amount || 0;
+                const paid = Number(d.paid_amount) || 0;
+                const total = Number(d.total_amount) || 0;
+                const method = (d.payment_method || "").toLowerCase();
+                const isSlipOrCredit = method.includes("slip") || method.includes("pay later") || method.includes("credit") || d.status === "PENDING_PAYMENT" || d.status === "CREDITED" || d.status === "PARTIAL_PAID";
+
+                if (method.includes("cash")) {
+                  totalCash += paid > 0 ? paid : (d.status === "COMPLETED" ? total : 0);
+                } else if (method.includes("upi")) {
+                  totalUpi += paid > 0 ? paid : (d.status === "COMPLETED" ? total : 0);
+                }
+
+                if (isSlipOrCredit) {
+                  // Any uncollected portion remains pending slip
+                  const unpaidPortion = Math.max(0, total - paid);
+                  totalPendingSlip += unpaidPortion;
                 }
               });
 
@@ -1649,14 +1679,24 @@ export default function DeliveriesPage() {
                     <div className="p-4 bg-sky-50/80 rounded-2xl border border-sky-200/80 shadow-xs">
                       <span className="text-[10px] font-black uppercase tracking-wider text-sky-800 block">Direct UPI QR</span>
                       <span className="text-2xl font-black text-sky-950">₹{totalUpi.toLocaleString()}</span>
-                      <span className="text-[10px] text-sky-600 font-bold block mt-0.5">Direct to bank account</span>
+                      <span className="text-[10px] text-sky-600 font-bold block mt-0.5">Direct to bank &amp; verified slip transfers</span>
                     </div>
 
                     <div className="p-4 bg-amber-50/80 rounded-2xl border border-amber-200/80 shadow-xs">
                       <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 block">Pending Slip QR</span>
                       <span className="text-2xl font-black text-amber-950">₹{totalPendingSlip.toLocaleString()}</span>
-                      <span className="text-[10px] text-amber-600 font-bold block mt-0.5">Left at door / Pay later</span>
+                      <span className="text-[10px] text-amber-600 font-bold block mt-0.5">Remaining uncollected slip credit</span>
                     </div>
+                  </div>
+
+                  <div className="p-3.5 bg-slate-100/80 rounded-2xl border border-slate-200 flex items-center justify-between text-xs font-bold text-slate-700">
+                    <span className="flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      <span>Total Realized Shift Collections (Cash + Verified UPI):</span>
+                    </span>
+                    <span className="text-base font-black text-emerald-800">
+                      ₹{(totalCash + totalUpi).toLocaleString()}
+                    </span>
                   </div>
                 </div>
               );
@@ -1849,28 +1889,40 @@ export default function DeliveriesPage() {
                   </div>
 
                   {/* Financials & Balance Summary */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3.5 bg-gradient-to-br from-slate-50 to-slate-100/60 rounded-2xl border border-slate-200/80">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="p-3 bg-gradient-to-br from-slate-50 to-slate-100/60 rounded-2xl border border-slate-200/80">
                       <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
-                        Today&apos;s Drop Amount
+                        Drop Amount
                       </span>
-                      <span className="text-2xl font-black text-slate-900 block mt-0.5">
+                      <span className="text-xl font-black text-slate-900 block mt-0.5">
                         ₹{selectedDoorstepDelivery.total_amount}
                       </span>
-                      <span className="text-[11px] font-medium text-slate-500">
-                        Charged on this delivery
+                      <span className="text-[10px] font-medium text-slate-500">
+                        Total delivery invoice
                       </span>
                     </div>
 
-                    <div className="p-3.5 bg-gradient-to-br from-rose-50/60 to-amber-50/40 rounded-2xl border border-rose-200/80">
+                    <div className="p-3 bg-gradient-to-br from-emerald-50/70 to-teal-50/50 rounded-2xl border border-emerald-200/80">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">
+                        Already Paid
+                      </span>
+                      <span className="text-xl font-black text-emerald-700 block mt-0.5">
+                        ₹{(selectedDoorstepDelivery.paid_amount || 0).toLocaleString()}
+                      </span>
+                      <span className="text-[10px] font-medium text-emerald-600">
+                        Credited via UPI/Cash
+                      </span>
+                    </div>
+
+                    <div className="p-3 bg-gradient-to-br from-rose-50/60 to-amber-50/40 rounded-2xl border border-rose-200/80">
                       <span className="text-[10px] font-black uppercase tracking-wider text-rose-800 block">
-                        Customer Ledger Dues
+                        Ledger Dues
                       </span>
-                      <span className="text-2xl font-black text-rose-700 block mt-0.5">
-                        ₹{(client?.credit_amount || selectedDoorstepDelivery.total_amount).toLocaleString()}
+                      <span className="text-xl font-black text-rose-700 block mt-0.5">
+                        ₹{(client?.credit_amount || 0).toLocaleString()}
                       </span>
-                      <span className="text-[11px] font-medium text-rose-600">
-                        Total balance on account
+                      <span className="text-[10px] font-medium text-rose-600">
+                        Customer balance
                       </span>
                     </div>
                   </div>
@@ -1913,10 +1965,10 @@ export default function DeliveriesPage() {
                       </div>
                       <div>
                         <h4 className="text-sm font-black text-slate-900">
-                          Verify With Bank Account
+                          Verify &amp; Add UPI Transfer
                         </h4>
                         <p className="text-[11px] text-slate-600 font-medium">
-                          Match incoming transaction on your bank statement
+                          Match incoming transaction on your bank statement &amp; credit to vehicle
                         </p>
                       </div>
                     </div>
@@ -1928,7 +1980,7 @@ export default function DeliveriesPage() {
                           Amount Credited in Account (₹) *
                         </label>
                         <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded">
-                          Deducts from credit dues
+                          Credits to vehicle shift
                         </span>
                       </div>
                       <div className="relative">
@@ -1945,6 +1997,31 @@ export default function DeliveriesPage() {
                           className="w-full pl-8 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 font-black text-base outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-2xs"
                         />
                       </div>
+
+                      {/* Live Ledger Preview */}
+                      {Number(verifyAmount) > 0 && (() => {
+                        const currentCredit = client?.credit_amount || 0;
+                        const paying = Number(verifyAmount) || 0;
+                        const newBalance = Math.max(0, currentCredit - paying);
+                        const deliveryDue = Math.max(0, (selectedDoorstepDelivery.total_amount || 0) - (selectedDoorstepDelivery.paid_amount || 0) - paying);
+                        const willComplete = newBalance <= 0 && deliveryDue <= 0;
+
+                        return (
+                          <div className={`p-2.5 rounded-xl border text-xs mt-2 transition-all ${
+                            willComplete ? "bg-emerald-100/70 border-emerald-300 text-emerald-900" : "bg-amber-100/70 border-amber-300 text-amber-900"
+                          }`}>
+                            <div className="flex justify-between items-center font-bold">
+                              <span>Customer Ledger Dues After Payment:</span>
+                              <span className="font-black text-sm">₹{newBalance.toLocaleString()}</span>
+                            </div>
+                            <p className="text-[11px] font-semibold mt-0.5">
+                              {willComplete 
+                                ? "✓ Zero balance reached! Delivery will turn to Paid & Verified." 
+                                : `⚡ Partial payment: Customer still carries ₹${newBalance} remaining dues. Status will remain Partially Paid.`}
+                            </p>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* UPI Reference / UTR Number Input */}
@@ -1973,7 +2050,7 @@ export default function DeliveriesPage() {
                         type="text"
                         value={verifyNotes}
                         onChange={e => setVerifyNotes(e.target.value)}
-                        placeholder="e.g. Received via GPay from Rajesh"
+                        placeholder="e.g. Received via GPay from customer"
                         className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-slate-900 font-medium text-xs outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-2xs"
                       />
                     </div>
@@ -2221,9 +2298,16 @@ function DoorstepBillCard({
   onPrintSlip: () => void;
   onDelete: (e: React.MouseEvent) => void;
 }) {
-  const isPending = delivery.status === "PENDING_PAYMENT" || delivery.status === "PENDING" || delivery.status === "PENDING_VERIFICATION";
-  const isCredited = delivery.status === "CREDITED";
-  const isCompleted = delivery.status === "COMPLETED";
+  const clientCredit = Number(client?.credit_amount) || 0;
+  const deliveryPaid = Number(delivery.paid_amount) || 0;
+  const deliveryDue = Math.max(0, Number(delivery.total_amount || 0) - deliveryPaid);
+
+  // STRICT ZERO-CREDIT COMPLETION RULE:
+  // A delivery is only "COMPLETED" when the client's credit dues are 0 AND the delivery has no remaining unpaid balance!
+  const isCompleted = delivery.status === "COMPLETED" && clientCredit <= 0 && deliveryDue <= 0;
+  const isPartial = delivery.status === "PARTIAL_PAID" || (deliveryPaid > 0 && (clientCredit > 0 || deliveryDue > 0));
+  const isCredited = delivery.status === "CREDITED" && !isPartial;
+  const isPending = (delivery.status === "PENDING_PAYMENT" || delivery.status === "PENDING" || delivery.status === "PENDING_VERIFICATION") && !isPartial;
 
   const itemsSummary = (delivery.items || []).map(item => {
     const inv = inventoryTypes.find(i => i.id === item.inventory_type_id);
@@ -2244,7 +2328,9 @@ function DoorstepBillCard({
       onClick={onVerifyClick}
       className={`glass-card p-5 sm:p-6 flex flex-col justify-between relative group cursor-pointer transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 border ${
         isPending
-          ? "border-amber-300/90 bg-gradient-to-br from-amber-50/40 via-white to-orange-50/30"
+          ? "border-rose-300/80 bg-gradient-to-br from-rose-50/30 via-white to-amber-50/20"
+          : isPartial
+          ? "border-amber-300/90 bg-gradient-to-br from-amber-50/40 via-white to-orange-50/20"
           : isCredited
           ? "border-sky-200/80 bg-sky-50/20"
           : "border-emerald-200/70 bg-emerald-50/15"
@@ -2256,6 +2342,8 @@ function DoorstepBillCard({
           <div className="flex items-center gap-3">
             <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border shadow-xs ${
               isPending
+                ? "bg-rose-500 text-white border-rose-400"
+                : isPartial
                 ? "bg-amber-500 text-white border-amber-400"
                 : isCredited
                 ? "bg-sky-500 text-white border-sky-400"
@@ -2278,17 +2366,26 @@ function DoorstepBillCard({
 
           <div className="flex items-center gap-1.5 shrink-0">
             <span className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border flex items-center gap-1 shadow-2xs ${
-              isPending
-                ? "bg-amber-100 text-amber-900 border-amber-300 animate-pulse"
+              isCompleted
+                ? "bg-emerald-100 text-emerald-900 border-emerald-300"
+                : isPartial
+                ? "bg-amber-100 text-amber-900 border-amber-300"
                 : isCredited
                 ? "bg-sky-100 text-sky-900 border-sky-300"
-                : "bg-emerald-100 text-emerald-900 border-emerald-300"
+                : "bg-rose-100 text-rose-900 border-rose-300 animate-pulse"
             }`}>
-              {isPending && <AlertTriangle className="w-3 h-3 text-amber-600" />}
-              {isCredited && <Clock className="w-3 h-3 text-sky-600" />}
               {isCompleted && <Check className="w-3 h-3 text-emerald-600" />}
+              {isPartial && <Clock className="w-3 h-3 text-amber-600" />}
+              {isCredited && <Clock className="w-3 h-3 text-sky-600" />}
+              {isPending && <AlertTriangle className="w-3 h-3 text-rose-600" />}
               <span>
-                {isPending ? "Awaiting Verification" : isCredited ? "Unpaid Credit" : "Paid & Verified"}
+                {isCompleted 
+                  ? "Paid & Verified" 
+                  : isPartial 
+                  ? `Partially Paid • Due ₹${clientCredit}` 
+                  : isCredited 
+                  ? `Unpaid Credit • Due ₹${clientCredit}` 
+                  : "Awaiting Verification"}
               </span>
             </span>
 
@@ -2338,6 +2435,11 @@ function DoorstepBillCard({
               <span className="text-xl font-black text-slate-900">
                 ₹{delivery.total_amount}
               </span>
+              {deliveryPaid > 0 && (
+                <span className="block text-[10px] font-bold text-emerald-600">
+                  Paid (UPI): ₹{deliveryPaid}
+                </span>
+              )}
             </div>
 
             <div className="text-right">
@@ -2345,10 +2447,15 @@ function DoorstepBillCard({
                 Customer Ledger Dues
               </span>
               <span className={`text-sm font-black ${
-                (client?.credit_amount || 0) > 0 ? "text-rose-600" : "text-emerald-700"
+                clientCredit > 0 ? "text-rose-600" : "text-emerald-700"
               }`}>
-                ₹{(client?.credit_amount || 0).toLocaleString()}
+                ₹{clientCredit.toLocaleString()}
               </span>
+              {clientCredit === 0 && (
+                <span className="block text-[10px] font-bold text-emerald-600">
+                  Zero Balance
+                </span>
+              )}
             </div>
           </div>
 
@@ -2366,7 +2473,7 @@ function DoorstepBillCard({
       {/* Bottom Actions */}
       <div className="pt-1 flex gap-2">
         <Button
-          variant={isPending ? "primary" : "secondary"}
+          variant={isCompleted ? "secondary" : "primary"}
           size="sm"
           className="flex-1 text-xs font-black shadow-xs"
           icon={<ShieldCheck className="w-3.5 h-3.5" />}
@@ -2375,7 +2482,7 @@ function DoorstepBillCard({
             onVerifyClick();
           }}
         >
-          {isPending ? "Verify Account Credit" : "View Breakdown"}
+          {isCompleted ? "View Breakdown" : "Verify Account Credit"}
         </Button>
 
         <button

@@ -30,7 +30,7 @@ try:
                 conn.commit()
             except Exception:
                 pass
-        for col in ["upi_reference VARCHAR", "verified_at TIMESTAMP", "verified_by VARCHAR", "notes VARCHAR"]:
+        for col in ["upi_reference VARCHAR", "verified_at TIMESTAMP", "verified_by VARCHAR", "notes VARCHAR", "paid_amount REAL DEFAULT 0.0"]:
             try:
                 conn.execute(text(f"ALTER TABLE deliveries ADD COLUMN {col}"))
                 conn.commit()
