@@ -158,7 +158,7 @@ export default function DashboardPage() {
         />
 
         {/* Top KPI Stat Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6 md:mb-8">
           <StatCard
             label="Period Revenue"
             value={`₹${(stats.todayRevenue || 0).toLocaleString()}`}

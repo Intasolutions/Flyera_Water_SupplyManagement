@@ -6,15 +6,15 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Button } from "@/components/ui/Button";
 import { useStore } from "@/lib/StoreContext";
-import { 
-  Factory, 
-  ArrowDownToLine, 
-  Info, 
-  Truck, 
-  Sparkles, 
-  Layers, 
-  CheckCircle2, 
-  Scale, 
+import {
+  Factory,
+  ArrowDownToLine,
+  Info,
+  Truck,
+  Sparkles,
+  Layers,
+  CheckCircle2,
+  Scale,
   RefreshCw,
   AlertTriangle
 } from "lucide-react";
@@ -206,17 +206,15 @@ export default function GlassGodownPage() {
                       <div
                         key={c.id}
                         onClick={() => setSelectedCollectionId(c.id)}
-                        className={`p-4 rounded-2xl border transition-all cursor-pointer flex justify-between items-center ${
-                          isSelected
+                        className={`p-4 rounded-2xl border transition-all cursor-pointer flex justify-between items-center ${isSelected
                             ? "bg-white border-primary shadow-sm ring-2 ring-primary/20"
                             : "bg-white/80 border-slate-100 hover:border-slate-200 hover:bg-white"
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center gap-3">
                           <div
-                            className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${
-                              isSelected ? "bg-primary text-white" : "bg-slate-100 text-slate-600"
-                            }`}
+                            className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${isSelected ? "bg-primary text-white" : "bg-slate-100 text-slate-600"
+                              }`}
                           >
                             <Truck className="w-5 h-5" />
                           </div>
@@ -303,11 +301,10 @@ export default function GlassGodownPage() {
                   <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 flex justify-between items-center text-xs">
                     <span className="text-slate-500 font-bold">Total Segregated Output:</span>
                     <span
-                      className={`text-base font-black ${
-                        (parseFloat(whiteTons) || 0) + (parseFloat(mixedTons) || 0) > selectedCollection.tonsCollected
+                      className={`text-base font-black ${(parseFloat(whiteTons) || 0) + (parseFloat(mixedTons) || 0) > selectedCollection.tonsCollected
                           ? "text-rose-600"
                           : "text-slate-800"
-                      }`}
+                        }`}
                     >
                       {((parseFloat(whiteTons) || 0) + (parseFloat(mixedTons) || 0)).toFixed(1)} / {selectedCollection.tonsCollected} Tons
                     </span>

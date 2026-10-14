@@ -276,7 +276,7 @@ export default function GlassDashboardPage() {
         </div>
 
         {/* Dynamic Metric Stat Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4 mb-6 md:mb-8">
           <StatCard 
             title="Total Collected" 
             value={`${(currentStats.totalCollectedTons || 0).toFixed(1)} T`} 

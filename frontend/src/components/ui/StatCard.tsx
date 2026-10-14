@@ -44,25 +44,34 @@ export function StatCard({
   };
 
   return (
-    <div 
+    <div
       onClick={onClick}
-      className={`glass-panel p-5 sm:p-6 rounded-3xl hover:shadow-md transition-all border border-black/5 group relative overflow-hidden ${
-        onClick ? "cursor-pointer" : ""
-      } ${className}`}
+      className={`glass-panel p-3.5 sm:p-5 md:p-6 rounded-2xl sm:rounded-3xl hover:shadow-md transition-all border border-black/5 group relative overflow-hidden flex flex-col justify-between ${onClick ? "cursor-pointer active:scale-[0.98]" : ""
+        } ${className}`}
     >
-      <div className="flex justify-between items-start mb-3">
-        <div className="p-2.5 sm:p-3 bg-surface rounded-2xl border border-black/5 shadow-xs group-hover:scale-105 transition-transform">
-          {icon}
+      <div>
+        <div className="flex justify-between items-start gap-1.5 mb-2 sm:mb-3">
+          <div className="p-2 sm:p-2.5 md:p-3 bg-surface rounded-xl sm:rounded-2xl border border-black/5 shadow-xs group-hover:scale-105 transition-transform shrink-0 [&>svg]:w-4 [&>svg]:h-4 sm:[&>svg]:w-5 sm:[&>svg]:h-5 md:[&>svg]:w-6 md:[&>svg]:h-6">
+            {icon}
+          </div>
+          {displayBadge && (
+            <span className={`text-[9px] sm:text-[11px] font-bold uppercase tracking-wider px-1.5 sm:px-2.5 py-0.5 rounded-md border truncate max-w-[95px] sm:max-w-none ${colorMap[color]}`}>
+              {displayBadge}
+            </span>
+          )}
         </div>
-        {displayBadge && (
-          <span className={`text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md border ${colorMap[color]}`}>
-            {displayBadge}
-          </span>
-        )}
+        <h3 className="text-slate-500 text-[10px] sm:text-xs font-semibold uppercase tracking-wider mb-0.5 sm:mb-1 truncate" title={displayTitle}>
+          {displayTitle}
+        </h3>
+        <p className="text-lg sm:text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight truncate">
+          {value}
+        </p>
       </div>
-      <h3 className="text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">{displayTitle}</h3>
-      <p className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">{value}</p>
-      {displayTrend && <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">{displayTrend}</p>}
+      {displayTrend && (
+        <p className="text-[10px] sm:text-xs text-slate-500 mt-1 sm:mt-1.5 font-medium truncate sm:line-clamp-none">
+          {displayTrend}
+        </p>
+      )}
     </div>
   );
 }

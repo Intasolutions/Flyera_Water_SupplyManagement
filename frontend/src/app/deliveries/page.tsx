@@ -7,18 +7,18 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { useStore } from "@/lib/StoreContext";
-import { 
-  Truck, 
-  MapPin, 
-  Calendar, 
-  UserPlus, 
-  X, 
-  AlertTriangle, 
-  CheckCircle2, 
-  Phone, 
-  Navigation, 
-  Zap, 
-  Trash2, 
+import {
+  Truck,
+  MapPin,
+  Calendar,
+  UserPlus,
+  X,
+  AlertTriangle,
+  CheckCircle2,
+  Phone,
+  Navigation,
+  Zap,
+  Trash2,
   User as UserIcon,
   Search,
   Filter,
@@ -37,31 +37,36 @@ import {
   Printer,
   ArrowRight,
   ExternalLink,
-  FileText
+  FileText,
+  Fuel
 } from "lucide-react";
 import QRCode from "qrcode";
-import { 
-  getUsers, 
-  User, 
-  getRoutes, 
-  Route, 
-  getClients, 
-  Client, 
-  getVehicles, 
-  Vehicle, 
-  getAssignments, 
-  Assignment as ApiAssignment, 
-  createAssignment, 
-  updateAssignment, 
-  getInventoryTypes, 
-  deleteAssignment as apiDeleteAssignment, 
+import {
+  getUsers,
+  User,
+  getRoutes,
+  Route,
+  getClients,
+  Client,
+  getVehicles,
+  Vehicle,
+  getAssignments,
+  Assignment as ApiAssignment,
+  createAssignment,
+  updateAssignment,
+  getInventoryTypes,
+  deleteAssignment as apiDeleteAssignment,
   completeAssignment as apiCompleteAssignment,
   reopenAssignment,
   getPendingDoorstepDeliveries,
   verifyDoorstepDelivery,
   deleteDelivery,
   Delivery,
-  getSettings
+  getSettings,
+  getAllExpenses,
+  deleteTripExpense,
+  getExpensesForAssignment,
+  TripExpense
 } from "@/lib/api";
 import { ThermalReceiptModal, ReceiptData } from "@/components/ThermalReceiptModal";
 import { toast } from "react-hot-toast";
@@ -130,7 +135,8 @@ export default function DeliveriesPage() {
   const [inventoryTypes, setInventoryTypes] = useState<any[]>([]);
 
   // Doorstep Slip QR & Account Verification states
-  const [activeView, setActiveView] = useState<"assignments" | "doorstep">("assignments");
+  // Views: Route Assignments vs Doorstep Slip QRs vs Trip Expenses
+  const [activeView, setActiveView] = useState<"assignments" | "doorstep" | "expenses">("assignments");
   const [doorstepDeliveries, setDoorstepDeliveries] = useState<Delivery[]>([]);
   const [selectedDoorstepDelivery, setSelectedDoorstepDelivery] = useState<Delivery | null>(null);
   const [doorstepFilter, setDoorstepFilter] = useState<"ALL" | "PENDING" | "CREDITED" | "COMPLETED">("PENDING");
@@ -144,12 +150,65 @@ export default function DeliveriesPage() {
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
   const [receiptModalData, setReceiptModalData] = useState<ReceiptData | null>(null);
 
+  // Trip Expenses States
+  const [allTripExpenses, setAllTripExpenses] = useState<TripExpense[]>([]);
+  const [expenseCategoryFilter, setExpenseCategoryFilter] = useState<string>("ALL");
+  const [expenseSearch, setExpenseSearch] = useState<string>("");
+  const [reconExpenses, setReconExpenses] = useState<TripExpense[]>([]);
+  const [trackExpenses, setTrackExpenses] = useState<TripExpense[]>([]);
+  const [isDeletingExpense, setIsDeletingExpense] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (reconOpen) {
+      getExpensesForAssignment(reconOpen)
+        .then(setReconExpenses)
+        .catch(() => setReconExpenses([]));
+    } else {
+      setReconExpenses([]);
+    }
+  }, [reconOpen]);
+
+  useEffect(() => {
+    if (trackOpen) {
+      getExpensesForAssignment(trackOpen)
+        .then(setTrackExpenses)
+        .catch(() => setTrackExpenses([]));
+    } else {
+      setTrackExpenses([]);
+    }
+  }, [trackOpen]);
+
+  const handleDeleteExpense = async (expenseId: string, desc: string) => {
+    if (!window.confirm(`Delete expense record (${desc})?`)) return;
+    setIsDeletingExpense(expenseId);
+    try {
+      await deleteTripExpense(expenseId);
+      toast.success("Trip expense deleted successfully");
+      const updated = await getAllExpenses();
+      setAllTripExpenses(updated || []);
+      if (reconOpen) {
+        const rUpdated = await getExpensesForAssignment(reconOpen);
+        setReconExpenses(rUpdated || []);
+      }
+      if (trackOpen) {
+        const tUpdated = await getExpensesForAssignment(trackOpen);
+        setTrackExpenses(tUpdated || []);
+      }
+    } catch (err: any) {
+      console.error("Failed to delete expense:", err);
+      toast.error(err.message || "Failed to delete expense");
+    } finally {
+      setIsDeletingExpense(null);
+    }
+  };
+
   useEffect(() => {
     fetchRealData();
     // Poll for real-time updates every 3 seconds
     const interval = setInterval(() => {
       getAssignments().then(setRealAssignments).catch(console.error);
       getPendingDoorstepDeliveries(true).then(setDoorstepDeliveries).catch(console.error);
+      getAllExpenses().then(setAllTripExpenses).catch(console.error);
     }, 3000);
     return () => clearInterval(interval);
   }, []);
@@ -157,7 +216,7 @@ export default function DeliveriesPage() {
   const fetchRealData = async () => {
     try {
       setIsRefreshing(true);
-      const [staffData, routesData, clientsData, vehiclesData, assignmentsData, invData, pendingData, settingsData] = await Promise.all([
+      const [staffData, routesData, clientsData, vehiclesData, assignmentsData, invData, pendingData, settingsData, expensesData] = await Promise.all([
         getUsers(),
         getRoutes(),
         getClients(),
@@ -165,7 +224,8 @@ export default function DeliveriesPage() {
         getAssignments(),
         getInventoryTypes(),
         getPendingDoorstepDeliveries(true).catch(() => []),
-        getSettings().catch(() => ({}))
+        getSettings().catch(() => ({})),
+        getAllExpenses().catch(() => [])
       ]);
       setRealStaff(staffData || []);
       setRealRoutes(routesData || []);
@@ -175,6 +235,7 @@ export default function DeliveriesPage() {
       setInventoryTypes(invData || []);
       setDoorstepDeliveries(pendingData || []);
       setSystemSettings(settingsData || {});
+      setAllTripExpenses(expensesData || []);
     } catch (error) {
       console.error("Failed to fetch real data:", error);
     } finally {
@@ -192,13 +253,13 @@ export default function DeliveriesPage() {
     setVerifyAmount(defaultAmt);
     setVerifyUpiRef(d.upi_reference || "");
     setVerifyNotes(d.notes || "");
-    
+
     // Generate scannable dynamic UPI QR for this delivery
     const note = encodeURIComponent(`Bill-${d.id.slice(0, 6)} - ${client?.name || "Client"}`);
     const upiId = systemSettings.upi_id || "flyera@okhdfcbank";
     const company = encodeURIComponent(systemSettings.company_name || "Flyera Logistics");
     const upiUri = `upi://pay?pa=${upiId}&pn=${company}&am=${(defaultAmt || d.total_amount).toFixed(2)}&tn=${note}&cu=INR`;
-    
+
     QRCode.toDataURL(upiUri, { width: 220, margin: 1 })
       .then(setModalQrUrl)
       .catch(err => console.error("QR error", err));
@@ -360,8 +421,8 @@ export default function DeliveriesPage() {
     setEditVehicle(assignment.vehicle_id || "");
     setEditStatus(assignment.status ? assignment.status.toUpperCase() : "PENDING");
     setEditDate(
-      assignment.date 
-        ? getAssignmentDateStr(assignment.date) 
+      assignment.date
+        ? getAssignmentDateStr(assignment.date)
         : getAssignmentDateStr(new Date())
     );
 
@@ -594,6 +655,41 @@ export default function DeliveriesPage() {
     });
   }, [doorstepDeliveries, doorstepFilter, doorstepSearch, realClients, realAssignments, realStaff, realVehicles]);
 
+  // Trip Expenses Memoized Aggregations
+  const totalTripExpensesAmount = useMemo(() => {
+    return allTripExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+  }, [allTripExpenses]);
+
+  const fuelTripExpensesAmount = useMemo(() => {
+    return allTripExpenses.filter(e => e.category === "FUEL").reduce((sum, e) => sum + (e.amount || 0), 0);
+  }, [allTripExpenses]);
+
+  const tollTripExpensesAmount = useMemo(() => {
+    return allTripExpenses.filter(e => e.category === "TOLL").reduce((sum, e) => sum + (e.amount || 0), 0);
+  }, [allTripExpenses]);
+
+  const otherTripExpensesAmount = useMemo(() => {
+    return allTripExpenses.filter(e => e.category !== "FUEL" && e.category !== "TOLL").reduce((sum, e) => sum + (e.amount || 0), 0);
+  }, [allTripExpenses]);
+
+  const filteredTripExpenses = useMemo(() => {
+    return allTripExpenses.filter(e => {
+      if (expenseCategoryFilter !== "ALL" && e.category !== expenseCategoryFilter) return false;
+      if (expenseSearch.trim()) {
+        const q = expenseSearch.toLowerCase().trim();
+        const assignment = realAssignments.find(a => a.id === e.assignment_id);
+        const vehicle = realVehicles.find(v => v.id === assignment?.vehicle_id);
+        const driver = realStaff.find(s => s.id === assignment?.driver_id);
+        const matchVehicle = (vehicle?.plate_number || "").toLowerCase().includes(q);
+        const matchDriver = (driver?.name || e.reporter_name || "").toLowerCase().includes(q);
+        const matchDesc = (e.description || "").toLowerCase().includes(q);
+        const matchCat = (e.category || "").toLowerCase().includes(q);
+        return matchVehicle || matchDriver || matchDesc || matchCat;
+      }
+      return true;
+    });
+  }, [allTripExpenses, expenseCategoryFilter, expenseSearch, realAssignments, realVehicles, realStaff]);
+
   return (
     <div className="flex min-h-screen bg-[#FDFBF7]">
       <Sidebar />
@@ -625,72 +721,52 @@ export default function DeliveriesPage() {
           }
         />
 
-        {/* Top KPI Stat Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-5 mb-8">
+        {/* Top KPI Stat Cards - 3 Core Shift Drivers (Reduces Mobile Scrolling) */}
+        <div className="grid grid-cols-3 gap-2.5 sm:gap-4 md:gap-5 mb-4 sm:mb-6">
           <StatCard
             label="Active On-Road"
             value={activeRoutesCount}
             subtext="Live delivery routes"
-            icon={<Truck className="w-6 h-6" />}
+            icon={<Truck className="w-5 h-5 sm:w-6 sm:h-6" />}
             color="emerald"
             category="Live Fleet"
-          />
-          <div 
-            onClick={() => setActiveView("doorstep")}
-            className="cursor-pointer transition-transform hover:scale-[1.02] active:scale-[0.99]"
-          >
-            <StatCard
-              label="Doorstep Slip QRs"
-              value={pendingDoorstepCount}
-              subtext={pendingDoorstepCount > 0 ? `₹${totalDoorstepPendingAmount.toLocaleString()} to verify` : "All slips verified"}
-              icon={<QrCode className="w-6 h-6" />}
-              color={pendingDoorstepCount > 0 ? "amber" : "blue"}
-              category="Verification"
-            />
-          </div>
-          <StatCard
-            label="Pending Dispatch"
-            value={pendingCount}
-            subtext="Awaiting morning gate-out"
-            icon={<Clock className="w-6 h-6" />}
-            color="amber"
-            category="In Staging"
           />
           <StatCard
             label="Completed Today"
             value={completedTodayCount}
             subtext="Reconciled & closed"
-            icon={<CheckCircle2 className="w-6 h-6" />}
+            icon={<CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" />}
             color="purple"
             category="Closed Routes"
           />
           <StatCard
             label="Collected Cash"
             value={`₹${totalRevenueCollected.toLocaleString()}`}
-            subtext="From completed drops"
-            icon={<IndianRupee className="w-6 h-6" />}
+            subtext="Completed drops"
+            icon={<IndianRupee className="w-5 h-5 sm:w-6 sm:h-6" />}
             color="blue"
             category="Revenue"
           />
         </div>
 
-        {/* View Switcher: Route Dispatch vs Doorstep Slip QRs */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-6 bg-white/70 p-2 rounded-2xl border border-slate-200/60 shadow-xs">
-          <div className="flex items-center gap-2">
+        {/* View Switcher: Route Dispatch vs Doorstep Slip QRs vs Trip Expenses */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-5 sm:mb-6 bg-white/80 p-1.5 sm:p-2 rounded-2xl border border-slate-200/70 shadow-xs">
+          <div className="grid grid-cols-3 sm:flex items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => setActiveView("assignments")}
-              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 ${
-                activeView === "assignments"
+              className={`px-2 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5 sm:gap-2 ${activeView === "assignments"
                   ? "bg-slate-900 text-white shadow-sm"
                   : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-              }`}
+                }`}
             >
-              <Truck className="w-4 h-4" />
-              <span>Route Dispatch &amp; Assignments</span>
-              <span className={`text-[11px] px-2 py-0.5 rounded-full font-black ${
-                activeView === "assignments" ? "bg-slate-800 text-slate-300" : "bg-slate-200 text-slate-700"
-              }`}>
+              <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="truncate">
+                <span className="sm:hidden">Routes</span>
+                <span className="hidden sm:inline">Route Dispatch</span>
+              </span>
+              <span className={`text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full font-black shrink-0 ${activeView === "assignments" ? "bg-slate-800 text-slate-300" : "bg-slate-200 text-slate-700"
+                }`}>
                 {filteredAssignments.length}
               </span>
             </button>
@@ -698,36 +774,57 @@ export default function DeliveriesPage() {
             <button
               type="button"
               onClick={() => setActiveView("doorstep")}
-              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 relative ${
-                activeView === "doorstep"
+              className={`px-2 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5 sm:gap-2 relative ${activeView === "doorstep"
                   ? "bg-primary text-white shadow-sm"
                   : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-              }`}
+                }`}
             >
-              <QrCode className="w-4 h-4" />
-              <span>Doorstep Bills &amp; Slip QRs</span>
+              <QrCode className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="truncate">
+                <span className="sm:hidden">Doorstep</span>
+                <span className="hidden sm:inline">Doorstep Bills</span>
+              </span>
               {pendingDoorstepCount > 0 ? (
-                <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black animate-pulse">
-                  {pendingDoorstepCount} Pending
+                <span className="text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black animate-pulse shrink-0">
+                  <span className="sm:hidden">{pendingDoorstepCount}</span>
+                  <span className="hidden sm:inline">{pendingDoorstepCount} Pending</span>
                 </span>
               ) : (
-                <span className={`text-[11px] px-2 py-0.5 rounded-full font-black ${
-                  activeView === "doorstep" ? "bg-sky-600 text-white" : "bg-slate-200 text-slate-700"
-                }`}>
+                <span className={`text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full font-black shrink-0 ${activeView === "doorstep" ? "bg-sky-600 text-white" : "bg-slate-200 text-slate-700"
+                  }`}>
                   {doorstepDeliveries.length}
                 </span>
               )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveView("expenses")}
+              className={`px-2 sm:px-4 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-1.5 sm:gap-2 relative ${activeView === "expenses"
+                  ? "bg-amber-600 text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                }`}
+            >
+              <Fuel className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="truncate">
+                <span className="sm:hidden">Expenses</span>
+                <span className="hidden sm:inline">Trip Expenses</span>
+              </span>
+              <span className={`text-[10px] sm:text-[11px] px-1.5 sm:px-2 py-0.5 rounded-full font-black shrink-0 ${activeView === "expenses" ? "bg-amber-700 text-white" : "bg-slate-200 text-slate-700"
+                }`}>
+                {allTripExpenses.length}
+              </span>
             </button>
           </div>
 
           {activeView === "assignments" && pendingDoorstepCount > 0 && (
             <button
               onClick={() => setActiveView("doorstep")}
-              className="text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200/90 px-3 py-1.5 rounded-xl flex items-center gap-1.5 self-start sm:self-auto transition-all"
+              className="text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200/90 px-3 py-1.5 rounded-xl flex items-center justify-center gap-1.5 w-full sm:w-auto transition-all text-center"
             >
-              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 animate-bounce" />
-              <span>{pendingDoorstepCount} doorstep bills awaiting account verification</span>
-              <ArrowRight className="w-3.5 h-3.5 text-amber-700" />
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 animate-bounce shrink-0" />
+              <span className="truncate">{pendingDoorstepCount} doorstep bills awaiting verification</span>
+              <ArrowRight className="w-3.5 h-3.5 text-amber-700 shrink-0" />
             </button>
           )}
         </div>
@@ -750,8 +847,8 @@ export default function DeliveriesPage() {
                       className="w-full pl-10 pr-4 py-2.5 bg-white/80 border border-slate-200/80 rounded-xl text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all"
                     />
                     {searchQuery && (
-                      <button 
-                        onClick={() => setSearchQuery("")} 
+                      <button
+                        onClick={() => setSearchQuery("")}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                       >
                         <X className="w-4 h-4" />
@@ -765,11 +862,10 @@ export default function DeliveriesPage() {
                       <button
                         key={status}
                         onClick={() => setStatusFilter(status)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${
-                          statusFilter === status
+                        className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${statusFilter === status
                             ? "bg-white text-slate-900 shadow-sm"
                             : "text-slate-500 hover:text-slate-900"
-                        }`}
+                          }`}
                       >
                         {status === "ALL" ? "All Status" : status}
                       </button>
@@ -834,20 +930,21 @@ export default function DeliveriesPage() {
                   const helper = a.helper_id ? realStaff.find(u => u.id === a.helper_id)?.name : undefined;
                   const route = realRoutes.find(r => r.id === a.route_id)?.name || "Unknown Route";
                   const routeArea = realRoutes.find(r => r.id === a.route_id)?.area;
-                  
+
                   const stockDisplay = a.allocations && a.allocations.length > 0
                     ? a.allocations.map(al => {
-                        const invName = inventoryTypes.find(i => i.id === al.inventory_type_id)?.name || "Item";
-                        return `${al.allocated_count}x ${invName}`;
-                      }).join(", ")
+                      const invName = inventoryTypes.find(i => i.id === al.inventory_type_id)?.name || "Item";
+                      return `${al.allocated_count}x ${invName}`;
+                    }).join(", ")
                     : "No stock";
 
-                  const routeClientsCount = realClients.filter(c => c.route_id === a.route_id).length || 10;
-                  let progress = a.status === "COMPLETED" 
-                    ? 100 
-                    : (a.status === "ACTIVE" 
-                        ? Math.min(100, Math.round(((a as any).deliveries_count || 0) / routeClientsCount * 100)) 
-                        : 0);
+                  const deliveriesCount = (a as any).deliveries_count ?? (a as any).deliveries?.length ?? 0;
+                  const routeClientsCount = Math.max(realClients.filter(c => c.route_id === a.route_id).length, deliveriesCount, 1);
+                  let progress = a.status === "COMPLETED"
+                    ? 100
+                    : (a.status === "ACTIVE"
+                      ? Math.min(100, Math.round(deliveriesCount / routeClientsCount * 100))
+                      : 0);
 
                   return (
                     <AssignmentCard
@@ -864,8 +961,8 @@ export default function DeliveriesPage() {
                       date={a.date}
                       onEdit={() => handleOpenEdit(a)}
                       onAssign={() => setDispatchConfirmOpen(a)}
-                      onTrack={() => setTrackOpen(vehicle)}
-                      onRecon={() => setReconOpen(vehicle)}
+                      onTrack={() => setTrackOpen(a.id)}
+                      onRecon={() => setReconOpen(a.id)}
                       onDelete={() => handleDeleteAssignment(a.id)}
                       onReopen={() => handleReopenAssignment(a.id)}
                     />
@@ -892,8 +989,8 @@ export default function DeliveriesPage() {
                     className="w-full pl-10 pr-4 py-2.5 bg-white/80 border border-slate-200/80 rounded-xl text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all"
                   />
                   {doorstepSearch && (
-                    <button 
-                      onClick={() => setDoorstepSearch("")} 
+                    <button
+                      onClick={() => setDoorstepSearch("")}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                     >
                       <X className="w-4 h-4" />
@@ -902,18 +999,34 @@ export default function DeliveriesPage() {
                 </div>
 
                 {/* Status Pills for Doorstep Bills */}
-                <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/50 self-start sm:self-auto overflow-x-auto max-w-full">
+                <div className="grid grid-cols-2 sm:flex sm:items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/50 w-full sm:w-auto">
                   {(["PENDING", "ALL", "CREDITED", "COMPLETED"] as const).map(status => (
                     <button
                       key={status}
                       onClick={() => setDoorstepFilter(status)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${
-                        doorstepFilter === status
+                      className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all text-center truncate ${doorstepFilter === status
                           ? "bg-white text-slate-900 shadow-sm"
                           : "text-slate-500 hover:text-slate-900"
-                      }`}
+                        }`}
                     >
-                      {status === "PENDING" ? "Awaiting Verification" : status === "ALL" ? "All Bills" : status === "CREDITED" ? "Unpaid Credit" : "Paid & Verified"}
+                      {status === "PENDING" ? (
+                        <>
+                          <span className="sm:hidden">Pending</span>
+                          <span className="hidden sm:inline">Awaiting Verification</span>
+                        </>
+                      ) : status === "ALL" ? (
+                        "All Bills"
+                      ) : status === "CREDITED" ? (
+                        <>
+                          <span className="sm:hidden">Credit</span>
+                          <span className="hidden sm:inline">Unpaid Credit</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="sm:hidden">Verified</span>
+                          <span className="hidden sm:inline">Paid &amp; Verified</span>
+                        </>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -934,8 +1047,8 @@ export default function DeliveriesPage() {
                       : "When drivers leave water bottles at customers' doors and print 58mm QR slips, they appear here for bank account credit verification."}
                   </p>
                   {doorstepFilter !== "ALL" && (
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       onClick={() => {
                         setDoorstepFilter("ALL");
                         setDoorstepSearch("");
@@ -970,6 +1083,142 @@ export default function DeliveriesPage() {
                 })
               )}
             </div>
+          </div>
+        )}
+
+        {/* VIEW 3: TRIP EXPENSES & TRAVEL COSTS */}
+        {activeView === "expenses" && (
+          <div className="space-y-6">
+
+            {/* Filter & Search Toolbar */}
+            <div className="glass-panel p-4 md:p-5 rounded-2xl shadow-xs border border-slate-200/80">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by vehicle, driver or expense description..."
+                    value={expenseSearch}
+                    onChange={e => setExpenseSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:border-amber-500 shadow-2xs"
+                  />
+                  {expenseSearch && (
+                    <button
+                      onClick={() => setExpenseSearch("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Category Filter Pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                  {["ALL", "FUEL", "TOLL", "PARKING", "MAINTENANCE", "OTHER"].map(cat => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setExpenseCategoryFilter(cat)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${expenseCategoryFilter === cat
+                          ? "bg-amber-600 text-white shadow-xs"
+                          : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                        }`}
+                    >
+                      {cat === "ALL" ? "All Expenses" : cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Expenses List / Table */}
+            {filteredTripExpenses.length === 0 ? (
+              <div className="glass-panel p-12 text-center rounded-3xl border border-slate-200/80">
+                <Fuel className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <h3 className="text-base font-black text-slate-800">No Trip Expenses Found</h3>
+                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                  {expenseSearch || expenseCategoryFilter !== "ALL"
+                    ? "No expense records match your current filter criteria."
+                    : "Drivers and helpers can log on-road expenses directly from their mobile Co-Pilot app."}
+                </p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50/90 border-b border-slate-200 text-[10px] uppercase font-black tracking-wider text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3">Date &amp; Time</th>
+                        <th className="px-4 py-3">Vehicle &amp; Route</th>
+                        <th className="px-4 py-3">Logged By</th>
+                        <th className="px-4 py-3">Category</th>
+                        <th className="px-4 py-3">Description</th>
+                        <th className="px-4 py-3">Amount</th>
+                        <th className="px-4 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                      {filteredTripExpenses.map(e => {
+                        const assignment = realAssignments.find(a => a.id === e.assignment_id);
+                        const vehicle = realVehicles.find(v => v.id === assignment?.vehicle_id);
+                        const route = realRoutes.find(r => r.id === assignment?.route_id);
+                        const driver = realStaff.find(s => s.id === assignment?.driver_id);
+
+                        return (
+                          <tr key={e.id} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="px-4 py-3 whitespace-nowrap text-slate-500 text-[11px]">
+                              {new Date(e.created_at).toLocaleString("en-IN", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit"
+                              })}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className="font-black text-slate-900 block">{vehicle?.plate_number || "Trip"}</span>
+                              <span className="text-[11px] text-slate-500">{route?.name || "Route"}</span>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap font-bold text-slate-800">
+                              {e.reporter_name || driver?.name || "Driver"}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-md ${e.category === "FUEL"
+                                  ? "bg-rose-100 text-rose-800 border border-rose-200"
+                                  : e.category === "TOLL"
+                                    ? "bg-blue-100 text-blue-800 border border-blue-200"
+                                    : e.category === "MAINTENANCE"
+                                      ? "bg-amber-100 text-amber-800 border border-amber-200"
+                                      : "bg-slate-100 text-slate-700 border border-slate-200"
+                                }`}>
+                                {e.category === "FUEL" ? "⛽ FUEL" : e.category === "TOLL" ? "🛣️ TOLL" : e.category === "MAINTENANCE" ? "🔧 REPAIR" : e.category}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-slate-600 max-w-xs truncate">
+                              {e.description || "On-route travel cost"}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap font-black text-slate-900 text-sm">
+                              ₹{e.amount}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-right">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteExpense(e.id, `${e.category} ₹${e.amount}`)}
+                                disabled={isDeletingExpense === e.id}
+                                className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-all"
+                                title="Delete expense entry"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1082,7 +1331,7 @@ export default function DeliveriesPage() {
                 </label>
                 <span className="text-[11px] font-bold text-slate-400">Bottles / Crates loaded</span>
               </div>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/70 p-5 rounded-2xl border border-slate-200/60">
                 {inventoryTypes.length === 0 ? (
                   <p className="text-sm text-slate-500 font-medium">No inventory types configured. Add them in Inventory.</p>
@@ -1120,18 +1369,18 @@ export default function DeliveriesPage() {
           width="2xl"
           actions={
             <div className="flex gap-4 w-full">
-              <Button 
-                variant="secondary" 
-                onClick={() => setEditAssignment(null)} 
-                fullWidth 
+              <Button
+                variant="secondary"
+                onClick={() => setEditAssignment(null)}
+                fullWidth
                 disabled={isSavingEdit}
               >
                 Cancel
               </Button>
-              <Button 
-                variant="primary" 
-                onClick={handleSaveEdit} 
-                fullWidth 
+              <Button
+                variant="primary"
+                onClick={handleSaveEdit}
+                fullWidth
                 disabled={isSavingEdit}
               >
                 {isSavingEdit ? "Saving..." : "Save Changes"}
@@ -1152,15 +1401,14 @@ export default function DeliveriesPage() {
                       key={st}
                       type="button"
                       onClick={() => setEditStatus(st)}
-                      className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${
-                        editStatus === st
+                      className={`flex-1 py-2 rounded-lg text-xs font-black uppercase tracking-wider transition-all ${editStatus === st
                           ? st === "COMPLETED"
                             ? "bg-emerald-600 text-white shadow-sm"
                             : st === "ACTIVE"
-                            ? "bg-sky-600 text-white shadow-sm"
-                            : "bg-amber-500 text-white shadow-sm"
+                              ? "bg-sky-600 text-white shadow-sm"
+                              : "bg-amber-500 text-white shadow-sm"
                           : "text-slate-600 hover:text-slate-900"
-                      }`}
+                        }`}
                     >
                       {st}
                     </button>
@@ -1283,7 +1531,7 @@ export default function DeliveriesPage() {
                 </label>
                 <span className="text-[11px] font-bold text-slate-400">Bottles / Crates loaded</span>
               </div>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/70 p-5 rounded-2xl border border-slate-200/60">
                 {inventoryTypes.length === 0 ? (
                   <p className="text-sm text-slate-500 font-medium">No inventory types configured. Add them in Inventory.</p>
@@ -1316,10 +1564,14 @@ export default function DeliveriesPage() {
         <Modal
           isOpen={!!trackOpen}
           onClose={() => setTrackOpen(null)}
-          title={`Vehicle: ${trackOpen}`}
+          title={(() => {
+            const activeAssignment = realAssignments.find(a => a.id === trackOpen);
+            const vPlate = realVehicles.find(v => v.id === activeAssignment?.vehicle_id)?.plate_number;
+            return `Vehicle: ${vPlate || "Vehicle"}`;
+          })()}
           subtitle={
             (() => {
-              const activeAssignment = realAssignments.find(a => realVehicles.find(v => v.id === a.vehicle_id)?.plate_number === trackOpen);
+              const activeAssignment = realAssignments.find(a => a.id === trackOpen);
               const driverName = realStaff.find(s => s.id === activeAssignment?.driver_id)?.name || "Unknown";
               return (
                 <div className="flex items-center gap-2">
@@ -1336,15 +1588,17 @@ export default function DeliveriesPage() {
         >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {(() => {
-              const activeAssignment = realAssignments.find(a => realVehicles.find(v => v.id === a.vehicle_id)?.plate_number === trackOpen);
+              const activeAssignment = realAssignments.find(a => a.id === trackOpen);
               const assignedRoute = realRoutes.find(r => r.id === activeAssignment?.route_id);
-              const routeClients = assignedRoute ? realClients.filter(c => c.route_id === assignedRoute.id) : [];
+              const initialClients = assignedRoute ? realClients.filter(c => c.route_id === assignedRoute.id) : [];
               const deliveredClientIds = (activeAssignment as any)?.deliveries?.map((d: any) => d.client_id) || [];
+              const extraClients = realClients.filter(c => deliveredClientIds.includes(c.id) && !initialClients.some(ic => ic.id === c.id));
+              const routeClients = [...initialClients, ...extraClients];
               const deliveredCount = routeClients.filter(c => deliveredClientIds.includes(c.id)).length;
-              const totalClients = routeClients.length || 1;
-              const progressPercent = Math.round((deliveredCount / totalClients) * 100);
+              const totalClients = Math.max(routeClients.length, deliveredClientIds.length, 1);
+              const progressPercent = Math.min(100, Math.round((deliveredCount / totalClients) * 100));
               const nextClient = routeClients.find(c => !deliveredClientIds.includes(c.id));
-              const isCompleted = deliveredCount === totalClients && totalClients > 0;
+              const isCompleted = deliveredCount >= totalClients && totalClients > 0;
 
               const deliveries = (activeAssignment as any)?.deliveries || [];
               const totalEarned = deliveries.reduce((sum: number, d: any) => sum + (d.total_amount || 0), 0);
@@ -1394,6 +1648,27 @@ export default function DeliveriesPage() {
                         <p className="text-xl font-black text-emerald-600">₹{totalEarned}</p>
                       </div>
                     </div>
+
+                    {/* Running Trip Expenses & Net Margin */}
+                    {trackExpenses.length > 0 && (
+                      <div className="p-3.5 bg-amber-50/80 rounded-2xl border border-amber-200/80 mb-6 flex items-center justify-between shadow-2xs">
+                        <div>
+                          <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 flex items-center gap-1">
+                            <Fuel className="w-3.5 h-3.5 text-amber-600" />
+                            Trip Expenses ({trackExpenses.length} entries)
+                          </span>
+                          <span className="text-xs font-semibold text-slate-600">
+                            {trackExpenses.map(e => `${e.category}: ₹${e.amount}`).join(" • ")}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">Net Margin</span>
+                          <span className="text-sm font-black text-emerald-700">
+                            ₹{Math.max(0, totalEarned - trackExpenses.reduce((s, e) => s + (e.amount || 0), 0))}
+                          </span>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Timeline */}
                     <div className="relative border-l-2 border-slate-200 ml-4 space-y-6">
@@ -1447,29 +1722,30 @@ export default function DeliveriesPage() {
               </span>
               <div className="glass-panel p-4 rounded-3xl flex-1 overflow-y-auto max-h-[460px] space-y-3">
                 {(() => {
-                  const activeAssignment = realAssignments.find(a => realVehicles.find(v => v.id === a.vehicle_id)?.plate_number === trackOpen);
+                  const activeAssignment = realAssignments.find(a => a.id === trackOpen);
                   const assignedRoute = realRoutes.find(r => r.id === activeAssignment?.route_id);
-                  const routeClients = assignedRoute ? realClients.filter(c => c.route_id === assignedRoute.id) : [];
+                  const initialClients = assignedRoute ? realClients.filter(c => c.route_id === assignedRoute.id) : [];
+                  const deliveredClientIds = (activeAssignment as any)?.deliveries?.map((d: any) => d.client_id) || [];
+                  const extraClients = realClients.filter(c => deliveredClientIds.includes(c.id) && !initialClients.some(ic => ic.id === c.id));
+                  const routeClients = [...initialClients, ...extraClients];
 
                   if (routeClients.length === 0) {
                     return <p className="text-sm font-medium text-slate-400 p-4 text-center">No clients configured on this route.</p>;
                   }
 
                   return routeClients.map((client, idx) => {
-                    const deliveredClientIds = (activeAssignment as any)?.deliveries?.map((d: any) => d.client_id) || [];
                     const isDelivered = deliveredClientIds.includes(client.id);
                     const isNext = !isDelivered && (idx === 0 || deliveredClientIds.includes(routeClients[idx - 1]?.id));
 
                     return (
                       <div
                         key={client.id}
-                        className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between ${
-                          isDelivered
+                        className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between ${isDelivered
                             ? "bg-emerald-50/40 border-emerald-100"
                             : isNext
-                            ? "bg-white border-primary shadow-xs"
-                            : "bg-white/60 border-slate-100 opacity-60"
-                        }`}
+                              ? "bg-white border-primary shadow-xs"
+                              : "bg-white/60 border-slate-100 opacity-60"
+                          }`}
                       >
                         <div className="min-w-0 pr-2">
                           <p className={`font-black text-sm truncate ${isDelivered ? "text-slate-500 line-through" : "text-slate-800"}`}>
@@ -1505,10 +1781,14 @@ export default function DeliveriesPage() {
           isOpen={!!reconOpen}
           onClose={() => setReconOpen(null)}
           title="End of Day Reconciliation"
-          subtitle={`Reconcile returns, empties & cash for ${reconOpen}`}
+          subtitle={(() => {
+            const assignmentObj = realAssignments.find(a => a.id === reconOpen);
+            const vPlate = realVehicles.find(v => v.id === assignmentObj?.vehicle_id)?.plate_number;
+            return `Reconcile returns, empties & cash for ${vPlate || "Vehicle"}`;
+          })()}
           width="lg"
           actions={(() => {
-            const assignmentObj = realAssignments.find(a => realVehicles.find(v => v.id === a.vehicle_id)?.plate_number === reconOpen);
+            const assignmentObj = realAssignments.find(a => a.id === reconOpen);
             const isAlreadyCompleted = assignmentObj?.status === "COMPLETED";
 
             if (isAlreadyCompleted) {
@@ -1597,7 +1877,7 @@ export default function DeliveriesPage() {
         >
           <div>
             {(() => {
-              const assignmentObj = realAssignments.find(a => realVehicles.find(v => v.id === a.vehicle_id)?.plate_number === reconOpen);
+              const assignmentObj = realAssignments.find(a => a.id === reconOpen);
               if (!assignmentObj) return null;
 
               const stats = assignmentObj.allocations.map(alloc => {
@@ -1689,15 +1969,81 @@ export default function DeliveriesPage() {
                     </div>
                   </div>
 
-                  <div className="p-3.5 bg-slate-100/80 rounded-2xl border border-slate-200 flex items-center justify-between text-xs font-bold text-slate-700">
-                    <span className="flex items-center gap-1.5">
-                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                      <span>Total Realized Shift Collections (Cash + Verified UPI):</span>
-                    </span>
-                    <span className="text-base font-black text-emerald-800">
-                      ₹{(totalCash + totalUpi).toLocaleString()}
-                    </span>
-                  </div>
+                  {/* Trip Expenses Deduction */}
+                  {(() => {
+                    const reconTotalExpenses = reconExpenses.reduce((s, e) => s + (e.amount || 0), 0);
+                    const netCashFromDriver = Math.max(0, totalCash - reconTotalExpenses);
+                    const netShiftProfit = (totalCash + totalUpi) - reconTotalExpenses;
+
+                    return (
+                      <div className="space-y-3 pt-1">
+                        <div className="p-4 bg-amber-50/80 rounded-2xl border border-amber-200/80 shadow-xs space-y-2">
+                          <div className="flex justify-between items-center pb-2 border-b border-amber-200/60">
+                            <span className="text-xs font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                              <Fuel className="w-4 h-4 text-amber-600" />
+                              Trip Expenses Logged ({reconExpenses.length})
+                            </span>
+                            <span className="text-base font-black text-amber-950">
+                              {reconTotalExpenses > 0 ? `− ₹${reconTotalExpenses.toLocaleString()}` : "₹0"}
+                            </span>
+                          </div>
+
+                          {reconExpenses.length > 0 ? (
+                            <div className="space-y-1 text-xs">
+                              {reconExpenses.map(exp => (
+                                <div key={exp.id} className="flex justify-between items-center text-slate-700">
+                                  <span>
+                                    <strong className="text-amber-900 uppercase font-black mr-1">{exp.category}</strong>
+                                    {exp.description ? `• ${exp.description}` : ""}
+                                  </span>
+                                  <span className="font-bold text-slate-900">₹{exp.amount}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-slate-500 font-medium">No on-road travel expenses logged by crew.</p>
+                          )}
+                        </div>
+
+                        {/* Net Shift Reconciliation Summary */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 flex items-center justify-between text-xs font-bold text-slate-700 shadow-2xs">
+                            <div>
+                              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">
+                                Net Cash from Driver
+                              </span>
+                              <span className="text-slate-500 text-[11px] font-medium">(Cash Handover − Expenses)</span>
+                            </div>
+                            <span className="text-xl font-black text-emerald-950">
+                              ₹{netCashFromDriver.toLocaleString()}
+                            </span>
+                          </div>
+
+                          <div className="p-3.5 bg-sky-50 rounded-2xl border border-sky-200 flex items-center justify-between text-xs font-bold text-slate-700 shadow-2xs">
+                            <div>
+                              <span className="text-[10px] font-black uppercase tracking-wider text-sky-800 block">
+                                Net Shift Profit
+                              </span>
+                              <span className="text-slate-500 text-[11px] font-medium">(Gross Collections − Expenses)</span>
+                            </div>
+                            <span className="text-xl font-black text-sky-950">
+                              ₹{netShiftProfit.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-slate-100/80 rounded-2xl border border-slate-200 flex items-center justify-between text-xs font-bold text-slate-700">
+                          <span className="flex items-center gap-1.5">
+                            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                            <span>Total Gross Realized (Cash + Verified UPI):</span>
+                          </span>
+                          <span className="text-base font-black text-slate-800">
+                            ₹{(totalCash + totalUpi).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })()}
@@ -2007,16 +2353,15 @@ export default function DeliveriesPage() {
                         const willComplete = newBalance <= 0 && deliveryDue <= 0;
 
                         return (
-                          <div className={`p-2.5 rounded-xl border text-xs mt-2 transition-all ${
-                            willComplete ? "bg-emerald-100/70 border-emerald-300 text-emerald-900" : "bg-amber-100/70 border-amber-300 text-amber-900"
-                          }`}>
+                          <div className={`p-2.5 rounded-xl border text-xs mt-2 transition-all ${willComplete ? "bg-emerald-100/70 border-emerald-300 text-emerald-900" : "bg-amber-100/70 border-amber-300 text-amber-900"
+                            }`}>
                             <div className="flex justify-between items-center font-bold">
                               <span>Customer Ledger Dues After Payment:</span>
                               <span className="font-black text-sm">₹{newBalance.toLocaleString()}</span>
                             </div>
                             <p className="text-[11px] font-semibold mt-0.5">
-                              {willComplete 
-                                ? "✓ Zero balance reached! Delivery will turn to Paid & Verified." 
+                              {willComplete
+                                ? "✓ Zero balance reached! Delivery will turn to Paid & Verified."
                                 : `⚡ Partial payment: Customer still carries ₹${newBalance} remaining dues. Status will remain Partially Paid.`}
                             </p>
                           </div>
@@ -2099,26 +2444,24 @@ function AssignmentCard({
 
   return (
     <div
-      className={`glass-card p-6 flex flex-col justify-between relative group transition-all duration-300 hover:shadow-md ${
-        isCompleted
+      className={`glass-card p-6 flex flex-col justify-between relative group transition-all duration-300 hover:shadow-md ${isCompleted
           ? "border-emerald-200/60 bg-emerald-50/15"
           : isActive
-          ? "border-sky-200/80 bg-white/95"
-          : "border-slate-100"
-      }`}
+            ? "border-sky-200/80 bg-white/95"
+            : "border-slate-100"
+        }`}
     >
       {/* Top Bar with Vehicle Plate & Status Badge */}
       <div>
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-3">
             <div
-              className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-all ${
-                isActive
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center border transition-all ${isActive
                   ? "bg-sky-50 border-sky-100 text-sky-600"
                   : isCompleted
-                  ? "bg-emerald-50 border-emerald-100 text-emerald-600"
-                  : "bg-slate-100 border-slate-200/60 text-slate-500"
-              }`}
+                    ? "bg-emerald-50 border-emerald-100 text-emerald-600"
+                    : "bg-slate-100 border-slate-200/60 text-slate-500"
+                }`}
             >
               <Truck className="w-6 h-6" />
             </div>
@@ -2128,14 +2471,12 @@ function AssignmentCard({
               </div>
               <div className="flex items-center gap-1.5 mt-1.5">
                 <span
-                  className={`w-2 h-2 rounded-full ${
-                    isActive ? "bg-sky-500 animate-pulse" : isCompleted ? "bg-emerald-500" : "bg-amber-400"
-                  }`}
+                  className={`w-2 h-2 rounded-full ${isActive ? "bg-sky-500 animate-pulse" : isCompleted ? "bg-emerald-500" : "bg-amber-400"
+                    }`}
                 />
                 <span
-                  className={`text-xs font-black uppercase tracking-wider ${
-                    isActive ? "text-sky-700" : isCompleted ? "text-emerald-800" : "text-amber-800"
-                  }`}
+                  className={`text-xs font-black uppercase tracking-wider ${isActive ? "text-sky-700" : isCompleted ? "text-emerald-800" : "text-amber-800"
+                    }`}
                 >
                   {status}
                 </span>
@@ -2233,9 +2574,8 @@ function AssignmentCard({
             </div>
             <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all duration-1000 ${
-                  isCompleted ? "bg-emerald-500" : "bg-gradient-to-r from-sky-400 to-primary"
-                }`}
+                className={`h-full rounded-full transition-all duration-1000 ${isCompleted ? "bg-emerald-500" : "bg-gradient-to-r from-sky-400 to-primary"
+                  }`}
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -2326,29 +2666,27 @@ function DoorstepBillCard({
   return (
     <div
       onClick={onVerifyClick}
-      className={`glass-card p-5 sm:p-6 flex flex-col justify-between relative group cursor-pointer transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 border ${
-        isPending
+      className={`glass-card p-5 sm:p-6 flex flex-col justify-between relative group cursor-pointer transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 border ${isPending
           ? "border-rose-300/80 bg-gradient-to-br from-rose-50/30 via-white to-amber-50/20"
           : isPartial
-          ? "border-amber-300/90 bg-gradient-to-br from-amber-50/40 via-white to-orange-50/20"
-          : isCredited
-          ? "border-sky-200/80 bg-sky-50/20"
-          : "border-emerald-200/70 bg-emerald-50/15"
-      }`}
+            ? "border-amber-300/90 bg-gradient-to-br from-amber-50/40 via-white to-orange-50/20"
+            : isCredited
+              ? "border-sky-200/80 bg-sky-50/20"
+              : "border-emerald-200/70 bg-emerald-50/15"
+        }`}
     >
       <div>
         {/* Top Header */}
         <div className="flex justify-between items-start mb-3 gap-2">
           <div className="flex items-center gap-3">
-            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border shadow-xs ${
-              isPending
+            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border shadow-xs ${isPending
                 ? "bg-rose-500 text-white border-rose-400"
                 : isPartial
-                ? "bg-amber-500 text-white border-amber-400"
-                : isCredited
-                ? "bg-sky-500 text-white border-sky-400"
-                : "bg-emerald-600 text-white border-emerald-500"
-            }`}>
+                  ? "bg-amber-500 text-white border-amber-400"
+                  : isCredited
+                    ? "bg-sky-500 text-white border-sky-400"
+                    : "bg-emerald-600 text-white border-emerald-500"
+              }`}>
               <QrCode className="w-5 h-5" />
             </div>
             <div>
@@ -2365,27 +2703,26 @@ function DoorstepBillCard({
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            <span className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border flex items-center gap-1 shadow-2xs ${
-              isCompleted
+            <span className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border flex items-center gap-1 shadow-2xs ${isCompleted
                 ? "bg-emerald-100 text-emerald-900 border-emerald-300"
                 : isPartial
-                ? "bg-amber-100 text-amber-900 border-amber-300"
-                : isCredited
-                ? "bg-sky-100 text-sky-900 border-sky-300"
-                : "bg-rose-100 text-rose-900 border-rose-300 animate-pulse"
-            }`}>
+                  ? "bg-amber-100 text-amber-900 border-amber-300"
+                  : isCredited
+                    ? "bg-sky-100 text-sky-900 border-sky-300"
+                    : "bg-rose-100 text-rose-900 border-rose-300 animate-pulse"
+              }`}>
               {isCompleted && <Check className="w-3 h-3 text-emerald-600" />}
               {isPartial && <Clock className="w-3 h-3 text-amber-600" />}
               {isCredited && <Clock className="w-3 h-3 text-sky-600" />}
               {isPending && <AlertTriangle className="w-3 h-3 text-rose-600" />}
               <span>
-                {isCompleted 
-                  ? "Paid & Verified" 
-                  : isPartial 
-                  ? `Partially Paid • Due ₹${clientCredit}` 
-                  : isCredited 
-                  ? `Unpaid Credit • Due ₹${clientCredit}` 
-                  : "Awaiting Verification"}
+                {isCompleted
+                  ? "Paid & Verified"
+                  : isPartial
+                    ? `Partially Paid • Due ₹${clientCredit}`
+                    : isCredited
+                      ? `Unpaid Credit • Due ₹${clientCredit}`
+                      : "Awaiting Verification"}
               </span>
             </span>
 
@@ -2446,9 +2783,8 @@ function DoorstepBillCard({
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
                 Customer Ledger Dues
               </span>
-              <span className={`text-sm font-black ${
-                clientCredit > 0 ? "text-rose-600" : "text-emerald-700"
-              }`}>
+              <span className={`text-sm font-black ${clientCredit > 0 ? "text-rose-600" : "text-emerald-700"
+                }`}>
                 ₹{clientCredit.toLocaleString()}
               </span>
               {clientCredit === 0 && (

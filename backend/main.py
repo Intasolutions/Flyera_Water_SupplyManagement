@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
 from app import models
-from app.api.routers import users, clients, vehicles, inventory, routes, auth, assignments, deliveries, dashboard, glass, settings, setup
+from app.api.routers import users, clients, vehicles, inventory, routes, auth, assignments, deliveries, dashboard, glass, settings, setup, expenses
 
 # Create all tables in the database (simple alternative to migrations for now)
 Base.metadata.create_all(bind=engine)
@@ -36,6 +36,38 @@ try:
                 conn.commit()
             except Exception:
                 pass
+        # Trip Expenses table
+        try:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS trip_expenses (
+                    id VARCHAR PRIMARY KEY,
+                    assignment_id VARCHAR REFERENCES assignments(id) ON DELETE CASCADE,
+                    reported_by VARCHAR REFERENCES users(id),
+                    category VARCHAR NOT NULL DEFAULT 'OTHER',
+                    amount REAL NOT NULL,
+                    description VARCHAR,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.commit()
+        except Exception:
+            pass
+        # Bottle Credit Ledger table
+        try:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS bottle_credit_ledger (
+                    id VARCHAR PRIMARY KEY,
+                    client_id VARCHAR REFERENCES clients(id) ON DELETE CASCADE,
+                    assignment_id VARCHAR REFERENCES assignments(id) ON DELETE SET NULL,
+                    inventory_type_id VARCHAR REFERENCES inventory_types(id),
+                    quantity INTEGER NOT NULL,
+                    notes VARCHAR,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.commit()
+        except Exception:
+            pass
 except Exception as e:
     print("Database migration check note:", e)
 
@@ -89,6 +121,7 @@ app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"]
 app.include_router(glass.router, prefix="/api/glass", tags=["glass"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(setup.router, prefix="/api/setup", tags=["setup"])
+app.include_router(expenses.router, prefix="/api/expenses", tags=["expenses"])
 
 @app.get("/")
 def read_root():

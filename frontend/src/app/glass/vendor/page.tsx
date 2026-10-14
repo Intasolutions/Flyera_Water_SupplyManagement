@@ -6,14 +6,14 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Button } from "@/components/ui/Button";
 import { useStore } from "@/lib/StoreContext";
-import { 
-  Truck, 
-  Info, 
-  ArrowUpRight, 
-  Sparkles, 
-  Layers, 
-  CheckCircle2, 
-  Building2, 
+import {
+  Truck,
+  Info,
+  ArrowUpRight,
+  Sparkles,
+  Layers,
+  CheckCircle2,
+  Building2,
   AlertTriangle,
   RefreshCw,
   Scale
@@ -167,11 +167,10 @@ export default function GlassVendorPage() {
                     <button
                       type="button"
                       onClick={() => setGlassType("white")}
-                      className={`p-3 rounded-xl border text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${
-                        glassType === "white"
+                      className={`p-3 rounded-xl border text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${glassType === "white"
                           ? "bg-sky-50 border-sky-300 text-sky-700 ring-2 ring-sky-200/50 shadow-xs"
                           : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
-                      }`}
+                        }`}
                     >
                       <span>Flint (White)</span>
                       <span className="text-[10px] font-bold text-slate-400">
@@ -182,11 +181,10 @@ export default function GlassVendorPage() {
                     <button
                       type="button"
                       onClick={() => setGlassType("mixed")}
-                      className={`p-3 rounded-xl border text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${
-                        glassType === "mixed"
+                      className={`p-3 rounded-xl border text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${glassType === "mixed"
                           ? "bg-purple-50 border-purple-300 text-purple-700 ring-2 ring-purple-200/50 shadow-xs"
                           : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
-                      }`}
+                        }`}
                     >
                       <span>Mixed / Amber</span>
                       <span className="text-[10px] font-bold text-slate-400">
@@ -265,11 +263,10 @@ export default function GlassVendorPage() {
                           {pickup.tons} Tons
                         </span>
                         <span
-                          className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md inline-block mt-0.5 ${
-                            pickup.type === "white"
+                          className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md inline-block mt-0.5 ${pickup.type === "white"
                               ? "bg-sky-50 text-sky-700 border border-sky-100"
                               : "bg-purple-50 text-purple-700 border border-purple-100"
-                          }`}
+                            }`}
                         >
                           {pickup.type} Cullet
                         </span>

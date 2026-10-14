@@ -118,6 +118,7 @@ class ClientUpdate(BaseModel):
 
 class ClientResponse(ClientBase):
     id: str
+    bottle_balance: Optional[int] = 0
     created_at: datetime
     updated_at: datetime
 
@@ -246,9 +247,16 @@ class AssignmentResponse(AssignmentBase):
     allocations: List[AllocationResponse] = []
     deliveries_count: int = 0
     deliveries: List['DeliveryResponse'] = []
+    expenses: List['TripExpenseResponse'] = []
+    total_expense: float = 0.0
 
     class Config:
         from_attributes = True
+
+    def model_post_init(self, __context: Any) -> None:
+        # Auto-compute total_expense from expenses list
+        if self.expenses:
+            object.__setattr__(self, 'total_expense', sum(e.amount for e in self.expenses))
 
 # --- DeliveryItem Schemas ---
 class DeliveryItemBase(BaseModel):
@@ -373,4 +381,51 @@ class GlassVendorPickupResponse(GlassVendorPickupBase):
     class Config:
         from_attributes = True
 
+# --- Trip Expense Schemas ---
+
+class TripExpenseCreate(BaseModel):
+    assignment_id: str
+    category: str  # FUEL | TOLL | PARKING | MAINTENANCE | OTHER
+    amount: float
+    description: Optional[str] = None
+    # reported_by is set server-side from auth token
+
+class TripExpenseResponse(BaseModel):
+    id: str
+    assignment_id: str
+    reported_by: Optional[str] = None
+    reporter_name: Optional[str] = None
+    category: str
+    amount: float
+    description: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# --- Bottle Credit Ledger Schemas ---
+
+class BottleCreditCreate(BaseModel):
+    quantity: int           # +ve = owed to customer, -ve = customer owes us
+    inventory_type_id: str
+    assignment_id: Optional[str] = None
+    notes: Optional[str] = None
+
+class BottleCreditResponse(BaseModel):
+    id: str
+    client_id: str
+    assignment_id: Optional[str] = None
+    inventory_type_id: str
+    inventory_name: Optional[str] = None
+    quantity: int
+    notes: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 AssignmentResponse.model_rebuild()
+
+

@@ -59,6 +59,11 @@ class Client(Base):
 
     route = relationship("Route", back_populates="clients")
     deliveries = relationship("Delivery", back_populates="client", cascade="all, delete-orphan")
+    bottle_credits = relationship("BottleCreditLedger", back_populates="client", cascade="all, delete-orphan")
+
+    @property
+    def bottle_balance(self) -> int:
+        return sum((b.quantity or 0) for b in self.bottle_credits)
 
 class Vehicle(Base):
     __tablename__ = "vehicles"
@@ -87,6 +92,7 @@ class InventoryType(Base):
     stocks = relationship("Stock", back_populates="inventory_type", cascade="all, delete-orphan")
     allocations = relationship("Allocation", back_populates="inventory_type", cascade="all, delete-orphan")
     delivery_items = relationship("DeliveryItem", back_populates="inventory_type", cascade="all, delete-orphan")
+    bottle_credits = relationship("BottleCreditLedger", back_populates="inventory_type")
 
     @property
     def full(self):
@@ -132,6 +138,7 @@ class Assignment(Base):
     
     allocations = relationship("Allocation", back_populates="assignment", cascade="all, delete-orphan")
     deliveries = relationship("Delivery", back_populates="assignment", cascade="all, delete-orphan")
+    expenses = relationship("TripExpense", back_populates="assignment", cascade="all, delete-orphan")
 
     @property
     def deliveries_count(self) -> int:
@@ -242,4 +249,45 @@ class SystemSetting(Base):
     value = Column(String, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
+# --- Trip Expenses ---
+
+class TripExpense(Base):
+    """Per-trip expense entries logged by driver or helper during a shift."""
+    __tablename__ = "trip_expenses"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    assignment_id = Column(String, ForeignKey("assignments.id"), nullable=False)
+    reported_by = Column(String, ForeignKey("users.id"), nullable=True)
+    # Category: FUEL | TOLL | PARKING | MAINTENANCE | OTHER
+    category = Column(String, nullable=False, default="OTHER")
+    amount = Column(Float, nullable=False)
+    description = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    assignment = relationship("Assignment", back_populates="expenses")
+    reporter = relationship("User", foreign_keys=[reported_by])
+
+
+# --- Bottle Credit Ledger ---
+
+class BottleCreditLedger(Base):
+    """Per-customer bottle credit/debit ledger.
+
+    quantity > 0  → we owe the customer bottles (e.g. advance booking, partial delivery)
+    quantity < 0  → customer owes us bottles (delivered but not paid/acknowledged)
+    """
+    __tablename__ = "bottle_credit_ledger"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    client_id = Column(String, ForeignKey("clients.id"), nullable=False)
+    assignment_id = Column(String, ForeignKey("assignments.id"), nullable=True)
+    inventory_type_id = Column(String, ForeignKey("inventory_types.id"), nullable=False)
+    quantity = Column(Integer, nullable=False)  # +ve = owed to customer, -ve = customer owes
+    notes = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    client = relationship("Client", back_populates="bottle_credits")
+    assignment = relationship("Assignment")
+    inventory_type = relationship("InventoryType")
 

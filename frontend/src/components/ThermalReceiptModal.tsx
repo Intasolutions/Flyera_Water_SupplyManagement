@@ -44,6 +44,8 @@ export interface ReceiptData {
   totalAmount: number;
   previousCreditBalance?: number;
   netDueAmount?: number;
+  bottleBalance?: number;
+  bottleChange?: number;
   paymentMethod: string; // "Cash" | "UPI / QR" | "Pay Later (Slip QR)"
   paymentStatus?: "PAID" | "PENDING";
   upiId: string;
@@ -332,6 +334,12 @@ export function ThermalReceiptModal({
                       <span className="font-bold text-emerald-700">{data.emptyReturned} Jars</span>
                     </div>
                   )}
+                  {data.bottleBalance !== undefined && (
+                    <div className="flex justify-between items-center pt-1 border-t border-slate-200/60 text-sky-800">
+                      <span className="font-semibold">Bottle Balance With Client:</span>
+                      <span className="font-bold">{data.bottleBalance} Jars {data.bottleChange ? `(${data.bottleChange > 0 ? `+${data.bottleChange}` : data.bottleChange} this stop)` : ""}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Thermal Receipt Visual Preview Box */}
@@ -357,6 +365,12 @@ export function ThermalReceiptModal({
                     <span>TODAY DROP:</span>
                     <span>₹{data.totalAmount}</span>
                   </div>
+                  {data.bottleBalance !== undefined && (
+                    <div className="flex justify-between text-sky-800 font-bold">
+                      <span>BOTTLE BALANCE:</span>
+                      <span>{data.bottleBalance} JARS</span>
+                    </div>
+                  )}
                   {data.previousCreditBalance && data.previousCreditBalance > 0 ? (
                     <>
                       <div className="flex justify-between font-bold text-amber-700">
@@ -460,6 +474,12 @@ export function ThermalReceiptModal({
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <span>Empty Cans Returned</span>
             <span>{data.emptyReturned}</span>
+          </div>
+        )}
+        {data.bottleBalance !== undefined && (
+          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold" }}>
+            <span>BOTTLE BALANCE:</span>
+            <span>{data.bottleBalance} JARS</span>
           </div>
         )}
         <div>--------------------------------</div>

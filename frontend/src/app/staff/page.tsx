@@ -334,7 +334,7 @@ export default function StaffPage() {
         />
 
         {/* Top KPI Metrics Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6 md:mb-8">
           <StatCard 
             title="Total Team" 
             value={totalHeadcount} 
@@ -367,14 +367,16 @@ export default function StaffPage() {
             badge="Helpers"
             color="cyan"
           />
-          <StatCard 
-            title="Glass Personnel" 
-            value={totalGlass} 
-            trend="Collections & godown"
-            icon={<Recycle className="w-5 h-5 text-purple-600" />}
-            badge="Recycling"
-            color="purple"
-          />
+          <div className="col-span-2 lg:col-span-1">
+            <StatCard 
+              title="Glass Personnel" 
+              value={totalGlass} 
+              trend="Collections & godown"
+              icon={<Recycle className="w-5 h-5 text-purple-600" />}
+              badge="Recycling"
+              color="purple"
+            />
+          </div>
         </div>
 
         {/* Search & Filter Toolbar */}

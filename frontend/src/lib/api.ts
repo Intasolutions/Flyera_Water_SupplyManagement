@@ -165,6 +165,7 @@ export interface Client {
   longitude?: number;
   route_id: string | null;
   credit_amount?: number;
+  bottle_balance?: number;
   created_at: string;
   updated_at: string;
 }
@@ -620,4 +621,70 @@ export const resetAndCreateSuperuser = (data: SetupRequest) =>
   });
 
 
+// --- Trip Expenses ---
 
+export interface TripExpense {
+  id: string;
+  assignment_id: string;
+  reported_by?: string;
+  reporter_name?: string;
+  category: 'FUEL' | 'TOLL' | 'PARKING' | 'MAINTENANCE' | 'OTHER';
+  amount: number;
+  description: string | null;
+  created_at: string;
+}
+
+export const createTripExpense = (data: {
+  assignment_id: string;
+  category: string;
+  amount: number;
+  description?: string;
+}) =>
+  fetcher<TripExpense>('/expenses', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const getExpensesForAssignment = (assignmentId: string) =>
+  fetcher<TripExpense[]>(`/expenses/assignment/${assignmentId}`);
+
+export const getAllExpenses = (params?: { start_date?: string; end_date?: string; assignment_id?: string }) => {
+  const q = params ? new URLSearchParams(params as any).toString() : '';
+  return fetcher<TripExpense[]>(`/expenses${q ? `?${q}` : ''}`);
+};
+
+export const deleteTripExpense = (expenseId: string) =>
+  fetcher<{ message: string }>(`/expenses/${expenseId}`, { method: 'DELETE' });
+
+
+// --- Bottle Credit Ledger ---
+
+export interface BottleCreditEntry {
+  id: string;
+  client_id: string;
+  assignment_id: string | null;
+  inventory_type_id: string;
+  inventory_name?: string;
+  quantity: number;   // +ve = we owe customer bottles, -ve = customer owes us
+  notes: string | null;
+  created_at: string;
+}
+
+export const adjustBottleCredit = (clientId: string, data: {
+  quantity: number;
+  inventory_type_id: string;
+  assignment_id?: string;
+  notes?: string;
+}) =>
+  fetcher<BottleCreditEntry>(`/clients/${clientId}/bottle-credit`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const getBottleLedger = (clientId: string) =>
+  fetcher<BottleCreditEntry[]>(`/clients/${clientId}/bottle-ledger`);
+
+export const getBottleCreditBalance = (clientId: string) =>
+  fetcher<{ balances: { inventory_type_id: string; name: string; balance: number }[] }>(
+    `/clients/${clientId}/bottle-credit-balance`
+  );

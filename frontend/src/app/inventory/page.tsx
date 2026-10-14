@@ -200,7 +200,7 @@ export default function InventoryPage() {
         />
 
         {/* Top KPI Metrics Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-5 mb-6 md:mb-8">
           <StatCard 
             title="Full Warehouse Stock" 
             value={totalFullStock.toLocaleString()} 

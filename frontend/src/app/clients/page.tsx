@@ -6,15 +6,15 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { 
-  Users, 
-  Search, 
-  Filter, 
-  Phone, 
-  Award, 
-  MapPin, 
-  Plus, 
-  Route as RouteIcon, 
+import {
+  Users,
+  Search,
+  Filter,
+  Phone,
+  Award,
+  MapPin,
+  Plus,
+  Route as RouteIcon,
   Sparkles,
   RefreshCw,
   Edit2,
@@ -30,10 +30,31 @@ import {
   Check,
   IndianRupee,
   Lock,
-  CreditCard
+  CreditCard,
+  Package,
+  History,
+  List,
+  LayoutGrid,
+  ChevronDown,
+  ChevronUp,
+  X,
+  Edit
 } from "lucide-react";
 import { useStore } from "@/lib/StoreContext";
-import { getClients, createClient, updateClient, deleteClient, Client, getRoutes, Route, getInventoryTypes, InventoryType } from "@/lib/api";
+import {
+  getClients,
+  createClient,
+  updateClient,
+  deleteClient,
+  Client,
+  getRoutes,
+  Route,
+  getInventoryTypes,
+  InventoryType,
+  getBottleLedger,
+  adjustBottleCredit,
+  BottleCreditEntry
+} from "@/lib/api";
 import { sanitizePhone, isValidPhone, formatPhoneDisplay } from "@/lib/validation";
 import { toast } from "react-hot-toast";
 import { useConfirm } from "@/lib/useConfirm";
@@ -45,7 +66,8 @@ export default function ClientsPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRouteFilter, setSelectedRouteFilter] = useState("all");
-  
+  const [viewMode, setViewMode] = useState<"compact" | "grid">("compact");
+
   // Modal states
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -61,7 +83,7 @@ export default function ClientsPage() {
         const u = JSON.parse(userStr);
         if (u.role === "ADMIN") return true;
       }
-    } catch (e) {}
+    } catch (e) { }
     return false;
   }, [currentUserRole]);
 
@@ -80,6 +102,65 @@ export default function ClientsPage() {
   const [locationInput, setLocationInput] = useState("");
   const [showGuidance, setShowGuidance] = useState(false);
   const [locationMethod, setLocationMethod] = useState<"link" | "gps" | "manual">("link");
+
+  // Bottle Credit Ledger Modal State
+  const [selectedClientForLedger, setSelectedClientForLedger] = useState<Client | null>(null);
+  const [bottleLedgerEntries, setBottleLedgerEntries] = useState<BottleCreditEntry[]>([]);
+  const [isLoadingLedger, setIsLoadingLedger] = useState(false);
+  const [isAdjustingBottleCredit, setIsAdjustingBottleCredit] = useState(false);
+  const [adjustBottleQty, setAdjustBottleQty] = useState<string>("");
+  const [adjustBottleNotes, setAdjustBottleNotes] = useState<string>("");
+  const [adjustBottleDirection, setAdjustBottleDirection] = useState<"+" | "-">("+");
+
+  const handleOpenBottleLedger = async (client: Client) => {
+    setSelectedClientForLedger(client);
+    setIsLoadingLedger(true);
+    try {
+      const entries = await getBottleLedger(client.id);
+      setBottleLedgerEntries(entries || []);
+    } catch (err) {
+      console.error("Failed to load bottle ledger:", err);
+      toast.error("Failed to load bottle credit history");
+    } finally {
+      setIsLoadingLedger(false);
+    }
+  };
+
+  const handleSaveBottleAdjustment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedClientForLedger) return;
+    const qtyVal = parseInt(adjustBottleQty, 10);
+    if (isNaN(qtyVal) || qtyVal <= 0) {
+      toast.error("Please enter a valid bottle quantity greater than 0");
+      return;
+    }
+    const signedQty = adjustBottleDirection === "+" ? qtyVal : -qtyVal;
+    const defaultInvId = inventoryTypes[0]?.id || "default";
+
+    setIsAdjustingBottleCredit(true);
+    try {
+      await adjustBottleCredit(selectedClientForLedger.id, {
+        quantity: signedQty,
+        inventory_type_id: defaultInvId,
+        notes: adjustBottleNotes.trim() || undefined
+      });
+      toast.success(`Bottle ledger updated: ${signedQty > 0 ? `+${signedQty}` : signedQty} Jars`);
+      setAdjustBottleQty("");
+      setAdjustBottleNotes("");
+      const updatedEntries = await getBottleLedger(selectedClientForLedger.id);
+      setBottleLedgerEntries(updatedEntries || []);
+      // Refresh client list to update badges
+      const updatedClients = await getClients();
+      setClients(updatedClients || []);
+      const updatedSelected = updatedClients.find(c => c.id === selectedClientForLedger.id);
+      if (updatedSelected) setSelectedClientForLedger(updatedSelected);
+    } catch (err: any) {
+      console.error("Failed to adjust bottle credit:", err);
+      toast.error(err.message || "Failed to adjust bottle credit");
+    } finally {
+      setIsAdjustingBottleCredit(false);
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -180,7 +261,7 @@ export default function ClientsPage() {
             }
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     } else {
       toast.error("Could not find coordinates. Please paste standard coordinates or a Google Maps link.");
     }
@@ -211,7 +292,7 @@ export default function ClientsPage() {
         latitude: newLatitude ?? undefined,
         longitude: newLongitude ?? undefined,
       };
-      
+
       if (editId) {
         await updateClient(editId, payload);
         toast.success("Client updated successfully!");
@@ -219,7 +300,7 @@ export default function ClientsPage() {
         await createClient(payload);
         toast.success("Client registered successfully!");
       }
-      
+
       await fetchData();
       setModalOpen(false);
       resetForm();
@@ -274,7 +355,7 @@ export default function ClientsPage() {
       confirmText: "Delete",
       cancelText: "Cancel"
     });
-    
+
     if (isConfirmed) {
       try {
         await deleteClient(id);
@@ -291,13 +372,13 @@ export default function ClientsPage() {
   // Filter clients dynamically
   const filteredClients = useMemo(() => {
     return clients.filter(c => {
-      const matchesSearch = 
+      const matchesSearch =
         (c.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (c.phone || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
         (c.address || "").toLowerCase().includes(searchQuery.toLowerCase());
-      
-      const matchesRoute = 
-        selectedRouteFilter === "all" || 
+
+      const matchesRoute =
+        selectedRouteFilter === "all" ||
         (selectedRouteFilter === "unassigned" ? !c.route_id : c.route_id === selectedRouteFilter);
 
       return matchesSearch && matchesRoute;
@@ -310,15 +391,16 @@ export default function ClientsPage() {
   const unassignedCount = totalClients - assignedCount;
   const totalLoyaltyPoints = clients.reduce((acc, c) => acc + (c.loyalty_points || 0), 0);
   const totalCreditDues = clients.reduce((acc, c) => acc + (c.credit_amount || 0), 0);
+  const totalCustomerBottles = clients.reduce((acc, c) => acc + (c.bottle_balance || 0), 0);
 
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      
+
       <main className="flex-1 ml-0 md:ml-72 p-4 sm:p-6 md:p-10 lg:p-12 pt-20 md:pt-10 pb-24 md:pb-12 transition-all max-w-7xl">
-        <PageHeader 
-          title="Client Directory" 
-          subtitle="Manage recurring customer locations, route assignments, credit balances, and loyalty rewards."
+        <PageHeader
+          title="Client Directory"
+          subtitle="Manage recurring customer locations, route assignments, credit balances, bottle ledgers & loyalty rewards."
           badge={`${totalClients} Registered`}
           badgeColor="blue"
           actions={
@@ -330,8 +412,8 @@ export default function ClientsPage() {
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-primary" : ""}`} />
               </button>
-              <Button 
-                onClick={handleAddClick} 
+              <Button
+                onClick={handleAddClick}
                 icon={<Plus className="w-4 h-4" />}
                 className="shadow-md"
               >
@@ -341,76 +423,98 @@ export default function ClientsPage() {
           }
         />
 
-        {/* Top KPI Metrics Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard 
-            title="Total Clients" 
-            value={totalClients} 
+        {/* Top KPI Metrics Cards - 3 Vital Metrics (Eliminates mobile scroll) */}
+        <div className="grid grid-cols-3 gap-2.5 sm:gap-4 md:gap-5 mb-4 sm:mb-6">
+          <StatCard
+            title="Total Clients"
+            value={totalClients}
             trend="Active customer base"
             icon={<Users className="w-5 h-5 text-blue-600" />}
             badge="Directory"
             color="blue"
           />
-          <StatCard 
-            title="Total Market Credit" 
-            value={`₹${totalCreditDues.toLocaleString()}`} 
+          <StatCard
+            title="Market Credit"
+            value={`₹${totalCreditDues.toLocaleString()}`}
             trend="Outstanding unpaid dues"
             icon={<IndianRupee className="w-5 h-5 text-rose-600" />}
-            badge="Receivables"
+            badge="Credit Due"
             color="rose"
           />
-          <StatCard 
-            title="Assigned to Routes" 
-            value={assignedCount} 
-            trend="On active delivery paths"
-            icon={<RouteIcon className="w-5 h-5 text-emerald-600" />}
-            badge="Scheduled"
-            color="emerald"
-          />
-          <StatCard 
-            title="Loyalty Points" 
-            value={totalLoyaltyPoints.toLocaleString()} 
-            trend="Earned across accounts"
-            icon={<Award className="w-5 h-5 text-purple-600" />}
-            badge="Rewards"
-            color="purple"
+          <StatCard
+            title="Bottle Balance"
+            value={`${totalCustomerBottles.toLocaleString()} Jars`}
+            trend="With client accounts"
+            icon={<Package className="w-5 h-5 text-sky-600" />}
+            badge="Circulation"
+            color="amber"
           />
         </div>
 
         {/* Filter and Search Bar Container */}
-        <div className="glass-panel p-4 md:p-5 rounded-3xl mb-8 border border-black/5 shadow-sm">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="glass-panel p-3 sm:p-4 rounded-2xl sm:rounded-3xl mb-4 sm:mb-6 border border-black/5 shadow-2xs">
+          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
             {/* Search Input */}
-            <div className="relative w-full md:w-96">
-              <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-text-muted" />
-              <input 
-                type="text" 
-                placeholder="Search by business name, address, or phone..." 
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-text-muted" />
+              <input
+                type="text"
+                placeholder="Search by name, address, or phone..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 autoComplete="off"
                 name="clients_search_query"
                 id="clients_search_query"
-                className="w-full pl-10 pr-4 py-2.5 bg-surface border border-gray-200 rounded-xl outline-none text-text text-sm font-medium focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all shadow-sm"
+                className="w-full pl-10 pr-9 py-2 bg-surface border border-gray-200 rounded-xl outline-none text-text text-xs sm:text-sm font-medium focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all shadow-2xs"
               />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
-            {/* Route Filter Dropdown */}
-            <div className="flex items-center gap-2 w-full md:w-auto">
-              <Filter className="w-4 h-4 text-text-muted shrink-0 hidden sm:block" />
-              <select
-                value={selectedRouteFilter}
-                onChange={e => setSelectedRouteFilter(e.target.value)}
-                className="w-full md:w-auto py-2.5 px-4 bg-surface border border-gray-200 rounded-xl outline-none text-text text-xs font-bold focus:border-primary transition-all shadow-sm cursor-pointer"
-              >
-                <option value="all">All Routes ({clients.length})</option>
-                <option value="unassigned">Unassigned Only ({unassignedCount})</option>
-                {routes.map(r => (
-                  <option key={r.id} value={r.id}>
-                    Route: {r.name} ({r.area || "Zone"})
-                  </option>
-                ))}
-              </select>
+            {/* Route Filter Dropdown & View Mode Switcher */}
+            <div className="flex items-center gap-2 justify-between sm:justify-end">
+              <div className="flex items-center gap-1.5 flex-1 sm:flex-none">
+                <Filter className="w-3.5 h-3.5 text-text-muted shrink-0 hidden sm:block" />
+                <select
+                  value={selectedRouteFilter}
+                  onChange={e => setSelectedRouteFilter(e.target.value)}
+                  className="w-full sm:w-auto py-2 px-3 bg-surface border border-gray-200 rounded-xl outline-none text-text text-xs font-bold focus:border-primary transition-all shadow-2xs cursor-pointer"
+                >
+                  <option value="all">All Routes ({clients.length})</option>
+                  <option value="unassigned">Unassigned Only ({unassignedCount})</option>
+                  {routes.map(r => (
+                    <option key={r.id} value={r.id}>
+                      Route: {r.name} ({r.area || "Zone"})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* View Switcher: Compact List vs Expanded Cards */}
+              <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("compact")}
+                  className={`p-1.5 rounded-lg transition-all ${viewMode === "compact" ? "bg-white text-primary shadow-2xs" : "text-slate-400 hover:text-slate-700"}`}
+                  title="Compact List View (Mobile-Friendly)"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("grid")}
+                  className={`p-1.5 rounded-lg transition-all ${viewMode === "grid" ? "bg-white text-primary shadow-2xs" : "text-slate-400 hover:text-slate-700"}`}
+                  title="Card Grid View"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+              </div>
 
               {(searchQuery || selectedRouteFilter !== "all") && (
                 <button
@@ -418,7 +522,7 @@ export default function ClientsPage() {
                     setSearchQuery("");
                     setSelectedRouteFilter("all");
                   }}
-                  className="text-xs font-bold text-primary hover:underline px-2 py-1 shrink-0"
+                  className="text-xs font-bold text-primary hover:underline px-1.5 py-1 shrink-0"
                 >
                   Reset
                 </button>
@@ -427,39 +531,59 @@ export default function ClientsPage() {
           </div>
         </div>
 
-        {/* Client Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredClients.map(c => {
-            const clientRoute = routes.find(r => r.id === c.route_id);
-            return (
-              <ClientCard 
-                key={c.id} 
-                client={c} 
-                routeName={clientRoute?.name} 
-                routeArea={clientRoute?.area}
-                onEdit={() => handleEditClick(c)} 
-                onDelete={() => handleDeleteClient(c.id, c.name)} 
-              />
-            );
-          })}
+        {/* Client Directory Listing */}
+        {viewMode === "compact" ? (
+          <div className="space-y-2">
+            {filteredClients.map(c => {
+              const clientRoute = routes.find(r => r.id === c.route_id);
+              return (
+                <CompactClientRow
+                  key={c.id}
+                  client={c}
+                  routeName={clientRoute?.name}
+                  routeArea={clientRoute?.area}
+                  onEdit={() => handleEditClick(c)}
+                  onDelete={() => handleDeleteClient(c.id, c.name)}
+                  onOpenBottleLedger={() => handleOpenBottleLedger(c)}
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            {filteredClients.map(c => {
+              const clientRoute = routes.find(r => r.id === c.route_id);
+              return (
+                <ClientCard
+                  key={c.id}
+                  client={c}
+                  routeName={clientRoute?.name}
+                  routeArea={clientRoute?.area}
+                  onEdit={() => handleEditClick(c)}
+                  onDelete={() => handleDeleteClient(c.id, c.name)}
+                  onOpenBottleLedger={() => handleOpenBottleLedger(c)}
+                />
+              );
+            })}
+          </div>
+        )}
 
-          {filteredClients.length === 0 && !loading && (
-            <div className="col-span-full p-12 text-center bg-surface/60 rounded-3xl border border-dashed border-gray-200">
-              <Users className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-              <h3 className="text-base font-bold text-text">No clients found</h3>
-              <p className="text-text-muted text-sm mt-1 max-w-sm mx-auto">
-                {searchQuery || selectedRouteFilter !== "all" 
-                  ? "Try adjusting your search criteria or resetting the route filter."
-                  : "Get started by adding your first client location."}
-              </p>
-              <div className="mt-4">
-                <Button onClick={handleAddClick} icon={<Plus className="w-4 h-4" />} size="sm">
-                  Add Client
-                </Button>
-              </div>
+        {filteredClients.length === 0 && !loading && (
+          <div className="p-8 text-center bg-surface/60 rounded-3xl border border-dashed border-gray-200">
+            <Users className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+            <h3 className="text-base font-bold text-text">No clients found</h3>
+            <p className="text-text-muted text-sm mt-1 max-w-sm mx-auto">
+              {searchQuery || selectedRouteFilter !== "all"
+                ? "Try adjusting your search criteria or resetting the route filter."
+                : "Get started by adding your first client location."}
+            </p>
+            <div className="mt-4">
+              <Button onClick={handleAddClick} icon={<Plus className="w-4 h-4" />} size="sm">
+                Add Client
+              </Button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Modal: Add / Edit Client */}
         <Modal
@@ -485,12 +609,12 @@ export default function ClientsPage() {
                 <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
                   Business / Client Name
                 </label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Royal Greens Hotel" 
-                  value={newName} 
-                  onChange={e => setNewName(e.target.value)} 
-                  className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium" 
+                <input
+                  type="text"
+                  placeholder="e.g. Royal Greens Hotel"
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium"
                 />
               </div>
               <div>
@@ -498,13 +622,12 @@ export default function ClientsPage() {
                   <label className="text-xs font-bold uppercase tracking-wider text-text-muted">
                     Contact Phone
                   </label>
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors ${
-                    newPhone.length === 10
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded transition-colors ${newPhone.length === 10
                       ? "text-emerald-700 bg-emerald-50 border border-emerald-200"
                       : newPhone.length > 0
-                      ? "text-amber-700 bg-amber-50 border border-amber-200"
-                      : "text-slate-400"
-                  }`}>
+                        ? "text-amber-700 bg-amber-50 border border-amber-200"
+                        : "text-slate-400"
+                    }`}>
                     {newPhone.length}/10 digits
                   </span>
                 </div>
@@ -512,24 +635,23 @@ export default function ClientsPage() {
                   <div className="absolute left-3.5 flex items-center gap-1.5 text-xs font-bold text-slate-500 select-none border-r border-slate-200 pr-2.5 z-10 pointer-events-none">
                     <span>+91</span>
                   </div>
-                  <input 
-                    type="tel" 
+                  <input
+                    type="tel"
                     inputMode="numeric"
                     maxLength={10}
-                    placeholder="98765 43210" 
-                    value={newPhone} 
+                    placeholder="98765 43210"
+                    value={newPhone}
                     onChange={e => {
                       setPhoneTouched(true);
                       setNewPhone(sanitizePhone(e.target.value));
-                    }} 
+                    }}
                     onBlur={() => setPhoneTouched(true)}
-                    className={`w-full bg-surface border rounded-xl pl-16 pr-10 py-3 outline-none text-text font-mono font-medium tracking-wide transition-all ${
-                      phoneTouched && newPhone.length > 0 && newPhone.length < 10
+                    className={`w-full bg-surface border rounded-xl pl-16 pr-10 py-3 outline-none text-text font-mono font-medium tracking-wide transition-all ${phoneTouched && newPhone.length > 0 && newPhone.length < 10
                         ? "border-rose-400 ring-4 ring-rose-400/10 focus:border-rose-500"
                         : newPhone.length === 10
-                        ? "border-emerald-400 ring-4 ring-emerald-400/10 focus:border-emerald-500"
-                        : "border-gray-200 focus:border-primary focus:ring-4 focus:ring-primary/10"
-                    }`} 
+                          ? "border-emerald-400 ring-4 ring-emerald-400/10 focus:border-emerald-500"
+                          : "border-gray-200 focus:border-primary focus:ring-4 focus:ring-primary/10"
+                      }`}
                   />
                   {newPhone.length === 10 && (
                     <div className="absolute right-3 text-emerald-500" title="Valid 10-digit number">
@@ -559,12 +681,12 @@ export default function ClientsPage() {
               <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
                 Delivery Address & Landmark
               </label>
-              <input 
-                type="text" 
-                placeholder="Shop No. 4, Beach Road, Kandivali West" 
-                value={newAddress} 
-                onChange={e => setNewAddress(e.target.value)} 
-                className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium" 
+              <input
+                type="text"
+                placeholder="Shop No. 4, Beach Road, Kandivali West"
+                value={newAddress}
+                onChange={e => setNewAddress(e.target.value)}
+                className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium"
               />
             </div>
 
@@ -595,33 +717,30 @@ export default function ClientsPage() {
                   <button
                     type="button"
                     onClick={() => setLocationMethod("link")}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                      locationMethod === "link"
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${locationMethod === "link"
                         ? "bg-emerald-600 text-white shadow-2xs"
                         : "text-slate-600 hover:text-slate-900"
-                    }`}
+                      }`}
                   >
                     Paste Link
                   </button>
                   <button
                     type="button"
                     onClick={() => setLocationMethod("gps")}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                      locationMethod === "gps"
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${locationMethod === "gps"
                         ? "bg-emerald-600 text-white shadow-2xs"
                         : "text-slate-600 hover:text-slate-900"
-                    }`}
+                      }`}
                   >
                     Live GPS
                   </button>
                   <button
                     type="button"
                     onClick={() => setLocationMethod("manual")}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                      locationMethod === "manual"
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${locationMethod === "manual"
                         ? "bg-emerald-600 text-white shadow-2xs"
                         : "text-slate-600 hover:text-slate-900"
-                    }`}
+                      }`}
                   >
                     Coordinates
                   </button>
@@ -796,9 +915,9 @@ export default function ClientsPage() {
                 <label className="text-xs font-bold uppercase tracking-wider text-text-muted mb-1.5 block">
                   Assigned Route
                 </label>
-                <select 
-                  value={newRouteId} 
-                  onChange={e => setNewRouteId(e.target.value)} 
+                <select
+                  value={newRouteId}
+                  onChange={e => setNewRouteId(e.target.value)}
                   className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium appearance-none cursor-pointer"
                 >
                   <option value="">Unassigned (No Route)</option>
@@ -816,9 +935,9 @@ export default function ClientsPage() {
                   const mainBottle = inventoryTypes.find(i => i.name.toLowerCase().includes("20l")) || inventoryTypes[0];
                   return (
                     <>
-                      <select 
-                        value={newTier} 
-                        onChange={e => setNewTier(e.target.value)} 
+                      <select
+                        value={newTier}
+                        onChange={e => setNewTier(e.target.value)}
                         className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium appearance-none cursor-pointer"
                       >
                         <option value="Standard">
@@ -841,11 +960,10 @@ export default function ClientsPage() {
             </div>
 
             {/* Old Credit Amount / Prior Balance (Admin / Super User Only) */}
-            <div className={`p-4 rounded-2xl border transition-all ${
-              isSuperUser 
-                ? "bg-slate-50 border-slate-200" 
+            <div className={`p-4 rounded-2xl border transition-all ${isSuperUser
+                ? "bg-slate-50 border-slate-200"
                 : "bg-amber-50/60 border-amber-200/80"
-            }`}>
+              }`}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <div className={`p-1.5 rounded-lg ${isSuperUser ? "bg-primary/10 text-primary" : "bg-amber-100 text-amber-700"}`}>
@@ -884,11 +1002,10 @@ export default function ClientsPage() {
                   value={newCreditAmount}
                   onChange={e => setNewCreditAmount(e.target.value)}
                   placeholder="0.00"
-                  className={`w-full pl-8 pr-4 py-2.5 rounded-xl outline-none font-bold text-sm transition-all ${
-                    isSuperUser
+                  className={`w-full pl-8 pr-4 py-2.5 rounded-xl outline-none font-bold text-sm transition-all ${isSuperUser
                       ? "bg-white border border-slate-200 text-slate-900 focus:border-primary focus:ring-4 focus:ring-primary/10 shadow-xs"
                       : "bg-white/80 border border-amber-200/80 text-slate-500 cursor-not-allowed select-none"
-                  }`}
+                    }`}
                 />
               </div>
 
@@ -907,12 +1024,198 @@ export default function ClientsPage() {
                   <p className="text-xs text-text-muted">Earn redeemable rewards per bottle returned</p>
                 </div>
               </div>
-              <input 
-                type="checkbox" 
-                checked={newOptIn} 
-                onChange={e => setNewOptIn(e.target.checked)} 
-                className="w-5 h-5 rounded text-primary focus:ring-primary/20 cursor-pointer" 
+              <input
+                type="checkbox"
+                checked={newOptIn}
+                onChange={e => setNewOptIn(e.target.checked)}
+                className="w-5 h-5 rounded text-primary focus:ring-primary/20 cursor-pointer"
               />
+            </div>
+          </div>
+        </Modal>
+
+        {/* Bottle Credit Ledger & Adjustment Modal */}
+        <Modal
+          isOpen={!!selectedClientForLedger}
+          onClose={() => setSelectedClientForLedger(null)}
+          title={`Bottle Credit Ledger — ${selectedClientForLedger?.name || "Client"}`}
+          subtitle="Audit trail of full jars delivered, empty jars collected & outstanding bottle credit"
+          width="2xl"
+        >
+          <div className="space-y-5">
+            {/* Current Balance Summary Banner */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-sky-50 to-blue-50 border border-sky-200/80 flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <span className="text-xs font-black uppercase tracking-wider text-sky-800 block">
+                  Current Customer Bottle Balance
+                </span>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-2xl sm:text-3xl font-black text-slate-900">
+                    {selectedClientForLedger?.bottle_balance ?? 0}
+                  </span>
+                  <span className="text-sm font-bold text-slate-600">Jars / Bottles</span>
+                </div>
+              </div>
+              {(selectedClientForLedger?.bottle_balance || 0) > 0 ? (
+                <span className="px-3 py-1.5 rounded-xl bg-sky-600 text-white font-black text-xs shadow-xs">
+                  Client Holds {(selectedClientForLedger?.bottle_balance || 0)} Bottles
+                </span>
+              ) : (selectedClientForLedger?.bottle_balance || 0) < 0 ? (
+                <span className="px-3 py-1.5 rounded-xl bg-amber-600 text-white font-black text-xs shadow-xs">
+                  We Owe {Math.abs(selectedClientForLedger?.bottle_balance || 0)} Bottles
+                </span>
+              ) : (
+                <span className="px-3 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 font-black text-xs border border-emerald-200">
+                  Bottle Accounts Settled (0)
+                </span>
+              )}
+            </div>
+
+            {/* Manual Adjustment Form (Admin / Super User) */}
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80">
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 mb-3 flex items-center gap-1.5">
+                <Package className="w-4 h-4 text-sky-600" />
+                Manual Bottle Credit / Debit Adjustment
+              </h4>
+              <form onSubmit={handleSaveBottleAdjustment} className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* Action Direction */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 block mb-1">
+                      Action
+                    </label>
+                    <div className="flex rounded-xl border border-slate-200 overflow-hidden bg-white">
+                      <button
+                        type="button"
+                        onClick={() => setAdjustBottleDirection("+")}
+                        className={`flex-1 py-2 text-xs font-black transition-all ${adjustBottleDirection === "+"
+                            ? "bg-sky-600 text-white"
+                            : "text-slate-600 hover:bg-slate-50"
+                          }`}
+                      >
+                        + Client Holds
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAdjustBottleDirection("-")}
+                        className={`flex-1 py-2 text-xs font-black transition-all ${adjustBottleDirection === "-"
+                            ? "bg-emerald-600 text-white"
+                            : "text-slate-600 hover:bg-slate-50"
+                          }`}
+                      >
+                        &minus; Returned
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Bottle Quantity */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 block mb-1">
+                      Number of Bottles *
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={adjustBottleQty}
+                      onChange={e => setAdjustBottleQty(e.target.value)}
+                      placeholder="e.g. 3"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-sky-500 shadow-2xs"
+                    />
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 block mb-1">
+                      Reason / Reference
+                    </label>
+                    <input
+                      type="text"
+                      value={adjustBottleNotes}
+                      onChange={e => setAdjustBottleNotes(e.target.value)}
+                      placeholder="e.g. Returned to warehouse"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium outline-none focus:border-sky-500 shadow-2xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    isLoading={isAdjustingBottleCredit}
+                    className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-black"
+                  >
+                    Record Adjustment
+                  </Button>
+                </div>
+              </form>
+            </div>
+
+            {/* Ledger Audit History */}
+            <div>
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 mb-2.5 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <History className="w-4 h-4 text-slate-500" />
+                  Bottle Credit Audit History ({bottleLedgerEntries.length})
+                </span>
+                {isLoadingLedger && <span className="text-[11px] text-primary animate-pulse font-bold">Refreshing...</span>}
+              </h4>
+
+              {bottleLedgerEntries.length === 0 && !isLoadingLedger ? (
+                <div className="p-8 text-center bg-white rounded-2xl border border-dashed border-slate-200">
+                  <Package className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  <p className="text-xs font-bold text-slate-600">No bottle credit history recorded yet</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Deliveries with partial returns or manual entries will create an audit trail here.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-2xs max-h-64 overflow-y-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50/80 border-b border-slate-200 text-[10px] uppercase font-black tracking-wider text-slate-500">
+                      <tr>
+                        <th className="px-4 py-2.5">Date &amp; Time</th>
+                        <th className="px-4 py-2.5">Change</th>
+                        <th className="px-4 py-2.5">Inventory</th>
+                        <th className="px-4 py-2.5">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                      {bottleLedgerEntries.map(entry => (
+                        <tr key={entry.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="px-4 py-2.5 whitespace-nowrap text-slate-500 text-[11px]">
+                            {new Date(entry.created_at).toLocaleString("en-IN", {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit"
+                            })}
+                          </td>
+                          <td className="px-4 py-2.5 whitespace-nowrap">
+                            {entry.quantity > 0 ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md font-black text-sky-800 bg-sky-100 text-xs">
+                                +{entry.quantity} Jars
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md font-black text-emerald-800 bg-emerald-100 text-xs">
+                                {entry.quantity} Jars
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600 font-bold">
+                            {entry.inventory_name || "20L Jar"}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-500 text-xs max-w-xs truncate">
+                            {entry.notes || "Delivery balance adjustment"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         </Modal>
@@ -921,18 +1224,20 @@ export default function ClientsPage() {
   );
 }
 
-function ClientCard({ 
-  client, 
-  routeName, 
-  routeArea, 
-  onEdit, 
-  onDelete 
-}: { 
-  client: Client; 
-  routeName?: string; 
-  routeArea?: string | null; 
-  onEdit: () => void; 
-  onDelete: () => void; 
+function ClientCard({
+  client,
+  routeName,
+  routeArea,
+  onEdit,
+  onDelete,
+  onOpenBottleLedger
+}: {
+  client: Client;
+  routeName?: string;
+  routeArea?: string | null;
+  onEdit: () => void;
+  onDelete: () => void;
+  onOpenBottleLedger: () => void;
 }) {
   return (
     <div className="glass-panel p-5 rounded-3xl hover:shadow-md transition-all border border-black/5 flex flex-col justify-between group relative overflow-hidden">
@@ -997,17 +1302,15 @@ function ClientCard({
             </div>
           ) : null}
 
-          {/* Outstanding Credit Due Pill */}
-          <div className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
-            (client.credit_amount || 0) > 0 
-              ? "bg-rose-50/80 border-rose-200" 
+          {/* Outstanding Financial Credit Due Pill */}
+          <div className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${(client.credit_amount || 0) > 0
+              ? "bg-rose-50/80 border-rose-200"
               : "bg-emerald-50/50 border-emerald-100"
-          }`}>
+            }`}>
             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
-              <IndianRupee className={`w-3.5 h-3.5 ${
-                (client.credit_amount || 0) > 0 ? "text-rose-600" : "text-emerald-600"
-              }`} />
-              <span>Credit Balance:</span>
+              <IndianRupee className={`w-3.5 h-3.5 ${(client.credit_amount || 0) > 0 ? "text-rose-600" : "text-emerald-600"
+                }`} />
+              <span>Credit Due:</span>
             </div>
             {(client.credit_amount || 0) > 0 ? (
               <span className="inline-flex items-center gap-1 text-xs font-black px-2.5 py-0.5 rounded-md bg-rose-600 text-white shadow-2xs">
@@ -1019,6 +1322,38 @@ function ClientCard({
                 <span>Cleared (₹0)</span>
               </span>
             )}
+          </div>
+
+          {/* Customer Bottle Credit / Balance Pill */}
+          <div className="flex items-center justify-between p-2.5 rounded-xl border bg-sky-50/60 border-sky-200/80">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+              <Package className="w-3.5 h-3.5 text-sky-600" />
+              <span>Bottle Credit:</span>
+            </div>
+            <div className="flex items-center gap-2">
+              {(client.bottle_balance || 0) > 0 ? (
+                <span className="inline-flex items-center gap-1 text-xs font-black px-2.5 py-0.5 rounded-md bg-sky-600 text-white shadow-2xs">
+                  <span>+{client.bottle_balance} Jars (Held)</span>
+                </span>
+              ) : (client.bottle_balance || 0) < 0 ? (
+                <span className="inline-flex items-center gap-1 text-xs font-black px-2.5 py-0.5 rounded-md bg-amber-600 text-white shadow-2xs">
+                  <span>{client.bottle_balance} Jars (We Owe)</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600">
+                  <Check className="w-3 h-3 text-slate-400" />
+                  <span>0 Jars</span>
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={onOpenBottleLedger}
+                className="text-[11px] font-black text-sky-700 hover:text-sky-900 bg-white hover:bg-sky-100 border border-sky-200 px-2 py-0.5 rounded-md transition-all shadow-2xs active:scale-95"
+                title="View bottle credit history and adjust ledger"
+              >
+                Ledger
+              </button>
+            </div>
           </div>
 
           {/* Loyalty Pill */}
@@ -1039,19 +1374,19 @@ function ClientCard({
 
       {/* Action Footer */}
       <div className="flex gap-2 pt-1">
-        <Button 
-          variant="secondary" 
-          size="sm" 
-          onClick={onEdit} 
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={onEdit}
           icon={<Edit2 className="w-3.5 h-3.5" />}
           className="flex-1"
         >
           Edit
         </Button>
-        <Button 
-          variant="danger" 
-          size="sm" 
-          onClick={onDelete} 
+        <Button
+          variant="danger"
+          size="sm"
+          onClick={onDelete}
           icon={<Trash2 className="w-3.5 h-3.5" />}
           className="flex-1"
         >
@@ -1061,3 +1396,146 @@ function ClientCard({
     </div>
   );
 }
+
+function CompactClientRow({
+  client,
+  routeName,
+  routeArea,
+  onEdit,
+  onDelete,
+  onOpenBottleLedger
+}: {
+  client: Client;
+  routeName?: string;
+  routeArea?: string | null;
+  onEdit: () => void;
+  onDelete: () => void;
+  onOpenBottleLedger: () => void;
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const credit = Number(client.credit_amount) || 0;
+  const bottles = Number(client.bottle_balance) || 0;
+
+  return (
+    <div className="glass-panel rounded-2xl border border-black/5 hover:border-primary/20 transition-all overflow-hidden shadow-2xs">
+      {/* Primary compact summary row (~60px) */}
+      <div 
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="p-3 sm:p-3.5 flex items-center justify-between gap-2.5 cursor-pointer hover:bg-slate-50/60 active:bg-slate-100/50 transition-colors"
+      >
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-black text-xs shrink-0 border border-blue-200">
+            {client.name.charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h4 className="font-black text-xs sm:text-sm text-slate-900 truncate">
+                {client.name}
+              </h4>
+              <span className="text-[9px] uppercase tracking-wider font-extrabold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                {client.tier || "Standard"}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 font-medium truncate">
+              {routeName ? `${routeName} • ${routeArea || "Zone"}` : "Unassigned route"}
+            </p>
+          </div>
+        </div>
+
+        {/* Right side balances & expand chevron */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="text-right">
+            {credit > 0 ? (
+              <span className="text-xs font-black text-rose-600 block">
+                ₹{credit.toLocaleString()}
+              </span>
+            ) : (
+              <span className="text-[11px] font-bold text-emerald-600 block">
+                Settled
+              </span>
+            )}
+            <span className={`text-[10px] font-bold block ${bottles > 0 ? "text-sky-700" : bottles < 0 ? "text-amber-700" : "text-slate-400"}`}>
+              {bottles > 0 ? `+${bottles} Jars` : bottles < 0 ? `${bottles} Jars` : "0 Jars"}
+            </span>
+          </div>
+
+          <div className="text-slate-400 hover:text-slate-600 p-1">
+            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </div>
+        </div>
+      </div>
+
+      {/* Expandable Quick Actions Drawer (revealed on tap) */}
+      {isExpanded && (
+        <div className="px-3.5 pb-3.5 pt-2 border-t border-slate-100 bg-slate-50/70 space-y-2.5 text-xs">
+          {/* Address & GPS */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-[11px] text-slate-600 font-medium">
+                {client.address || "No address specified"}
+              </p>
+              {client.phone && (
+                <p className="text-[11px] text-slate-800 font-bold mt-0.5">
+                  📞 {client.phone}
+                </p>
+              )}
+            </div>
+
+            {/* Call button */}
+            {client.phone && (
+              <a
+                href={`tel:${client.phone}`}
+                className="px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg font-bold text-xs flex items-center gap-1 shrink-0 active:scale-95"
+              >
+                <Phone className="w-3 h-3 text-emerald-600" /> Call
+              </a>
+            )}
+          </div>
+
+          {/* Action buttons row */}
+          <div className="flex items-center justify-between pt-1 gap-1.5 border-t border-slate-200/60">
+            <div className="flex items-center gap-1.5">
+              {client.latitude && client.longitude ? (
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${client.latitude},${client.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-2.5 py-1 bg-white text-slate-700 border border-slate-200 rounded-lg font-bold text-[11px] flex items-center gap-1 shadow-2xs hover:bg-slate-50"
+                >
+                  <Navigation className="w-3 h-3 text-emerald-600" /> Maps
+                </a>
+              ) : null}
+              <button
+                type="button"
+                onClick={onOpenBottleLedger}
+                className="px-2.5 py-1 bg-white text-slate-700 border border-slate-200 rounded-lg font-bold text-[11px] flex items-center gap-1 shadow-2xs hover:bg-slate-50"
+              >
+                <Package className="w-3 h-3 text-sky-600" /> Bottle Ledger
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={onEdit}
+                className="p-1.5 text-slate-500 hover:text-primary rounded-lg hover:bg-white"
+                title="Edit Client"
+              >
+                <Edit className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={onDelete}
+                className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-white"
+                title="Delete Client"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+

@@ -1,18 +1,29 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #0284c7;       /* Rich water blue */
+  --color-primary: #0284c7;
+  /* Rich water blue */
   --color-primary-foreground: #ffffff;
-  --color-background: #FDFBF7;    /* Warm Cream / Off-white */
-  --color-surface: #FFFFFF;       /* Pure white for cards */
-  --color-surface-hover: #F4F1EA; /* Slightly darker cream for hover */
-  --color-text: #0f172a;          /* Rich slate-900 for dark, crisp typography */
-  --color-text-muted: #475569;    /* Slate-600: strong contrast ratio ~7:1 against cream */
-  --color-text-subtle: #64748b;   /* Slate-500: secondary subtext */
-  --color-accent: #0ea5e9;        /* Bright blue accent */
-  --color-success: #059669;       /* Emerald */
-  --color-warning: #d97706;       /* Warm amber */
-  --color-danger: #dc2626;        /* Red */
+  --color-background: #FDFBF7;
+  /* Warm Cream / Off-white */
+  --color-surface: #FFFFFF;
+  /* Pure white for cards */
+  --color-surface-hover: #F4F1EA;
+  /* Slightly darker cream for hover */
+  --color-text: #0f172a;
+  /* Rich slate-900 for dark, crisp typography */
+  --color-text-muted: #475569;
+  /* Slate-600: strong contrast ratio ~7:1 against cream */
+  --color-text-subtle: #64748b;
+  /* Slate-500: secondary subtext */
+  --color-accent: #0ea5e9;
+  /* Bright blue accent */
+  --color-success: #059669;
+  /* Emerald */
+  --color-warning: #d97706;
+  /* Warm amber */
+  --color-danger: #dc2626;
+  /* Red */
 }
 
 @layer base {
@@ -41,7 +52,7 @@
     border: 1px solid rgba(0, 0, 0, 0.04);
     box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.03), 0 2px 4px -2px rgba(0, 0, 0, 0.02);
   }
-  
+
   .premium-gradient-text {
     background: linear-gradient(to right, #0284c7, #0ea5e9);
     -webkit-background-clip: text;
@@ -49,37 +60,89 @@
   }
 
   /* Prevent Next.js dev indicators from obstructing the mobile navigation */
-  nextjs-portal, [data-nextjs-toast], [data-nextjs-indicator] {
+  nextjs-portal,
+  [data-nextjs-toast],
+  [data-nextjs-indicator] {
     display: none !important;
   }
 
   /* Cinematic Flyera Splash Animations */
   @keyframes waterDrop {
-    0% { transform: translateY(-16px) scale(0.6); opacity: 0; }
-    50% { transform: translateY(0) scale(1.15); opacity: 1; }
-    75% { transform: translateY(0) scale(0.95); opacity: 1; }
-    100% { transform: translateY(0) scale(1); opacity: 1; }
+    0% {
+      transform: translateY(-16px) scale(0.6);
+      opacity: 0;
+    }
+
+    50% {
+      transform: translateY(0) scale(1.15);
+      opacity: 1;
+    }
+
+    75% {
+      transform: translateY(0) scale(0.95);
+      opacity: 1;
+    }
+
+    100% {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+    }
   }
 
   @keyframes rippleExpand {
-    0% { transform: scale(0.4); opacity: 0.9; }
-    50% { opacity: 0.45; }
-    100% { transform: scale(3.5); opacity: 0; }
+    0% {
+      transform: scale(0.4);
+      opacity: 0.9;
+    }
+
+    50% {
+      opacity: 0.45;
+    }
+
+    100% {
+      transform: scale(3.5);
+      opacity: 0;
+    }
   }
 
   @keyframes caretPulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.15; }
+
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.15;
+    }
   }
 
   @keyframes letterReveal {
-    0% { transform: translateY(10px) scale(0.9); opacity: 0; filter: blur(6px); }
-    100% { transform: translateY(0) scale(1); opacity: 1; filter: blur(0); }
+    0% {
+      transform: translateY(10px) scale(0.9);
+      opacity: 0;
+      filter: blur(6px);
+    }
+
+    100% {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+      filter: blur(0);
+    }
   }
 
   @keyframes ambientGlowPulse {
-    0%, 100% { opacity: 0.35; transform: scale(1); }
-    50% { opacity: 0.65; transform: scale(1.12); }
+
+    0%,
+    100% {
+      opacity: 0.35;
+      transform: scale(1);
+    }
+
+    50% {
+      opacity: 0.65;
+      transform: scale(1.12);
+    }
   }
 
   .animate-water-drop {
@@ -106,4 +169,3 @@
     animation: ambientGlowPulse 4s ease-in-out infinite;
   }
 }
-

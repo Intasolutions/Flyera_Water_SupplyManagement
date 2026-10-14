@@ -18,7 +18,12 @@ import {
   User as UserType,
   completeAssignment,
   reopenAssignment,
-  revertDeliveryByClient
+  revertDeliveryByClient,
+  TripExpense,
+  createTripExpense,
+  getExpensesForAssignment,
+  adjustBottleCredit,
+  getBottleCreditBalance
 } from "@/lib/api";
 import { ThermalReceiptModal, ReceiptData } from "@/components/ThermalReceiptModal";
 import { Button } from "@/components/ui/Button";
@@ -50,7 +55,8 @@ import {
   Flag,
   ShieldCheck,
   RotateCcw,
-  LogOut
+  LogOut,
+  Fuel
 } from "lucide-react";
 
 export default function DriverApp() {
@@ -223,6 +229,61 @@ export default function DriverApp() {
   // Modal for driver/helper to reconcile & end route
   const [isEndRouteModalOpen, setIsEndRouteModalOpen] = useState(false);
   const [isSubmittingEndRoute, setIsSubmittingEndRoute] = useState(false);
+
+  // Trip Expenses State & Handlers
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [expenseCategory, setExpenseCategory] = useState<'FUEL' | 'TOLL' | 'PARKING' | 'MAINTENANCE' | 'OTHER'>('FUEL');
+  const [expenseAmount, setExpenseAmount] = useState<string>('');
+  const [expenseDescription, setExpenseDescription] = useState<string>('');
+  const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
+  const [tripExpenses, setTripExpenses] = useState<TripExpense[]>([]);
+
+  // Customer Bottle Credit / Balance State
+  const [customerBottleBalance, setCustomerBottleBalance] = useState<number | null>(null);
+  const [isLoadingBottleBalance, setIsLoadingBottleBalance] = useState(false);
+
+  const fetchTripExpenses = async (assignmentId: string) => {
+    try {
+      const expenses = await getExpensesForAssignment(assignmentId);
+      setTripExpenses(expenses || []);
+    } catch (err) {
+      console.warn("Failed to load trip expenses:", err);
+    }
+  };
+
+  const handleCreateExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amt = parseFloat(expenseAmount);
+    if (isNaN(amt) || amt <= 0) {
+      toast.error("Please enter a valid expense amount greater than 0");
+      return;
+    }
+    if (!activeAssignmentId) {
+      toast.error("No active route assignment to attach this expense to.");
+      return;
+    }
+
+    setIsSubmittingExpense(true);
+    try {
+      await createTripExpense({
+        assignment_id: activeAssignmentId,
+        category: expenseCategory,
+        amount: amt,
+        description: expenseDescription.trim() || undefined
+      });
+      toast.success(`Expense of ₹${amt} (${expenseCategory}) logged!`);
+      setExpenseAmount("");
+      setExpenseDescription("");
+      setExpenseCategory("FUEL");
+      setIsExpenseModalOpen(false);
+      await fetchTripExpenses(activeAssignmentId);
+    } catch (err: any) {
+      console.error("Failed to log expense:", err);
+      toast.error(err.message || "Failed to log expense");
+    } finally {
+      setIsSubmittingExpense(false);
+    }
+  };
 
   // Core assignment loader supporting both DRIVER and HELPER roles with live sync
   const fetchAssignmentData = async (showFeedback: boolean = false) => {
@@ -403,6 +464,31 @@ export default function DriverApp() {
     return () => clearInterval(intervalTimer);
   }, []);
 
+  // Fetch trip expenses whenever active route assignment changes
+  useEffect(() => {
+    if (activeAssignmentId) {
+      fetchTripExpenses(activeAssignmentId);
+    } else {
+      setTripExpenses([]);
+    }
+  }, [activeAssignmentId]);
+
+  // Fetch active customer's bottle credit balance
+  useEffect(() => {
+    if (activeClient) {
+      setIsLoadingBottleBalance(true);
+      getBottleCreditBalance(activeClient)
+        .then(res => {
+          const bal = (res.balances || []).reduce((acc, b) => acc + (b.balance || 0), 0);
+          setCustomerBottleBalance(bal);
+        })
+        .catch(() => setCustomerBottleBalance(0))
+        .finally(() => setIsLoadingBottleBalance(false));
+    } else {
+      setCustomerBottleBalance(null);
+    }
+  }, [activeClient]);
+
   // End Route / Reconcile from Co-Pilot
   const handleConfirmEndRoute = async () => {
     if (!activeAssignmentId) return;
@@ -520,6 +606,24 @@ export default function DriverApp() {
       }
 
       const totalFullDelivered = itemsPayload.reduce((sum, item) => sum + item.delivered_full, 0);
+      const totalEmptyCollected = itemsPayload.reduce((sum, item) => sum + item.collected_empty, 0);
+      const netBottlesDiff = totalFullDelivered - totalEmptyCollected;
+
+      // Automatically sync bottle credit adjustment if customer took more/fewer bottles than returned
+      if (netBottlesDiff !== 0 && activeClient) {
+        try {
+          const invId = itemsPayload[0]?.inventory_type_id || selectedInventoryId || (activeAllocations[0]?.inventory_type_id) || "default";
+          await adjustBottleCredit(activeClient, {
+            quantity: netBottlesDiff,
+            inventory_type_id: invId,
+            assignment_id: activeAssignmentId || undefined,
+            notes: `Delivery stop: ${totalFullDelivered} delivered, ${totalEmptyCollected} empty returned (Net ${netBottlesDiff > 0 ? '+' : ''}${netBottlesDiff} bottles)`
+          });
+          setCustomerBottleBalance(prev => (prev ?? 0) + netBottlesDiff);
+        } catch (creditErr) {
+          console.warn("Failed to update bottle credit ledger:", creditErr);
+        }
+      }
 
       setClients(prev => prev.map(c =>
         c.id === activeClient ? { ...c, isCompleted: true, deliveredCount: totalFullDelivered } as any : c
@@ -548,6 +652,9 @@ export default function DriverApp() {
       });
 
     const emptyCount = Object.values(deliveryItems).reduce((sum, it) => sum + it.empty, 0);
+    const totalFullCount = itemsPayload.reduce((sum, it) => sum + it.qty, 0);
+    const netBottleDiff = totalFullCount - emptyCount;
+    const finalBottleBalance = (customerBottleBalance ?? 0) + netBottleDiff;
 
     return {
       receiptNo: `FL-${Date.now().toString().slice(-6)}`,
@@ -571,6 +678,8 @@ export default function DriverApp() {
       clientAddress: clientDetails?.address || "",
       items: itemsPayload,
       emptyReturned: emptyCount,
+      bottleBalance: finalBottleBalance,
+      bottleChange: netBottleDiff,
       totalAmount: totalAmount,
       previousCreditBalance: Number(clientDetails?.credit_amount) || 0,
       netDueAmount: (Number(clientDetails?.credit_amount) || 0) + totalAmount,
@@ -906,6 +1015,24 @@ export default function DriverApp() {
                 Van Stock: <span className="text-primary text-sm font-black">{currentStock}</span>/{initialStock}
               </span>
             </div>
+          )}
+
+          {/* Log Trip Expense button (Fuel, Toll, Food, Maintenance) */}
+          {assignmentStatus !== "UNASSIGNED" && activeAssignmentId && (
+            <button
+              type="button"
+              onClick={() => setIsExpenseModalOpen(true)}
+              className="bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 px-3.5 py-2 rounded-xl text-xs font-black shadow-xs flex items-center gap-1.5 transition-all active:scale-95"
+              title="Record on-road fuel, toll, parking or vehicle expenses"
+            >
+              <Fuel className="w-3.5 h-3.5 text-amber-600" />
+              <span>Log Expense</span>
+              {tripExpenses.length > 0 && (
+                <span className="bg-amber-200 text-amber-950 px-1.5 py-0.5 rounded-md text-[10px] font-black">
+                  ₹{tripExpenses.reduce((s, e) => s + e.amount, 0)}
+                </span>
+              )}
+            </button>
           )}
 
           {/* End Route / Complete Run button */}
@@ -1397,6 +1524,48 @@ export default function DriverApp() {
                     </div>
                   </div>
 
+                  {/* Customer Bottle Credit & Balance Tracking Card */}
+                  <div className="bg-sky-50/80 rounded-2xl p-4 border border-sky-200/80 shadow-xs mb-6 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black uppercase tracking-wider text-sky-900 flex items-center gap-1.5">
+                        <Package className="w-4 h-4 text-sky-600" />
+                        Customer Bottle Balance &amp; Credit
+                      </span>
+                      <span className="text-xs font-bold text-slate-600 bg-white px-2 py-0.5 rounded-lg border border-sky-100">
+                        {isLoadingBottleBalance ? "Loading..." : `Prior: ${customerBottleBalance ?? 0} Jars`}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs pt-1">
+                      <span className="text-slate-600 font-semibold">
+                        This Stop ({currentDelivery.full} Delivered &minus; {currentDelivery.empty} Returned):
+                      </span>
+                      {currentDelivery.full - currentDelivery.empty > 0 ? (
+                        <span className="font-black text-amber-900 bg-amber-100/90 px-2 py-0.5 rounded-md border border-amber-200">
+                          +{currentDelivery.full - currentDelivery.empty} Jars with Client (Credit)
+                        </span>
+                      ) : currentDelivery.full - currentDelivery.empty < 0 ? (
+                        <span className="font-black text-emerald-900 bg-emerald-100/90 px-2 py-0.5 rounded-md border border-emerald-200">
+                          {currentDelivery.full - currentDelivery.empty} Jars Returned from Dues
+                        </span>
+                      ) : (
+                        <span className="font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                          Even Exchange (0)
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-sky-200/60 text-xs">
+                      <span className="font-bold text-slate-800">New Balance on Customer Account:</span>
+                      <span className="text-sm font-black text-slate-900">
+                        {(customerBottleBalance ?? 0) + (currentDelivery.full - currentDelivery.empty)} Jars
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium leading-tight">
+                      Recorded to customer&apos;s bottle ledger upon completing this stop to track outstanding jars.
+                    </p>
+                  </div>
+
                   {/* Bill & Actions */}
                   <div className="pt-4 border-t border-slate-100 space-y-3">
                     <div className="flex justify-between items-center mb-2 px-1">
@@ -1778,6 +1947,32 @@ export default function DriverApp() {
                 </span>
               </div>
             </div>
+
+            {/* Trip Expenses Summary */}
+            {tripExpenses.length > 0 && (
+              <div className="bg-amber-50/80 p-3.5 rounded-xl border border-amber-200 shadow-2xs space-y-2 mt-3">
+                <div className="flex items-center justify-between text-xs font-black text-amber-900 border-b border-amber-200/70 pb-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <Fuel className="w-3.5 h-3.5 text-amber-700" />
+                    Trip Expenses Logged ({tripExpenses.length})
+                  </span>
+                  <span className="text-sm font-black text-amber-950">
+                    ₹{tripExpenses.reduce((s, e) => s + e.amount, 0)}
+                  </span>
+                </div>
+                <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
+                  {tripExpenses.map((exp) => (
+                    <div key={exp.id} className="flex justify-between items-center text-[11px] text-slate-700">
+                      <span>
+                        <strong className="text-amber-900 uppercase font-black mr-1.5">{exp.category}</strong>
+                        {exp.description || "Expense entry"}
+                      </span>
+                      <span className="font-bold text-slate-900">₹{exp.amount}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Incomplete stops warning if any */}
@@ -1810,6 +2005,119 @@ export default function DriverApp() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Trip Expense Logging Modal */}
+      <Modal
+        isOpen={isExpenseModalOpen}
+        onClose={() => !isSubmittingExpense && setIsExpenseModalOpen(false)}
+        title="Log Trip Expense"
+        subtitle="Record on-road fuel, toll, parking, maintenance or food expenses"
+      >
+        <form onSubmit={handleCreateExpense} className="space-y-4">
+          {/* Category Picker */}
+          <div>
+            <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2">
+              Expense Category *
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { key: "FUEL", label: "Fuel / Petrol", icon: "⛽" },
+                { key: "TOLL", label: "Toll Gate", icon: "🛣️" },
+                { key: "PARKING", label: "Parking", icon: "🅿️" },
+                { key: "MAINTENANCE", label: "Repair", icon: "🔧" },
+                { key: "OTHER", label: "Food / Other", icon: "🍱" }
+              ].map(cat => (
+                <button
+                  key={cat.key}
+                  type="button"
+                  onClick={() => setExpenseCategory(cat.key as any)}
+                  className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
+                    expenseCategory === cat.key
+                      ? "bg-amber-100 border-amber-400 text-amber-950 ring-2 ring-amber-400/20 font-black shadow-xs"
+                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <span className="text-base">{cat.icon}</span>
+                  <span>{cat.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Amount Input */}
+          <div>
+            <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
+              Amount (₹ INR) *
+            </label>
+            <div className="relative">
+              <IndianRupee className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
+              <input
+                type="number"
+                step="any"
+                min="1"
+                required
+                value={expenseAmount}
+                onChange={e => setExpenseAmount(e.target.value)}
+                placeholder="e.g. 250"
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none text-slate-900 font-black text-lg focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 shadow-xs"
+              />
+            </div>
+          </div>
+
+          {/* Description / Note */}
+          <div>
+            <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
+              Description / Note (Optional)
+            </label>
+            <input
+              type="text"
+              value={expenseDescription}
+              onChange={e => setExpenseDescription(e.target.value)}
+              placeholder="e.g. HP Petrol Pump Wakad"
+              className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none text-slate-800 font-semibold text-xs focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 shadow-xs"
+            />
+          </div>
+
+          {/* Recent Expenses in this trip */}
+          {tripExpenses.length > 0 && (
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block mb-1">
+                Logged This Trip ({tripExpenses.length} entries &bull; ₹{tripExpenses.reduce((s, e) => s + e.amount, 0)})
+              </span>
+              <div className="space-y-1 max-h-24 overflow-y-auto">
+                {tripExpenses.map(e => (
+                  <div key={e.id} className="flex justify-between text-[11px] text-slate-700">
+                    <span>{e.category}: {e.description || "Expense"}</span>
+                    <span className="font-bold">₹{e.amount}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Buttons */}
+          <div className="flex gap-3 pt-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setIsExpenseModalOpen(false)}
+              disabled={isSubmittingExpense}
+              fullWidth
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              isLoading={isSubmittingExpense}
+              fullWidth
+              className="bg-amber-600 hover:bg-amber-700 text-white font-black"
+            >
+              Save Expense
+            </Button>
+          </div>
+        </form>
       </Modal>
 
       {/* Thermal Bluetooth Receipt Modal with Dynamic QR & Celebratory Success Animation */}
