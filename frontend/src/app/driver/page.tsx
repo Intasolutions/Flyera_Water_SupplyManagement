@@ -2,19 +2,19 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useStore } from "@/lib/StoreContext";
-import { 
-  getClients, 
-  Client as ApiClient, 
-  getAssignments, 
-  getRoutes, 
-  createDelivery, 
-  getInventoryTypes, 
-  getCurrentUser, 
-  getVehicles, 
-  createClient, 
-  updateClient, 
-  getSettings, 
-  getUsers, 
+import {
+  getClients,
+  Client as ApiClient,
+  getAssignments,
+  getRoutes,
+  createDelivery,
+  getInventoryTypes,
+  getCurrentUser,
+  getVehicles,
+  createClient,
+  updateClient,
+  getSettings,
+  getUsers,
   User as UserType,
   completeAssignment,
   reopenAssignment,
@@ -24,17 +24,17 @@ import { ThermalReceiptModal, ReceiptData } from "@/components/ThermalReceiptMod
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { toast } from "react-hot-toast";
-import { 
-  MapPin, 
-  Phone, 
-  Package, 
-  CheckCircle2, 
-  IndianRupee, 
-  Minus, 
-  Plus, 
-  QrCode, 
-  AlertTriangle, 
-  Navigation, 
+import {
+  MapPin,
+  Phone,
+  Package,
+  CheckCircle2,
+  IndianRupee,
+  Minus,
+  Plus,
+  QrCode,
+  AlertTriangle,
+  Navigation,
   Route as RouteIcon,
   Truck,
   Sparkles,
@@ -57,9 +57,9 @@ export default function DriverApp() {
   const { completeDelivery } = useStore();
   const [clients, setClients] = useState<ApiClient[]>([]);
   const [activeClient, setActiveClient] = useState<string | null>(null);
-  
+
   const [step, setStep] = useState(1); // 1: Delivery Details, 2: Payment
-  
+
   // Maps inventory_type_id -> { full, empty, damaged }
   const [deliveryItems, setDeliveryItems] = useState<Record<string, { full: number; empty: number; damaged: number }>>({});
   const [selectedInventoryId, setSelectedInventoryId] = useState<string>("");
@@ -70,7 +70,7 @@ export default function DriverApp() {
   const [assignedRouteId, setAssignedRouteId] = useState<string | null>(null);
   const [activeAssignmentId, setActiveAssignmentId] = useState<string | null>(null);
   const [inventoryTypes, setInventoryTypes] = useState<any[]>([]);
-  
+
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
   const [newClientName, setNewClientName] = useState("");
   const [newClientPhone, setNewClientPhone] = useState("");
@@ -140,7 +140,7 @@ export default function DriverApp() {
               }
             }
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     } else {
       toast.error("Could not parse coordinates. Please paste a valid Google Maps pin or lat/lng pair.");
@@ -154,7 +154,7 @@ export default function DriverApp() {
     }
     setIsUpdatingLocation(true);
     toast.loading("Acquiring GPS to pin client location...", { id: "pin-gps" });
-    
+
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         const { latitude, longitude } = pos.coords;
@@ -165,7 +165,7 @@ export default function DriverApp() {
               const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
               const data = await res.json();
               if (data?.display_name) addr = data.display_name;
-            } catch (e) {}
+            } catch (e) { }
           }
 
           await updateClient(clientId, {
@@ -190,7 +190,7 @@ export default function DriverApp() {
       { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
     );
   };
-  
+
   const [driverName, setDriverName] = useState<string>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -200,7 +200,7 @@ export default function DriverApp() {
           if (u.name) return u.name;
           if (u.username) return u.username;
         }
-      } catch (e) {}
+      } catch (e) { }
     }
     return "Driver";
   });
@@ -231,17 +231,17 @@ export default function DriverApp() {
 
     try {
       const [assignments, allClients, allRoutes, invTypes, user, allVehicles, settings, allUsers] = await Promise.all([
-        getAssignments().catch(() => []), 
-        getClients().catch(() => []), 
-        getRoutes().catch(() => []), 
-        getInventoryTypes().catch(() => []), 
+        getAssignments().catch(() => []),
+        getClients().catch(() => []),
+        getRoutes().catch(() => []),
+        getInventoryTypes().catch(() => []),
         getCurrentUser().catch(() => {
           try {
             const cached = localStorage.getItem("flyera_user");
             if (cached) return JSON.parse(cached);
-          } catch (e) {}
+          } catch (e) { }
           return null;
-        }), 
+        }),
         getVehicles().catch(() => []),
         getSettings().catch(() => null),
         getUsers().catch(() => [])
@@ -250,13 +250,13 @@ export default function DriverApp() {
       setInventoryTypes(invTypes || []);
       if (settings) {
         setSystemSettings(settings);
-        try { localStorage.setItem("flyera_system_settings", JSON.stringify(settings)); } catch (e) {}
+        try { localStorage.setItem("flyera_system_settings", JSON.stringify(settings)); } catch (e) { }
       }
 
       let activeUser = user;
       if (activeUser) {
         setCurrentUser(activeUser);
-        try { localStorage.setItem("flyera_user", JSON.stringify(activeUser)); } catch (e) {}
+        try { localStorage.setItem("flyera_user", JSON.stringify(activeUser)); } catch (e) { }
       }
 
       const currentUserId = activeUser?.id;
@@ -364,7 +364,7 @@ export default function DriverApp() {
         if (recentCompleted) {
           const r = (allRoutes as any[]).find(rt => rt.id === recentCompleted.route_id);
           const v = (allVehicles as any[]).find(vh => vh.id === recentCompleted.vehicle_id);
-          const totalDelivered = (recentCompleted as any).deliveries?.reduce((sum: number, d: any) => 
+          const totalDelivered = (recentCompleted as any).deliveries?.reduce((sum: number, d: any) =>
             sum + (d.items?.reduce((itemSum: number, item: any) => itemSum + (item.delivered_full || 0), 0) || 0), 0) || 0;
           const stopsCount = (recentCompleted as any).deliveries?.length || 0;
 
@@ -458,7 +458,7 @@ export default function DriverApp() {
     }
     try {
       if (activeAssignmentId) {
-        await revertDeliveryByClient(activeAssignmentId, clientId).catch(() => {});
+        await revertDeliveryByClient(activeAssignmentId, clientId).catch(() => { });
       }
       setClients(prev => prev.map(c => c.id === clientId ? { ...c, isCompleted: false, deliveredCount: 0 } as any : c));
       setCurrentStock(prev => prev + deliveredCount);
@@ -518,13 +518,13 @@ export default function DriverApp() {
       } else {
         completeDelivery("mock_assignment_id", activeClient, itemsPayload[0]?.delivered_full || 0, totalAmount, method);
       }
-      
+
       const totalFullDelivered = itemsPayload.reduce((sum, item) => sum + item.delivered_full, 0);
 
-      setClients(prev => prev.map(c => 
+      setClients(prev => prev.map(c =>
         c.id === activeClient ? { ...c, isCompleted: true, deliveredCount: totalFullDelivered } as any : c
       ));
-      
+
       setCurrentStock(prev => Math.max(0, prev - totalFullDelivered));
       toast.success("Delivery completed successfully!");
     }
@@ -551,13 +551,13 @@ export default function DriverApp() {
 
     return {
       receiptNo: `FL-${Date.now().toString().slice(-6)}`,
-      date: new Date().toLocaleString("en-IN", { 
-        day: "2-digit", 
-        month: "short", 
-        year: "numeric", 
-        hour: "2-digit", 
-        minute: "2-digit", 
-        hour12: true 
+      date: new Date().toLocaleString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
       }),
       companyName: systemSettings.company_name || "Flyera - Water & Glass Logistics",
       gstin: systemSettings.gstin || "GSTIN-27AAACH7409R1ZZ",
@@ -572,6 +572,8 @@ export default function DriverApp() {
       items: itemsPayload,
       emptyReturned: emptyCount,
       totalAmount: totalAmount,
+      previousCreditBalance: Number(clientDetails?.credit_amount) || 0,
+      netDueAmount: (Number(clientDetails?.credit_amount) || 0) + totalAmount,
       paymentMethod: method,
       paymentStatus: paymentStatus,
       upiId: systemSettings.upi_id || "flyera@okhdfcbank"
@@ -648,7 +650,7 @@ export default function DriverApp() {
                 }
               }
             })
-            .catch(() => {});
+            .catch(() => { });
         }
 
         // Tightly locked to within 10 meters: clear watch to save battery
@@ -710,9 +712,9 @@ export default function DriverApp() {
   const handleAddClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClientName || !assignedRouteId) return;
-    
+
     setIsAddingClient(true);
-    
+
     try {
       const client = await createClient({
         name: newClientName,
@@ -765,7 +767,7 @@ export default function DriverApp() {
 
     // Copy to clipboard for easy manual dial or tablets
     if (typeof navigator !== "undefined" && navigator?.clipboard?.writeText) {
-      navigator.clipboard.writeText(cleanPhone).catch(() => {});
+      navigator.clipboard.writeText(cleanPhone).catch(() => { });
     }
 
     toast.success(`Opening dialer: ${cleanPhone}`);
@@ -780,7 +782,7 @@ export default function DriverApp() {
     if (tier === "Premium") return inv.premium_price || 60;
     return inv.price || 80;
   };
-  
+
   const totalAmount = Object.entries(deliveryItems).reduce((sum, [invId, counts]) => {
     const inv = inventoryTypes.find(i => i.id === invId);
     return sum + (counts.full * getClientPrice(inv, clientDetails?.tier));
@@ -813,13 +815,12 @@ export default function DriverApp() {
       <header className="glass-panel p-4 md:p-6 mb-6 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className={`w-2.5 h-2.5 rounded-full ${
-              assignmentStatus === "ACTIVE" 
-                ? "bg-emerald-500 animate-pulse" 
-                : assignmentStatus === "PENDING" 
-                ? "bg-amber-500 animate-pulse" 
-                : "bg-slate-400"
-            }`} />
+            <span className={`w-2.5 h-2.5 rounded-full ${assignmentStatus === "ACTIVE"
+                ? "bg-emerald-500 animate-pulse"
+                : assignmentStatus === "PENDING"
+                  ? "bg-amber-500 animate-pulse"
+                  : "bg-slate-400"
+              }`} />
             <h1 className="text-xl md:text-2xl font-black text-slate-800 tracking-tight">
               {currentUser?.role === "HELPER" ? "Helper Co-Pilot" : "Driver Co-Pilot"}
             </h1>
@@ -847,13 +848,12 @@ export default function DriverApp() {
             <span className="font-black text-slate-900 bg-white/90 border border-slate-200/90 px-2.5 py-1 rounded-xl text-xs shadow-2xs flex items-center gap-1.5">
               <UserIcon className="w-3.5 h-3.5 text-sky-600" />
               <span>{currentUser?.name || currentUser?.username || driverName}</span>
-              <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md ${
-                currentUser?.role === "HELPER" 
-                  ? "bg-emerald-100 text-emerald-800" 
-                  : currentUser?.role === "ADMIN" 
-                  ? "bg-purple-100 text-purple-800" 
-                  : "bg-sky-100 text-sky-800"
-              }`}>
+              <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md ${currentUser?.role === "HELPER"
+                  ? "bg-emerald-100 text-emerald-800"
+                  : currentUser?.role === "ADMIN"
+                    ? "bg-purple-100 text-purple-800"
+                    : "bg-sky-100 text-sky-800"
+                }`}>
                 {currentUser?.role === "HELPER" ? "Route Helper" : currentUser?.role === "ADMIN" ? "Admin" : "Lead Driver"}
               </span>
             </span>
@@ -919,15 +919,7 @@ export default function DriverApp() {
             </button>
           )}
 
-          {/* Office Dashboard Shortcut for Admin */}
-          {currentUser?.role === "ADMIN" && (
-            <a
-              href="/"
-              className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1 transition-all"
-            >
-              <span>Office View</span>
-            </a>
-          )}
+
 
           {/* Sign Out Button */}
           <button
@@ -1132,13 +1124,12 @@ export default function DriverApp() {
                       }
                       handleStartDelivery(c.id);
                     }}
-                    className={`glass-card p-4 transition-all duration-300 ${
-                      isCompleted
+                    className={`glass-card p-4 transition-all duration-300 ${isCompleted
                         ? "border-emerald-200/60 bg-emerald-50/20 opacity-80 cursor-default"
                         : isSelected
-                        ? "border-primary ring-2 ring-primary/20 shadow-md bg-sky-50/20 cursor-pointer"
-                        : "border-slate-100 hover:border-slate-200 cursor-pointer"
-                    }`}
+                          ? "border-primary ring-2 ring-primary/20 shadow-md bg-sky-50/20 cursor-pointer"
+                          : "border-slate-100 hover:border-slate-200 cursor-pointer"
+                      }`}
                   >
                     <div className="flex justify-between items-start mb-2">
                       <div>
@@ -1183,20 +1174,18 @@ export default function DriverApp() {
                         <button
                           type="button"
                           onClick={(e) => handleCallClient(e, c.name, c.phone)}
-                          className={`flex-1 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all active:scale-95 ${
-                            c.phone
+                          className={`flex-1 py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all active:scale-95 ${c.phone
                               ? "bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100"
                               : "bg-slate-50 border border-slate-200 text-slate-400 hover:bg-slate-100"
-                          }`}
+                            }`}
                           title={c.phone ? `Call ${c.name} (${c.phone})` : "No phone number registered"}
                         >
                           <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                           <span>Call</span>
                         </button>
                         <a
-                          href={`https://www.google.com/maps/dir/?api=1&destination=${
-                            c.latitude && c.longitude ? `${c.latitude},${c.longitude}` : encodeURIComponent(c.address || c.name || "")
-                          }`}
+                          href={`https://www.google.com/maps/dir/?api=1&destination=${c.latitude && c.longitude ? `${c.latitude},${c.longitude}` : encodeURIComponent(c.address || c.name || "")
+                            }`}
                           target="_blank"
                           rel="noreferrer"
                           className="flex-[1.2] py-2 bg-sky-50 border border-sky-100 rounded-xl text-xs font-black flex items-center justify-center gap-1 text-sky-700 hover:bg-sky-100 transition-all active:scale-95 text-center"
@@ -1206,11 +1195,10 @@ export default function DriverApp() {
                         <button
                           type="button"
                           onClick={() => handleStartDelivery(c.id)}
-                          className={`flex-[1.5] py-2 rounded-xl text-xs font-black transition-all active:scale-95 ${
-                            activeClient === c.id
+                          className={`flex-[1.5] py-2 rounded-xl text-xs font-black transition-all active:scale-95 ${activeClient === c.id
                               ? "bg-primary text-white shadow-xs"
                               : "bg-primary/10 text-primary hover:bg-primary/20"
-                          }`}
+                            }`}
                         >
                           {activeClient === c.id ? "Delivering..." : "Deliver"}
                         </button>
@@ -1321,11 +1309,10 @@ export default function DriverApp() {
                     {/* Prominent Directions & Call Action Buttons */}
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       <a
-                        href={`https://www.google.com/maps/dir/?api=1&destination=${
-                          clientDetails.latitude && clientDetails.longitude
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${clientDetails.latitude && clientDetails.longitude
                             ? `${clientDetails.latitude},${clientDetails.longitude}`
                             : encodeURIComponent(clientDetails.address || clientDetails.name)
-                        }`}
+                          }`}
                         target="_blank"
                         rel="noreferrer"
                         className="py-2.5 px-3 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 text-center"
@@ -1337,11 +1324,10 @@ export default function DriverApp() {
                       <button
                         type="button"
                         onClick={(e) => handleCallClient(e, clientDetails.name, clientDetails.phone)}
-                        className={`py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-95 ${
-                          clientDetails.phone
+                        className={`py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs active:scale-95 ${clientDetails.phone
                             ? "bg-emerald-600 hover:bg-emerald-700 text-white"
                             : "bg-slate-100 border border-slate-200 text-slate-400"
-                        }`}
+                          }`}
                       >
                         <Phone className="w-3.5 h-3.5 shrink-0" />
                         <span>{clientDetails.phone ? "Call" : "No Phone"}</span>
@@ -1447,7 +1433,25 @@ export default function DriverApp() {
                     Collect Payment
                   </span>
                   <h2 className="text-4xl font-black text-slate-800 mb-1">₹{totalAmount}</h2>
-                  <p className="text-slate-500 font-bold text-xs mb-4">{clientDetails.name}</p>
+                  <p className="text-slate-500 font-bold text-xs mb-3">{clientDetails.name}</p>
+
+                  {/* Credit Dues Breakdown Card */}
+                  {(Number(clientDetails?.credit_amount) || 0) > 0 && (
+                    <div className="bg-amber-50/80 border border-amber-200/90 rounded-2xl p-3.5 mb-4 text-left space-y-1.5">
+                      <div className="flex justify-between items-center text-xs font-semibold text-slate-600">
+                        <span>Today&apos;s Drop Amount:</span>
+                        <span className="font-black text-slate-800">₹{totalAmount}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs font-semibold text-amber-800">
+                        <span>Previous Unpaid Credit:</span>
+                        <span className="font-black text-rose-600">₹{Number(clientDetails.credit_amount)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs font-black text-slate-900 pt-1.5 border-t border-amber-200">
+                        <span>Total Net Dues:</span>
+                        <span className="text-sm font-black text-rose-700">₹{(Number(clientDetails.credit_amount) || 0) + totalAmount}</span>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3 mb-3">
                     <button
@@ -1530,18 +1534,16 @@ export default function DriverApp() {
                 setLocationMethod("gps");
                 startGpsAcquisition();
               }}
-              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                locationMethod === "gps" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-700"
-              }`}
+              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${locationMethod === "gps" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-700"
+                }`}
             >
               📍 Auto-Detect GPS
             </button>
             <button
               type="button"
               onClick={() => setLocationMethod("link")}
-              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                locationMethod === "link" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-700"
-              }`}
+              className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${locationMethod === "link" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-700"
+                }`}
             >
               🔗 Paste Map Link
             </button>
@@ -1551,13 +1553,12 @@ export default function DriverApp() {
             <div className="p-3.5 rounded-2xl border border-slate-200/90 bg-slate-50/90 space-y-2.5">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2.5">
-                  <div className={`p-2 rounded-xl shrink-0 ${
-                    gpsAccuracy !== null && gpsAccuracy <= 15
+                  <div className={`p-2 rounded-xl shrink-0 ${gpsAccuracy !== null && gpsAccuracy <= 15
                       ? "bg-emerald-100 text-emerald-700"
                       : isLocating
-                      ? "bg-sky-100 text-sky-700 animate-pulse"
-                      : "bg-amber-100 text-amber-700"
-                  }`}>
+                        ? "bg-sky-100 text-sky-700 animate-pulse"
+                        : "bg-amber-100 text-amber-700"
+                    }`}>
                     <Crosshair className={`w-4 h-4 ${isLocating ? "animate-spin" : ""}`} />
                   </div>
                   <div>
@@ -1566,11 +1567,10 @@ export default function DriverApp() {
                         {gpsLocation ? `${gpsLocation.lat.toFixed(6)}, ${gpsLocation.lng.toFixed(6)}` : "Detecting GPS..."}
                       </span>
                       {gpsAccuracy !== null && (
-                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
-                          gpsAccuracy <= 15
+                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${gpsAccuracy <= 15
                             ? "bg-emerald-100 text-emerald-800"
                             : "bg-amber-100 text-amber-800"
-                        }`}>
+                          }`}>
                           ±{gpsAccuracy}m
                         </span>
                       )}

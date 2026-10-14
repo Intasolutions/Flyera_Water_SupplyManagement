@@ -99,6 +99,7 @@ class ClientBase(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     route_id: Optional[str] = None
+    credit_amount: float = 0.0
 
 class ClientCreate(ClientBase):
     pass
@@ -113,6 +114,7 @@ class ClientUpdate(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     route_id: Optional[str] = None
+    credit_amount: Optional[float] = None
 
 class ClientResponse(ClientBase):
     id: str
@@ -121,6 +123,11 @@ class ClientResponse(ClientBase):
 
     class Config:
         from_attributes = True
+
+class ClientCreditAdjustRequest(BaseModel):
+    amount: float
+    type: str = "SET" # "SET" | "ADD" | "DEDUCT"
+    notes: Optional[str] = None
 
 # --- Vehicle Schemas ---
 class VehicleBase(BaseModel):
@@ -274,10 +281,20 @@ class DeliveryCreate(DeliveryBase):
 class DeliveryResponse(DeliveryBase):
     id: str
     created_at: datetime
+    upi_reference: Optional[str] = None
+    verified_at: Optional[datetime] = None
+    verified_by: Optional[str] = None
+    notes: Optional[str] = None
     items: List[DeliveryItemResponse] = []
 
     class Config:
         from_attributes = True
+
+class DeliveryVerifyRequest(BaseModel):
+    action: str # "VERIFY_PAID" | "MARK_CREDITED"
+    amount_paid: Optional[float] = None
+    upi_reference: Optional[str] = None
+    notes: Optional[str] = None
 
 # --- Glass Business Schemas ---
 

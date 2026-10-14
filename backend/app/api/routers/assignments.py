@@ -59,8 +59,13 @@ def get_assignments(
     skip: int = 0, limit: int = 100, 
     db: Session = Depends(get_db)
 ):
-    # If we don't have current_user, return all assignments
-    return db.query(models.Assignment).offset(skip).limit(limit).all()
+    from sqlalchemy import case
+    status_order = case(
+        (models.Assignment.status == "ACTIVE", 0),
+        (models.Assignment.status == "PENDING", 1),
+        else_=2
+    )
+    return db.query(models.Assignment).order_by(status_order, models.Assignment.created_at.asc()).offset(skip).limit(limit).all()
 
 @router.get("/{assignment_id}", response_model=schemas.AssignmentResponse)
 def get_assignment(

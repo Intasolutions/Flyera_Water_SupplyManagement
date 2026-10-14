@@ -5,7 +5,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List
 
-from app import crud, schemas
+from app import crud, schemas, models
 from app.database import get_db
 
 router = APIRouter()
@@ -90,14 +90,6 @@ def delete_user(user_id: str, db: Session = Depends(get_db)):
     db_user = crud.get_user(db, user_id=user_id)
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
-    assignment_count = db.query(models.Assignment).filter(
-        (models.Assignment.driver_id == user_id) | (models.Assignment.helper_id == user_id)
-    ).count()
-    if assignment_count > 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot delete user because they are assigned to delivery shifts. Please reassign those shifts or deactivate the user instead."
-        )
     try:
         crud.delete_user(db=db, user_id=user_id)
         return {"message": "User deleted successfully"}

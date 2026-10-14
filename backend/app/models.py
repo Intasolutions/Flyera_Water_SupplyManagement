@@ -53,6 +53,7 @@ class Client(Base):
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
     route_id = Column(String, ForeignKey("routes.id"), nullable=True)
+    credit_amount = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -157,7 +158,11 @@ class Delivery(Base):
     client_id = Column(String, ForeignKey("clients.id"), nullable=False)
     total_amount = Column(Float, default=0)
     payment_method = Column(String, nullable=True)
-    status = Column(String, default="COMPLETED")
+    status = Column(String, default="COMPLETED") # "COMPLETED", "PENDING_PAYMENT", "CREDITED", "SKIPPED"
+    upi_reference = Column(String, nullable=True)
+    verified_at = Column(DateTime, nullable=True)
+    verified_by = Column(String, nullable=True)
+    notes = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     assignment = relationship("Assignment", back_populates="deliveries")

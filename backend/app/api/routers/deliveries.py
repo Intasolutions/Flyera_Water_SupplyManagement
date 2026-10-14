@@ -65,6 +65,14 @@ def create_delivery(
     if total_loyalty_points > 0:
         client.loyalty_points += total_loyalty_points
         
+    # If delivery is on credit / pay later / doorstep slip, record in client's credit dues
+    is_credit_delivery = (
+        delivery.status in ["PENDING_PAYMENT", "CREDITED"] or 
+        (delivery.payment_method and ("credit" in delivery.payment_method.lower() or "pay later" in delivery.payment_method.lower() or "slip" in delivery.payment_method.lower()))
+    )
+    if is_credit_delivery and delivery.total_amount > 0:
+        client.credit_amount = (client.credit_amount or 0.0) + delivery.total_amount
+        
     db.commit()
     db.refresh(db_delivery)
     return db_delivery
@@ -135,4 +143,83 @@ def delete_delivery(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to delete delivery: {str(e)}")
+
+@router.get("/pending-doorstep", response_model=List[schemas.DeliveryResponse])
+def get_pending_doorstep_deliveries(
+    include_all: bool = False,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_active_user)
+):
+    from sqlalchemy import or_
+    query = db.query(models.Delivery)
+    if include_all:
+        query = query.filter(
+            or_(
+                models.Delivery.status.in_(["PENDING_PAYMENT", "PENDING_VERIFICATION", "PENDING", "CREDITED"]),
+                models.Delivery.payment_method.ilike("%Slip%"),
+                models.Delivery.payment_method.ilike("%Pay Later%"),
+                models.Delivery.verified_at != None
+            )
+        )
+    else:
+        # Only pending verification / credited / unverified slip QRs
+        query = query.filter(
+            or_(
+                models.Delivery.status.in_(["PENDING_PAYMENT", "PENDING_VERIFICATION", "PENDING", "CREDITED"]),
+                models.Delivery.payment_method.ilike("%Slip%"),
+                models.Delivery.payment_method.ilike("%Pay Later%")
+            )
+        ).filter(models.Delivery.status != "COMPLETED")
+    return query.order_by(models.Delivery.created_at.desc()).all()
+
+@router.post("/{delivery_id}/verify", response_model=schemas.DeliveryResponse)
+def verify_doorstep_delivery(
+    delivery_id: str,
+    verify_req: schemas.DeliveryVerifyRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_active_user)
+):
+    from datetime import datetime
+    db_delivery = db.query(models.Delivery).filter(models.Delivery.id == delivery_id).first()
+    if not db_delivery:
+        raise HTTPException(status_code=404, detail="Delivery record not found")
+        
+    client = db.query(models.Client).filter(models.Client.id == db_delivery.client_id).first()
+    
+    try:
+        if verify_req.action == "VERIFY_PAID":
+            # Amount verified as credited into bank / UPI account
+            paid_amount = float(verify_req.amount_paid) if verify_req.amount_paid is not None else float(db_delivery.total_amount)
+            db_delivery.status = "COMPLETED"
+            db_delivery.payment_method = "UPI (Verified)"
+            db_delivery.upi_reference = verify_req.upi_reference
+            db_delivery.verified_at = datetime.utcnow()
+            db_delivery.verified_by = getattr(current_user, 'name', None) or getattr(current_user, 'username', 'Admin')
+            if verify_req.notes:
+                db_delivery.notes = verify_req.notes
+                
+            # Settle / deduct paid amount from client's credit dues
+            if client and paid_amount > 0:
+                client.credit_amount = max(0.0, (client.credit_amount or 0.0) - paid_amount)
+                
+        elif verify_req.action == "MARK_CREDITED":
+            # Confirmed as remaining unpaid credit
+            db_delivery.status = "CREDITED"
+            db_delivery.payment_method = "Credited / Unpaid"
+            db_delivery.verified_at = datetime.utcnow()
+            db_delivery.verified_by = getattr(current_user, 'name', None) or getattr(current_user, 'username', 'Admin')
+            if verify_req.notes:
+                db_delivery.notes = verify_req.notes
+        else:
+            raise HTTPException(status_code=400, detail="Invalid verification action. Use VERIFY_PAID or MARK_CREDITED.")
+            
+        db.commit()
+        db.refresh(db_delivery)
+        return db_delivery
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to verify delivery: {str(e)}")
 

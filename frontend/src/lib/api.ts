@@ -164,6 +164,7 @@ export interface Client {
   latitude?: number;
   longitude?: number;
   route_id: string | null;
+  credit_amount?: number;
   created_at: string;
   updated_at: string;
 }
@@ -178,6 +179,11 @@ export const createClient = (data: Partial<Client>) =>
 export const updateClient = (id: string, data: Partial<Client>) =>
   fetcher<Client>(`/clients/${id}`, {
     method: 'PUT',
+    body: JSON.stringify(data),
+  });
+export const adjustClientCredit = (id: string, data: { amount: number; type: "SET" | "ADD" | "DEDUCT"; notes?: string }) =>
+  fetcher<Client>(`/clients/${id}/credit-adjust`, {
+    method: 'POST',
     body: JSON.stringify(data),
   });
 export const deleteClient = (id: string) =>
@@ -325,6 +331,8 @@ export interface Assignment {
   route_id: string | null;
   status: string;
   allocations: Allocation[];
+  created_at?: string;
+  updated_at?: string;
 }
 
 export const getAssignments = () => fetcher<Assignment[]>('/assignments');
@@ -352,13 +360,48 @@ export const deleteAssignment = (id: string) =>
   fetcher<{message: string}>(`/assignments/${id}`, {
     method: 'DELETE',
   });
+export interface DeliveryItem {
+  id: string;
+  delivery_id: string;
+  inventory_type_id: string;
+  delivered_full: number;
+  collected_empty: number;
+  price_charged: number;
+}
+
+export interface Delivery {
+  id: string;
+  assignment_id: string;
+  client_id: string;
+  total_amount: number;
+  payment_method?: string;
+  status: string;
+  upi_reference?: string;
+  verified_at?: string;
+  verified_by?: string;
+  notes?: string;
+  created_at: string;
+  items?: DeliveryItem[];
+}
+
 export const createDelivery = (data: any) =>
-  fetcher<any>(`/deliveries`, {
+  fetcher<Delivery>(`/deliveries`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+export const getPendingDoorstepDeliveries = (includeAll?: boolean) =>
+  fetcher<Delivery[]>(`/deliveries/pending-doorstep${includeAll ? '?include_all=true' : ''}`);
+export const verifyDoorstepDelivery = (deliveryId: string, data: { action: "VERIFY_PAID" | "MARK_CREDITED"; amount_paid?: number; upi_reference?: string; notes?: string }) =>
+  fetcher<Delivery>(`/deliveries/${deliveryId}/verify`, {
     method: 'POST',
     body: JSON.stringify(data),
   });
 export const revertDeliveryByClient = (assignmentId: string, clientId: string) =>
   fetcher<{message: string}>(`/deliveries/by-client/${assignmentId}/${clientId}`, {
+    method: 'DELETE',
+  });
+export const deleteDelivery = (deliveryId: string) =>
+  fetcher<{message: string}>(`/deliveries/${deliveryId}`, {
     method: 'DELETE',
   });
 

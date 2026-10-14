@@ -43,3 +43,27 @@ def delete_client(client_id: str, db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to delete client: {str(e)}")
+
+@router.post("/{client_id}/credit-adjust", response_model=schemas.ClientResponse)
+def adjust_client_credit(
+    client_id: str,
+    adjust_data: schemas.ClientCreditAdjustRequest,
+    db: Session = Depends(get_db)
+):
+    db_client = crud.get_client(db, client_id=client_id)
+    if db_client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+    try:
+        current_credit = db_client.credit_amount or 0.0
+        if adjust_data.type == "SET":
+            db_client.credit_amount = max(0.0, float(adjust_data.amount))
+        elif adjust_data.type == "ADD":
+            db_client.credit_amount = current_credit + float(adjust_data.amount)
+        elif adjust_data.type == "DEDUCT":
+            db_client.credit_amount = max(0.0, current_credit - float(adjust_data.amount))
+        db.commit()
+        db.refresh(db_client)
+        return db_client
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to adjust credit: {str(e)}")

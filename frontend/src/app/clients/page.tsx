@@ -27,8 +27,12 @@ import {
   HelpCircle,
   Link2,
   AlertCircle,
-  Check
+  Check,
+  IndianRupee,
+  Lock,
+  CreditCard
 } from "lucide-react";
+import { useStore } from "@/lib/StoreContext";
 import { getClients, createClient, updateClient, deleteClient, Client, getRoutes, Route, getInventoryTypes, InventoryType } from "@/lib/api";
 import { sanitizePhone, isValidPhone, formatPhoneDisplay } from "@/lib/validation";
 import { toast } from "react-hot-toast";
@@ -47,6 +51,20 @@ export default function ClientsPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const confirm = useConfirm();
 
+  // Role authentication check: Super User / Admin only for credit management
+  const { currentUserRole } = useStore();
+  const isSuperUser = useMemo(() => {
+    if (currentUserRole === "Owner") return true;
+    try {
+      const userStr = typeof window !== "undefined" ? localStorage.getItem("flyera_user") : null;
+      if (userStr) {
+        const u = JSON.parse(userStr);
+        if (u.role === "ADMIN") return true;
+      }
+    } catch (e) {}
+    return false;
+  }, [currentUserRole]);
+
   // Form states
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
@@ -54,6 +72,7 @@ export default function ClientsPage() {
   const [newTier, setNewTier] = useState("Standard");
   const [newOptIn, setNewOptIn] = useState(true);
   const [newRouteId, setNewRouteId] = useState("");
+  const [newCreditAmount, setNewCreditAmount] = useState<number | string>(0);
   const [newAddress, setNewAddress] = useState("");
   const [newLatitude, setNewLatitude] = useState<number | null>(null);
   const [newLongitude, setNewLongitude] = useState<number | null>(null);
@@ -188,6 +207,7 @@ export default function ClientsPage() {
         tier: newTier,
         opt_in_loyalty: newOptIn,
         route_id: newRouteId || null,
+        credit_amount: Number(newCreditAmount) || 0,
         latitude: newLatitude ?? undefined,
         longitude: newLongitude ?? undefined,
       };
@@ -203,6 +223,7 @@ export default function ClientsPage() {
       await fetchData();
       setModalOpen(false);
       resetForm();
+      setSearchQuery("");
     } catch (error: any) {
       console.error("Failed to save client:", error);
       toast.error(error.message || "Failed to save client");
@@ -218,6 +239,7 @@ export default function ClientsPage() {
     setNewTier("Standard");
     setNewOptIn(true);
     setNewRouteId("");
+    setNewCreditAmount(0);
     setNewLatitude(null);
     setNewLongitude(null);
     setLocationInput("");
@@ -233,6 +255,7 @@ export default function ClientsPage() {
     setNewTier(c.tier || "Standard");
     setNewOptIn(c.opt_in_loyalty);
     setNewRouteId(c.route_id || "");
+    setNewCreditAmount(c.credit_amount ?? 0);
     setNewLatitude(c.latitude ?? null);
     setNewLongitude(c.longitude ?? null);
     setLocationInput(c.latitude && c.longitude ? `${c.latitude}, ${c.longitude}` : "");
@@ -255,6 +278,7 @@ export default function ClientsPage() {
     if (isConfirmed) {
       try {
         await deleteClient(id);
+        setSearchQuery("");
         await fetchData();
         toast.success("Client removed successfully");
       } catch (error: any) {
@@ -285,6 +309,7 @@ export default function ClientsPage() {
   const assignedCount = clients.filter(c => !!c.route_id).length;
   const unassignedCount = totalClients - assignedCount;
   const totalLoyaltyPoints = clients.reduce((acc, c) => acc + (c.loyalty_points || 0), 0);
+  const totalCreditDues = clients.reduce((acc, c) => acc + (c.credit_amount || 0), 0);
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -293,7 +318,7 @@ export default function ClientsPage() {
       <main className="flex-1 ml-0 md:ml-72 p-4 sm:p-6 md:p-10 lg:p-12 pt-20 md:pt-10 pb-24 md:pb-12 transition-all max-w-7xl">
         <PageHeader 
           title="Client Directory" 
-          subtitle="Manage recurring customer locations, route assignments, and loyalty rewards."
+          subtitle="Manage recurring customer locations, route assignments, credit balances, and loyalty rewards."
           badge={`${totalClients} Registered`}
           badgeColor="blue"
           actions={
@@ -327,20 +352,20 @@ export default function ClientsPage() {
             color="blue"
           />
           <StatCard 
+            title="Total Market Credit" 
+            value={`₹${totalCreditDues.toLocaleString()}`} 
+            trend="Outstanding unpaid dues"
+            icon={<IndianRupee className="w-5 h-5 text-rose-600" />}
+            badge="Receivables"
+            color="rose"
+          />
+          <StatCard 
             title="Assigned to Routes" 
             value={assignedCount} 
             trend="On active delivery paths"
             icon={<RouteIcon className="w-5 h-5 text-emerald-600" />}
             badge="Scheduled"
             color="emerald"
-          />
-          <StatCard 
-            title="Unassigned Clients" 
-            value={unassignedCount} 
-            trend="Awaiting route linking"
-            icon={<MapPin className="w-5 h-5 text-amber-600" />}
-            badge="Needs Route"
-            color="amber"
           />
           <StatCard 
             title="Loyalty Points" 
@@ -363,6 +388,9 @@ export default function ClientsPage() {
                 placeholder="Search by business name, address, or phone..." 
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
+                autoComplete="off"
+                name="clients_search_query"
+                id="clients_search_query"
                 className="w-full pl-10 pr-4 py-2.5 bg-surface border border-gray-200 rounded-xl outline-none text-text text-sm font-medium focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all shadow-sm"
               />
             </div>
@@ -812,6 +840,65 @@ export default function ClientsPage() {
               </div>
             </div>
 
+            {/* Old Credit Amount / Prior Balance (Admin / Super User Only) */}
+            <div className={`p-4 rounded-2xl border transition-all ${
+              isSuperUser 
+                ? "bg-slate-50 border-slate-200" 
+                : "bg-amber-50/60 border-amber-200/80"
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className={`p-1.5 rounded-lg ${isSuperUser ? "bg-primary/10 text-primary" : "bg-amber-100 text-amber-700"}`}>
+                    <IndianRupee className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-black uppercase tracking-wider text-slate-800 block">
+                      Old Credit Amount (₹)
+                    </label>
+                    <span className="text-[10px] text-slate-500 font-medium">
+                      Customer opening credit balance
+                    </span>
+                  </div>
+                </div>
+
+                {isSuperUser ? (
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Super User Access
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-black uppercase tracking-wider bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-md flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> Super User Only
+                  </span>
+                )}
+              </div>
+
+              <div className="relative mt-2">
+                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 font-black text-sm pointer-events-none">
+                  ₹
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  disabled={!isSuperUser}
+                  value={newCreditAmount}
+                  onChange={e => setNewCreditAmount(e.target.value)}
+                  placeholder="0.00"
+                  className={`w-full pl-8 pr-4 py-2.5 rounded-xl outline-none font-bold text-sm transition-all ${
+                    isSuperUser
+                      ? "bg-white border border-slate-200 text-slate-900 focus:border-primary focus:ring-4 focus:ring-primary/10 shadow-xs"
+                      : "bg-white/80 border border-amber-200/80 text-slate-500 cursor-not-allowed select-none"
+                  }`}
+                />
+              </div>
+
+              <p className="text-[11px] text-slate-500 font-medium mt-1.5">
+                {isSuperUser
+                  ? "Enter the customer's prior unpaid balance. Future deliveries and payments will adjust this ledger automatically."
+                  : "🔒 Only the Super User / Administrator is authorized to input or change initial old credit balances."}
+              </p>
+            </div>
+
             <div className="p-4 bg-surface rounded-xl border border-black/5 flex items-center justify-between mt-2">
               <div className="flex items-center gap-3">
                 <Sparkles className="w-5 h-5 text-purple-600 shrink-0" />
@@ -909,6 +996,30 @@ function ClientCard({
               </a>
             </div>
           ) : null}
+
+          {/* Outstanding Credit Due Pill */}
+          <div className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
+            (client.credit_amount || 0) > 0 
+              ? "bg-rose-50/80 border-rose-200" 
+              : "bg-emerald-50/50 border-emerald-100"
+          }`}>
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+              <IndianRupee className={`w-3.5 h-3.5 ${
+                (client.credit_amount || 0) > 0 ? "text-rose-600" : "text-emerald-600"
+              }`} />
+              <span>Credit Balance:</span>
+            </div>
+            {(client.credit_amount || 0) > 0 ? (
+              <span className="inline-flex items-center gap-1 text-xs font-black px-2.5 py-0.5 rounded-md bg-rose-600 text-white shadow-2xs">
+                <span>Due: ₹{(client.credit_amount || 0).toLocaleString()}</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+                <Check className="w-3 h-3" />
+                <span>Cleared (₹0)</span>
+              </span>
+            )}
+          </div>
 
           {/* Loyalty Pill */}
           <div className="flex items-center justify-between pt-1">

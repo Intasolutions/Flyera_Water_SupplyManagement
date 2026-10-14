@@ -176,11 +176,8 @@ export default function StaffPage() {
       setModalOpen(false);
       resetForm();
 
-      // Automatically populate search filter with the newly created/saved phone number
-      if (cleanPhone) {
-        setSearchQuery(cleanPhone);
-        setRoleFilter("all"); // Reset role filter so created member is immediately visible!
-      }
+      setSearchQuery("");
+      setRoleFilter("all");
     } catch (error: any) {
       console.error("Failed to save staff:", error);
       toast.error(error.message || "Failed to save staff member");
@@ -239,6 +236,7 @@ export default function StaffPage() {
     if (isConfirmed) {
       try {
         await deleteUser(id);
+        setSearchQuery("");
         await fetchStaff();
         toast.success("Staff member removed.");
       } catch (error: any) {
@@ -389,6 +387,9 @@ export default function StaffPage() {
                 placeholder="Search staff by name, phone, or DL..." 
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
+                autoComplete="off"
+                name="staff_search_bar"
+                id="staff_search_bar"
                 className="w-full pl-10 pr-4 py-2.5 bg-surface border border-gray-200 rounded-xl outline-none text-text text-sm font-medium focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all shadow-sm"
               />
             </div>

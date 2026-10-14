@@ -42,6 +42,8 @@ export interface ReceiptData {
   items: ReceiptItem[];
   emptyReturned: number;
   totalAmount: number;
+  previousCreditBalance?: number;
+  netDueAmount?: number;
   paymentMethod: string; // "Cash" | "UPI / QR" | "Pay Later (Slip QR)"
   paymentStatus?: "PAID" | "PENDING";
   upiId: string;
@@ -68,12 +70,13 @@ export function ThermalReceiptModal({
   const receiptRef = useRef<HTMLDivElement>(null);
   const activeUpiId = data.upiId || "flyera@okhdfcbank";
   const isPayLater = data.paymentStatus === "PENDING" || (data.paymentMethod || "").toLowerCase().includes("pay later") || (data.paymentMethod || "").toLowerCase().includes("slip");
+  const payableAmount = (isPayLater && data.netDueAmount && data.netDueAmount > 0) ? data.netDueAmount : data.totalAmount;
 
   // Generate dynamic NPCI UPI URI and QR code strictly using Admin configured UPI ID
   useEffect(() => {
     const note = encodeURIComponent(`${data.receiptNo} - ${data.clientName}`);
     const company = encodeURIComponent(data.companyName || "Flyera Logistics");
-    const upiUri = `upi://pay?pa=${activeUpiId}&pn=${company}&am=${data.totalAmount.toFixed(2)}&tn=${note}&cu=INR`;
+    const upiUri = `upi://pay?pa=${activeUpiId}&pn=${company}&am=${payableAmount.toFixed(2)}&tn=${note}&cu=INR`;
 
     QRCode.toDataURL(upiUri, {
       width: 260,
@@ -88,7 +91,7 @@ export function ThermalReceiptModal({
       .catch(err => {
         console.error("QR Generation error:", err);
       });
-  }, [activeUpiId, data.totalAmount, data.receiptNo, data.clientName, data.companyName]);
+  }, [activeUpiId, payableAmount, data.receiptNo, data.clientName, data.companyName]);
 
   if (!isOpen) return null;
 
@@ -112,13 +115,15 @@ export function ThermalReceiptModal({
       ...data.items.map(item => `• ${item.name} x ${item.qty} @ ₹${item.rate} = ₹${item.amount}`),
       data.emptyReturned > 0 ? `• Empty Jars Collected: ${data.emptyReturned}` : "",
       `--------------------------------`,
-      `*TOTAL DUE: ₹${data.totalAmount}*`,
+      `Today's Delivery: *₹${data.totalAmount}*`,
+      (data.previousCreditBalance && data.previousCreditBalance > 0) ? `Previous Credit Dues: *₹${data.previousCreditBalance}*` : "",
+      `*TOTAL NET DUE: ₹${payableAmount}*`,
       `*PAYMENT STATUS: PENDING (PAY VIA SLIP QR)*`,
       `--------------------------------`,
       `Your water bottles have been dropped off!`,
       `Please scan the QR code on your printed slip or pay via UPI:`,
       `UPI ID: *${activeUpiId}*`,
-      `Amount: *₹${data.totalAmount}*`,
+      `Amount: *₹${payableAmount}*`,
       `--------------------------------`,
       `Helpline: ${data.hotline}`,
       `_Powered by IN-TA Solution PVT LTD_`
@@ -349,9 +354,21 @@ export function ThermalReceiptModal({
                     <span>{data.vehiclePlate}</span>
                   </div>
                   <div className="flex justify-between font-bold text-slate-900 pt-1">
-                    <span>{isPayLater ? "AMOUNT DUE:" : "TOTAL PAID:"}</span>
+                    <span>TODAY DROP:</span>
                     <span>₹{data.totalAmount}</span>
                   </div>
+                  {data.previousCreditBalance && data.previousCreditBalance > 0 ? (
+                    <>
+                      <div className="flex justify-between font-bold text-amber-700">
+                        <span>PREV CREDIT DUE:</span>
+                        <span>₹{data.previousCreditBalance}</span>
+                      </div>
+                      <div className="flex justify-between font-black text-rose-700 pt-1 border-t border-dashed border-slate-300">
+                        <span>TOTAL NET DUE:</span>
+                        <span>₹{payableAmount}</span>
+                      </div>
+                    </>
+                  ) : null}
                   <div className="border-t border-dashed border-slate-200 mt-2 pt-1 text-center text-[9px] text-slate-400 font-sans font-semibold">
                     Powered by{" "}
                     <a
@@ -446,9 +463,19 @@ export function ThermalReceiptModal({
           </div>
         )}
         <div>--------------------------------</div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: "13px" }}>
-          <span>{isPayLater ? "TOTAL DUE:" : "TOTAL COLLECTED:"}</span>
+        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold" }}>
+          <span>TODAY DROP:</span>
           <span>Rs.{data.totalAmount}</span>
+        </div>
+        {data.previousCreditBalance && data.previousCreditBalance > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold" }}>
+            <span>PREV BALANCE:</span>
+            <span>Rs.{data.previousCreditBalance}</span>
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", fontSize: "13px" }}>
+          <span>{isPayLater ? "NET TOTAL DUE:" : "TOTAL COLLECTED:"}</span>
+          <span>Rs.{payableAmount}</span>
         </div>
         <div>{isPayLater ? "PAYMENT STATUS  : PENDING (SCAN SLIP QR)" : `PAYMENT METHOD   : ${data.paymentMethod.toUpperCase()}`}</div>
         <div>--------------------------------</div>

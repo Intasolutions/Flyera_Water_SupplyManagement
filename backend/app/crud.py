@@ -29,6 +29,25 @@ def create_user(db: Session, user: schemas.UserCreate):
 def delete_user(db: Session, user_id: str):
     db_user = get_user(db, user_id)
     if db_user:
+        # 1. Nullify helper assignments
+        db.query(models.Assignment).filter(models.Assignment.helper_id == user_id).update({models.Assignment.helper_id: None})
+        
+        # 2. Delete assignments where user is the driver (and cascade allocations, deliveries, items)
+        driver_assignments = db.query(models.Assignment).filter(models.Assignment.driver_id == user_id).all()
+        for a in driver_assignments:
+            for d in list(a.deliveries):
+                for item in list(d.items):
+                    db.delete(item)
+                db.delete(d)
+            for alloc in list(a.allocations):
+                db.delete(alloc)
+            db.delete(a)
+            
+        # 3. Nullify glass collections and separations
+        db.query(models.GlassCollection).filter(models.GlassCollection.driver_id == user_id).update({models.GlassCollection.driver_id: None})
+        db.query(models.GlassSeparation).filter(models.GlassSeparation.staff_id == user_id).update({models.GlassSeparation.staff_id: None})
+
+        # 4. Delete user
         db.delete(db_user)
         db.commit()
     return db_user

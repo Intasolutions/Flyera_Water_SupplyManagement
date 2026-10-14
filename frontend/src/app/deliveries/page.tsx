@@ -29,8 +29,17 @@ import {
   ChevronRight,
   RefreshCw,
   RotateCcw,
-  Edit3
+  Edit3,
+  QrCode,
+  Receipt,
+  Check,
+  ShieldCheck,
+  Printer,
+  ArrowRight,
+  ExternalLink,
+  FileText
 } from "lucide-react";
+import QRCode from "qrcode";
 import { 
   getUsers, 
   User, 
@@ -47,10 +56,35 @@ import {
   getInventoryTypes, 
   deleteAssignment as apiDeleteAssignment, 
   completeAssignment as apiCompleteAssignment,
-  reopenAssignment 
+  reopenAssignment,
+  getPendingDoorstepDeliveries,
+  verifyDoorstepDelivery,
+  deleteDelivery,
+  Delivery,
+  getSettings
 } from "@/lib/api";
+import { ThermalReceiptModal, ReceiptData } from "@/components/ThermalReceiptModal";
 import { toast } from "react-hot-toast";
 import { useConfirm } from "@/lib/useConfirm";
+
+const getAssignmentDateStr = (dateVal: string | Date | undefined | null): string => {
+  if (!dateVal) return "";
+  if (typeof dateVal === "string") {
+    if (dateVal.includes("Z") || dateVal.includes("+")) {
+      const d = new Date(dateVal);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+    return dateVal.slice(0, 10);
+  }
+  const d = dateVal;
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 
 export default function DeliveriesPage() {
   const { completeDelivery } = useStore();
@@ -83,8 +117,8 @@ export default function DeliveriesPage() {
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "PENDING" | "ACTIVE" | "COMPLETED">("ALL");
-  const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
-  const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
+  const [startDate, setStartDate] = useState(() => getAssignmentDateStr(new Date()));
+  const [endDate, setEndDate] = useState(() => getAssignmentDateStr(new Date()));
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Real data from backend
@@ -95,11 +129,27 @@ export default function DeliveriesPage() {
   const [realAssignments, setRealAssignments] = useState<ApiAssignment[]>([]);
   const [inventoryTypes, setInventoryTypes] = useState<any[]>([]);
 
+  // Doorstep Slip QR & Account Verification states
+  const [activeView, setActiveView] = useState<"assignments" | "doorstep">("assignments");
+  const [doorstepDeliveries, setDoorstepDeliveries] = useState<Delivery[]>([]);
+  const [selectedDoorstepDelivery, setSelectedDoorstepDelivery] = useState<Delivery | null>(null);
+  const [doorstepFilter, setDoorstepFilter] = useState<"ALL" | "PENDING" | "CREDITED" | "COMPLETED">("PENDING");
+  const [doorstepSearch, setDoorstepSearch] = useState("");
+  const [verifyAmount, setVerifyAmount] = useState<number | string>("");
+  const [verifyUpiRef, setVerifyUpiRef] = useState("");
+  const [verifyNotes, setVerifyNotes] = useState("");
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [modalQrUrl, setModalQrUrl] = useState<string>("");
+  const [systemSettings, setSystemSettings] = useState<any>({});
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+  const [receiptModalData, setReceiptModalData] = useState<ReceiptData | null>(null);
+
   useEffect(() => {
     fetchRealData();
     // Poll for real-time updates every 3 seconds
     const interval = setInterval(() => {
       getAssignments().then(setRealAssignments).catch(console.error);
+      getPendingDoorstepDeliveries(true).then(setDoorstepDeliveries).catch(console.error);
     }, 3000);
     return () => clearInterval(interval);
   }, []);
@@ -107,13 +157,15 @@ export default function DeliveriesPage() {
   const fetchRealData = async () => {
     try {
       setIsRefreshing(true);
-      const [staffData, routesData, clientsData, vehiclesData, assignmentsData, invData] = await Promise.all([
+      const [staffData, routesData, clientsData, vehiclesData, assignmentsData, invData, pendingData, settingsData] = await Promise.all([
         getUsers(),
         getRoutes(),
         getClients(),
         getVehicles(),
         getAssignments(),
-        getInventoryTypes()
+        getInventoryTypes(),
+        getPendingDoorstepDeliveries(true).catch(() => []),
+        getSettings().catch(() => ({}))
       ]);
       setRealStaff(staffData || []);
       setRealRoutes(routesData || []);
@@ -121,10 +173,155 @@ export default function DeliveriesPage() {
       setRealVehicles(vehiclesData || []);
       setRealAssignments(assignmentsData || []);
       setInventoryTypes(invData || []);
+      setDoorstepDeliveries(pendingData || []);
+      setSystemSettings(settingsData || {});
     } catch (error) {
       console.error("Failed to fetch real data:", error);
     } finally {
       setIsRefreshing(false);
+    }
+  };
+
+  const handleOpenDoorstepModal = (d: Delivery) => {
+    setSelectedDoorstepDelivery(d);
+    setVerifyAmount(d.total_amount);
+    setVerifyUpiRef(d.upi_reference || "");
+    setVerifyNotes(d.notes || "");
+    
+    // Generate scannable dynamic UPI QR for this delivery
+    const client = realClients.find(c => c.id === d.client_id);
+    const note = encodeURIComponent(`Bill-${d.id.slice(0, 6)} - ${client?.name || "Client"}`);
+    const upiId = systemSettings.upi_id || "flyera@okhdfcbank";
+    const company = encodeURIComponent(systemSettings.company_name || "Flyera Logistics");
+    const upiUri = `upi://pay?pa=${upiId}&pn=${company}&am=${d.total_amount.toFixed(2)}&tn=${note}&cu=INR`;
+    
+    QRCode.toDataURL(upiUri, { width: 220, margin: 1 })
+      .then(setModalQrUrl)
+      .catch(err => console.error("QR error", err));
+  };
+
+  const handleVerifyPayment = async () => {
+    if (!selectedDoorstepDelivery) return;
+    const amt = Number(verifyAmount);
+    if (isNaN(amt) || amt <= 0) {
+      toast.error("Please enter a valid credited amount");
+      return;
+    }
+    if (!verifyUpiRef.trim()) {
+      toast.error("Please enter UPI reference / UTR number from bank statement");
+      return;
+    }
+
+    setIsVerifying(true);
+    try {
+      await verifyDoorstepDelivery(selectedDoorstepDelivery.id, {
+        action: "VERIFY_PAID",
+        amount_paid: amt,
+        upi_reference: verifyUpiRef.trim(),
+        notes: verifyNotes.trim() || undefined
+      });
+      toast.success(`Payment verified! ₹${amt} credited & deducted from client dues.`);
+      setSelectedDoorstepDelivery(null);
+      await fetchRealData();
+    } catch (err: any) {
+      console.error("Verification failed", err);
+      toast.error(err.message || "Failed to verify delivery payment");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleMarkCredited = async () => {
+    if (!selectedDoorstepDelivery) return;
+    setIsVerifying(true);
+    try {
+      await verifyDoorstepDelivery(selectedDoorstepDelivery.id, {
+        action: "MARK_CREDITED",
+        notes: verifyNotes.trim() || undefined
+      });
+      toast.success("Delivery confirmed as unpaid credit on customer ledger.");
+      setSelectedDoorstepDelivery(null);
+      await fetchRealData();
+    } catch (err: any) {
+      console.error("Failed to mark credited", err);
+      toast.error(err.message || "Failed to confirm credit");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handlePrintSlipForDelivery = (d: Delivery) => {
+    const client = realClients.find(c => c.id === d.client_id);
+    const assignment = realAssignments.find(a => a.id === d.assignment_id);
+    const driver = realStaff.find(s => s.id === assignment?.driver_id);
+    const vehicle = realVehicles.find(v => v.id === assignment?.vehicle_id);
+    const route = realRoutes.find(r => r.id === assignment?.route_id);
+
+    const itemsPayload = (d.items || []).map(item => {
+      const inv = inventoryTypes.find(i => i.id === item.inventory_type_id);
+      return {
+        name: inv?.name || "20L Mineral Jar",
+        qty: item.delivered_full,
+        rate: item.price_charged,
+        amount: item.delivered_full * item.price_charged
+      };
+    });
+
+    const emptyCount = (d.items || []).reduce((sum, item) => sum + (item.collected_empty || 0), 0);
+    const prevCredit = Number(client?.credit_amount) || 0;
+
+    setReceiptModalData({
+      receiptNo: `FL-${d.id.slice(0, 6).toUpperCase()}`,
+      date: new Date(d.created_at).toLocaleString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+      }),
+      companyName: systemSettings.company_name || "Flyera - Water & Glass Logistics",
+      gstin: systemSettings.gstin || "GSTIN-27AAACH7409R1ZZ",
+      hotline: systemSettings.dispatch_hotline || "+91 98765 43210",
+      address: systemSettings.central_address || "Plot 42, Hinjewadi Industrial Zone Phase 2, Pune",
+      vehiclePlate: vehicle?.plate_number || "Van Delivery",
+      routeName: route?.name || "Route Run",
+      driverName: driver?.name || "Driver",
+      clientName: client?.name || "Customer",
+      clientPhone: client?.phone || "",
+      clientAddress: client?.address || "",
+      items: itemsPayload,
+      emptyReturned: emptyCount,
+      totalAmount: d.total_amount,
+      previousCreditBalance: prevCredit,
+      netDueAmount: prevCredit,
+      paymentMethod: d.payment_method || "Pay Later (Slip QR)",
+      paymentStatus: d.status === "COMPLETED" ? "PAID" : "PENDING",
+      upiId: systemSettings.upi_id || "flyera@okhdfcbank"
+    });
+    setReceiptModalOpen(true);
+  };
+
+  const handleDeleteDoorstepDelivery = async (e: React.MouseEvent, deliveryId: string, clientName: string) => {
+    e.stopPropagation();
+    const isConfirmed = await confirm({
+      title: "Delete Delivery Record",
+      message: `Are you sure you want to delete this doorstep delivery record for "${clientName}"?`,
+      confirmText: "Delete Record",
+      cancelText: "Cancel"
+    });
+    if (isConfirmed) {
+      try {
+        await deleteDelivery(deliveryId);
+        toast.success("Delivery record deleted");
+        await fetchRealData();
+        if (selectedDoorstepDelivery?.id === deliveryId) {
+          setSelectedDoorstepDelivery(null);
+        }
+      } catch (err: any) {
+        console.error("Failed to delete delivery", err);
+        toast.error(err.message || "Failed to delete delivery record");
+      }
     }
   };
 
@@ -155,8 +352,8 @@ export default function DeliveriesPage() {
     setEditStatus(assignment.status ? assignment.status.toUpperCase() : "PENDING");
     setEditDate(
       assignment.date 
-        ? new Date(assignment.date).toISOString().split("T")[0] 
-        : new Date().toISOString().split("T")[0]
+        ? getAssignmentDateStr(assignment.date) 
+        : getAssignmentDateStr(new Date())
     );
 
     const stockMap: Record<string, number> = {};
@@ -263,10 +460,10 @@ export default function DeliveriesPage() {
     }
   };
 
-  // Filtered assignments
+  // Filtered & Sorted assignments (Not completed on top, FIFO earliest first)
   const filteredAssignments = useMemo(() => {
-    return realAssignments.filter(a => {
-      const aDate = new Date(a.date).toISOString().split("T")[0];
+    const list = realAssignments.filter(a => {
+      const aDate = getAssignmentDateStr(a.date);
       const matchesDate = aDate >= startDate && aDate <= endDate;
       if (!matchesDate) return false;
 
@@ -285,6 +482,27 @@ export default function DeliveriesPage() {
 
       return true;
     });
+
+    // Sort: Uncompleted first (ACTIVE -> PENDING -> COMPLETED), then FIFO (earliest created_at / date first)
+    return list.sort((a, b) => {
+      const getStatusRank = (status: string) => {
+        const s = (status || "").toUpperCase();
+        if (s === "ACTIVE") return 0;
+        if (s === "PENDING") return 1;
+        return 2; // COMPLETED and others
+      };
+
+      const rankA = getStatusRank(a.status);
+      const rankB = getStatusRank(b.status);
+      if (rankA !== rankB) {
+        return rankA - rankB; // Not completed on top
+      }
+
+      // FIFO order: earliest created first
+      const timeA = new Date(a.created_at || a.date).getTime() || 0;
+      const timeB = new Date(b.created_at || b.date).getTime() || 0;
+      return timeA - timeB;
+    });
   }, [realAssignments, startDate, endDate, statusFilter, searchQuery, realVehicles, realStaff, realRoutes]);
 
   // Aggregate Metrics
@@ -297,9 +515,9 @@ export default function DeliveriesPage() {
   }, [realAssignments]);
 
   const completedTodayCount = useMemo(() => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = getAssignmentDateStr(new Date());
     return realAssignments.filter(a => {
-      const aDate = new Date(a.date).toISOString().split("T")[0];
+      const aDate = getAssignmentDateStr(a.date);
       return a.status === "COMPLETED" && aDate === today;
     }).length;
   }, [realAssignments]);
@@ -314,6 +532,47 @@ export default function DeliveriesPage() {
     return sum;
   }, [realAssignments]);
 
+  // Doorstep Slip QR Metrics and Memoized filter
+  const pendingDoorstepCount = useMemo(() => {
+    return doorstepDeliveries.filter(d => 
+      d.status === "PENDING_PAYMENT" || d.status === "PENDING" || d.status === "PENDING_VERIFICATION"
+    ).length;
+  }, [doorstepDeliveries]);
+
+  const totalDoorstepPendingAmount = useMemo(() => {
+    return doorstepDeliveries
+      .filter(d => d.status === "PENDING_PAYMENT" || d.status === "PENDING" || d.status === "PENDING_VERIFICATION")
+      .reduce((sum, d) => sum + (d.total_amount || 0), 0);
+  }, [doorstepDeliveries]);
+
+  const filteredDoorstepDeliveries = useMemo(() => {
+    return doorstepDeliveries.filter(d => {
+      const client = realClients.find(c => c.id === d.client_id);
+      const assignment = realAssignments.find(a => a.id === d.assignment_id);
+      const driver = realStaff.find(s => s.id === assignment?.driver_id);
+      const vehicle = realVehicles.find(v => v.id === assignment?.vehicle_id);
+
+      if (doorstepFilter === "PENDING") {
+        if (d.status === "COMPLETED" || d.status === "CREDITED") return false;
+      } else if (doorstepFilter === "CREDITED") {
+        if (d.status !== "CREDITED") return false;
+      } else if (doorstepFilter === "COMPLETED") {
+        if (d.status !== "COMPLETED") return false;
+      }
+
+      if (doorstepSearch.trim()) {
+        const q = doorstepSearch.toLowerCase().trim();
+        const clientMatch = (client?.name || "").toLowerCase().includes(q) || (client?.phone || "").includes(q);
+        const driverMatch = (driver?.name || "").toLowerCase().includes(q);
+        const vehicleMatch = (vehicle?.plate_number || "").toLowerCase().includes(q);
+        const upiMatch = (d.upi_reference || "").toLowerCase().includes(q);
+        return clientMatch || driverMatch || vehicleMatch || upiMatch;
+      }
+
+      return true;
+    });
+  }, [doorstepDeliveries, doorstepFilter, doorstepSearch, realClients, realAssignments, realStaff, realVehicles]);
+
   return (
     <div className="flex min-h-screen bg-[#FDFBF7]">
       <Sidebar />
@@ -322,7 +581,7 @@ export default function DeliveriesPage() {
         {/* Standardized Frosted Page Header */}
         <PageHeader
           title="Deliveries & Dispatch"
-          subtitle="Real-time route assignments, fleet vehicle dispatch & end-of-day revenue reconciliation"
+          subtitle="Real-time route assignments, fleet vehicle dispatch, doorstep QR slips & account verification"
           badgeText="Dispatch Center Live"
           actionSlot={
             <div className="flex items-center gap-3">
@@ -346,7 +605,7 @@ export default function DeliveriesPage() {
         />
 
         {/* Top KPI Stat Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 md:gap-5 mb-8">
           <StatCard
             label="Active On-Road"
             value={activeRoutesCount}
@@ -355,6 +614,19 @@ export default function DeliveriesPage() {
             color="emerald"
             category="Live Fleet"
           />
+          <div 
+            onClick={() => setActiveView("doorstep")}
+            className="cursor-pointer transition-transform hover:scale-[1.02] active:scale-[0.99]"
+          >
+            <StatCard
+              label="Doorstep Slip QRs"
+              value={pendingDoorstepCount}
+              subtext={pendingDoorstepCount > 0 ? `₹${totalDoorstepPendingAmount.toLocaleString()} to verify` : "All slips verified"}
+              icon={<QrCode className="w-6 h-6" />}
+              color={pendingDoorstepCount > 0 ? "amber" : "blue"}
+              category="Verification"
+            />
+          </div>
           <StatCard
             label="Pending Dispatch"
             value={pendingCount}
@@ -381,144 +653,304 @@ export default function DeliveriesPage() {
           />
         </div>
 
-        {/* Filter & Date Toolbar */}
-        <div className="glass-panel p-4 md:p-5 mb-8 shadow-sm">
-          <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between">
-            {/* Search and Status Pills */}
-            <div className="flex flex-col sm:flex-row gap-3 flex-1">
-              <div className="relative flex-1">
-                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search by vehicle, driver, route or helper..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-white/80 border border-slate-200/80 rounded-xl text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all"
-                />
-                {searchQuery && (
-                  <button 
-                    onClick={() => setSearchQuery("")} 
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
+        {/* View Switcher: Route Dispatch vs Doorstep Slip QRs */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-6 bg-white/70 p-2 rounded-2xl border border-slate-200/60 shadow-xs">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveView("assignments")}
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 ${
+                activeView === "assignments"
+                  ? "bg-slate-900 text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+              }`}
+            >
+              <Truck className="w-4 h-4" />
+              <span>Route Dispatch &amp; Assignments</span>
+              <span className={`text-[11px] px-2 py-0.5 rounded-full font-black ${
+                activeView === "assignments" ? "bg-slate-800 text-slate-300" : "bg-slate-200 text-slate-700"
+              }`}>
+                {filteredAssignments.length}
+              </span>
+            </button>
 
-              {/* Status Segmented Control */}
-              <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/50 self-start sm:self-auto overflow-x-auto max-w-full">
-                {(["ALL", "PENDING", "ACTIVE", "COMPLETED"] as const).map(status => (
-                  <button
-                    key={status}
-                    onClick={() => setStatusFilter(status)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${
-                      statusFilter === status
-                        ? "bg-white text-slate-900 shadow-sm"
-                        : "text-slate-500 hover:text-slate-900"
-                    }`}
-                  >
-                    {status === "ALL" ? "All Status" : status}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Date Range Selector */}
-            <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
-              <div className="flex items-center gap-2 bg-white/90 border border-slate-200/80 rounded-xl px-3 py-2 shadow-sm">
-                <Calendar className="w-4 h-4 text-slate-400" />
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={e => setStartDate(e.target.value)}
-                  className="outline-none text-xs font-bold text-slate-700 bg-transparent cursor-pointer"
-                />
-                <span className="text-slate-300 font-bold text-xs">to</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={e => setEndDate(e.target.value)}
-                  className="outline-none text-xs font-bold text-slate-700 bg-transparent cursor-pointer"
-                />
-              </div>
-
-              <button
-                onClick={() => {
-                  const today = new Date().toISOString().split("T")[0];
-                  setStartDate(today);
-                  setEndDate(today);
-                }}
-                className="px-3 py-2 bg-white/80 hover:bg-white text-slate-700 text-xs font-bold rounded-xl border border-slate-200/80 shadow-sm transition-all active:scale-95"
-              >
-                Today
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setActiveView("doorstep")}
+              className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 relative ${
+                activeView === "doorstep"
+                  ? "bg-primary text-white shadow-sm"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+              }`}
+            >
+              <QrCode className="w-4 h-4" />
+              <span>Doorstep Bills &amp; Slip QRs</span>
+              {pendingDoorstepCount > 0 ? (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black animate-pulse">
+                  {pendingDoorstepCount} Pending
+                </span>
+              ) : (
+                <span className={`text-[11px] px-2 py-0.5 rounded-full font-black ${
+                  activeView === "doorstep" ? "bg-sky-600 text-white" : "bg-slate-200 text-slate-700"
+                }`}>
+                  {doorstepDeliveries.length}
+                </span>
+              )}
+            </button>
           </div>
-        </div>
 
-        {/* Assignments Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredAssignments.length === 0 ? (
-            <div className="col-span-full py-16 text-center glass-panel">
-              <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-3 text-primary">
-                <Truck className="w-8 h-8" />
-              </div>
-              <h3 className="text-lg font-black text-slate-800 mb-1">No Delivery Routes Found</h3>
-              <p className="text-slate-500 font-medium text-sm max-w-md mx-auto mb-5">
-                {searchQuery || statusFilter !== "ALL"
-                  ? "Try loosening your filters or resetting search to see more assignments."
-                  : "No vehicles are currently assigned for this date range. Click 'Assign Route' to dispatch one."}
-              </p>
-              <Button onClick={() => setModalOpen(true)} icon={<UserPlus className="w-4 h-4" />}>
-                Assign New Route
-              </Button>
-            </div>
-          ) : (
-            filteredAssignments.map(a => {
-              const vehicle = realVehicles.find(v => v.id === a.vehicle_id)?.plate_number || "Unknown Vehicle";
-              const driver = realStaff.find(u => u.id === a.driver_id)?.name || "Unknown Driver";
-              const helper = a.helper_id ? realStaff.find(u => u.id === a.helper_id)?.name : undefined;
-              const route = realRoutes.find(r => r.id === a.route_id)?.name || "Unknown Route";
-              const routeArea = realRoutes.find(r => r.id === a.route_id)?.area;
-              
-              const stockDisplay = a.allocations && a.allocations.length > 0
-                ? a.allocations.map(al => {
-                    const invName = inventoryTypes.find(i => i.id === al.inventory_type_id)?.name || "Item";
-                    return `${al.allocated_count}x ${invName}`;
-                  }).join(", ")
-                : "No stock";
-
-              const routeClientsCount = realClients.filter(c => c.route_id === a.route_id).length || 10;
-              let progress = a.status === "COMPLETED" 
-                ? 100 
-                : (a.status === "ACTIVE" 
-                    ? Math.min(100, Math.round(((a as any).deliveries_count || 0) / routeClientsCount * 100)) 
-                    : 0);
-
-              return (
-                <AssignmentCard
-                  key={a.id}
-                  id={a.id}
-                  vehicle={vehicle}
-                  driver={driver}
-                  helper={helper}
-                  route={route}
-                  routeArea={routeArea}
-                  stock={stockDisplay}
-                  status={a.status.toLowerCase()}
-                  progress={progress}
-                  date={a.date}
-                  onEdit={() => handleOpenEdit(a)}
-                  onAssign={() => setDispatchConfirmOpen(a)}
-                  onTrack={() => setTrackOpen(vehicle)}
-                  onRecon={() => setReconOpen(vehicle)}
-                  onDelete={() => handleDeleteAssignment(a.id)}
-                  onReopen={() => handleReopenAssignment(a.id)}
-                />
-              );
-            })
+          {activeView === "assignments" && pendingDoorstepCount > 0 && (
+            <button
+              onClick={() => setActiveView("doorstep")}
+              className="text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200/90 px-3 py-1.5 rounded-xl flex items-center gap-1.5 self-start sm:self-auto transition-all"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600 animate-bounce" />
+              <span>{pendingDoorstepCount} doorstep bills awaiting account verification</span>
+              <ArrowRight className="w-3.5 h-3.5 text-amber-700" />
+            </button>
           )}
         </div>
+
+        {/* VIEW 1: ROUTE ASSIGNMENTS & DISPATCH */}
+        {activeView === "assignments" && (
+          <>
+            {/* Filter & Date Toolbar */}
+            <div className="glass-panel p-4 md:p-5 mb-8 shadow-sm">
+              <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between">
+                {/* Search and Status Pills */}
+                <div className="flex flex-col sm:flex-row gap-3 flex-1">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search by vehicle, driver, route or helper..."
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2.5 bg-white/80 border border-slate-200/80 rounded-xl text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all"
+                    />
+                    {searchQuery && (
+                      <button 
+                        onClick={() => setSearchQuery("")} 
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Status Segmented Control */}
+                  <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/50 self-start sm:self-auto overflow-x-auto max-w-full">
+                    {(["ALL", "PENDING", "ACTIVE", "COMPLETED"] as const).map(status => (
+                      <button
+                        key={status}
+                        onClick={() => setStatusFilter(status)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${
+                          statusFilter === status
+                            ? "bg-white text-slate-900 shadow-sm"
+                            : "text-slate-500 hover:text-slate-900"
+                        }`}
+                      >
+                        {status === "ALL" ? "All Status" : status}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Date Range Selector */}
+                <div className="flex flex-wrap items-center gap-2 self-start lg:self-auto">
+                  <div className="flex items-center gap-2 bg-white/90 border border-slate-200/80 rounded-xl px-3 py-2 shadow-sm">
+                    <Calendar className="w-4 h-4 text-slate-400" />
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={e => setStartDate(e.target.value)}
+                      className="outline-none text-xs font-bold text-slate-700 bg-transparent cursor-pointer"
+                    />
+                    <span className="text-slate-300 font-bold text-xs">to</span>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={e => setEndDate(e.target.value)}
+                      className="outline-none text-xs font-bold text-slate-700 bg-transparent cursor-pointer"
+                    />
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      const today = getAssignmentDateStr(new Date());
+                      setStartDate(today);
+                      setEndDate(today);
+                    }}
+                    className="px-3 py-2 bg-white/80 hover:bg-white text-slate-700 text-xs font-bold rounded-xl border border-slate-200/80 shadow-sm transition-all active:scale-95"
+                  >
+                    Today
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Assignments Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {filteredAssignments.length === 0 ? (
+                <div className="col-span-full py-16 text-center glass-panel">
+                  <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-3 text-primary">
+                    <Truck className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-lg font-black text-slate-800 mb-1">No Delivery Routes Found</h3>
+                  <p className="text-slate-500 font-medium text-sm max-w-md mx-auto mb-5">
+                    {searchQuery || statusFilter !== "ALL"
+                      ? "Try loosening your filters or resetting search to see more assignments."
+                      : "No vehicles are currently assigned for this date range. Click 'Assign Route' to dispatch one."}
+                  </p>
+                  <Button onClick={() => setModalOpen(true)} icon={<UserPlus className="w-4 h-4" />}>
+                    Assign New Route
+                  </Button>
+                </div>
+              ) : (
+                filteredAssignments.map(a => {
+                  const vehicle = realVehicles.find(v => v.id === a.vehicle_id)?.plate_number || "Unknown Vehicle";
+                  const driver = realStaff.find(u => u.id === a.driver_id)?.name || "Unknown Driver";
+                  const helper = a.helper_id ? realStaff.find(u => u.id === a.helper_id)?.name : undefined;
+                  const route = realRoutes.find(r => r.id === a.route_id)?.name || "Unknown Route";
+                  const routeArea = realRoutes.find(r => r.id === a.route_id)?.area;
+                  
+                  const stockDisplay = a.allocations && a.allocations.length > 0
+                    ? a.allocations.map(al => {
+                        const invName = inventoryTypes.find(i => i.id === al.inventory_type_id)?.name || "Item";
+                        return `${al.allocated_count}x ${invName}`;
+                      }).join(", ")
+                    : "No stock";
+
+                  const routeClientsCount = realClients.filter(c => c.route_id === a.route_id).length || 10;
+                  let progress = a.status === "COMPLETED" 
+                    ? 100 
+                    : (a.status === "ACTIVE" 
+                        ? Math.min(100, Math.round(((a as any).deliveries_count || 0) / routeClientsCount * 100)) 
+                        : 0);
+
+                  return (
+                    <AssignmentCard
+                      key={a.id}
+                      id={a.id}
+                      vehicle={vehicle}
+                      driver={driver}
+                      helper={helper}
+                      route={route}
+                      routeArea={routeArea}
+                      stock={stockDisplay}
+                      status={a.status.toLowerCase()}
+                      progress={progress}
+                      date={a.date}
+                      onEdit={() => handleOpenEdit(a)}
+                      onAssign={() => setDispatchConfirmOpen(a)}
+                      onTrack={() => setTrackOpen(vehicle)}
+                      onRecon={() => setReconOpen(vehicle)}
+                      onDelete={() => handleDeleteAssignment(a.id)}
+                      onReopen={() => handleReopenAssignment(a.id)}
+                    />
+                  );
+                })
+              )}
+            </div>
+          </>
+        )}
+
+        {/* VIEW 2: DOORSTEP BILLS & SLIP QR */}
+        {activeView === "doorstep" && (
+          <div className="space-y-6">
+            {/* Doorstep Search & Status Filter Toolbar */}
+            <div className="glass-panel p-4 md:p-5 shadow-sm">
+              <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center justify-between">
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by customer, phone, driver, vehicle, or UPI UTR reference..."
+                    value={doorstepSearch}
+                    onChange={e => setDoorstepSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-white/80 border border-slate-200/80 rounded-xl text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all"
+                  />
+                  {doorstepSearch && (
+                    <button 
+                      onClick={() => setDoorstepSearch("")} 
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Status Pills for Doorstep Bills */}
+                <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/50 self-start sm:self-auto overflow-x-auto max-w-full">
+                  {(["PENDING", "ALL", "CREDITED", "COMPLETED"] as const).map(status => (
+                    <button
+                      key={status}
+                      onClick={() => setDoorstepFilter(status)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap ${
+                        doorstepFilter === status
+                          ? "bg-white text-slate-900 shadow-sm"
+                          : "text-slate-500 hover:text-slate-900"
+                      }`}
+                    >
+                      {status === "PENDING" ? "Awaiting Verification" : status === "ALL" ? "All Bills" : status === "CREDITED" ? "Unpaid Credit" : "Paid & Verified"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Doorstep Bills Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {filteredDoorstepDeliveries.length === 0 ? (
+                <div className="col-span-full py-16 text-center glass-panel">
+                  <div className="w-16 h-16 bg-amber-500/10 rounded-2xl flex items-center justify-center mx-auto mb-3 text-amber-600">
+                    <QrCode className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-lg font-black text-slate-800 mb-1">No Doorstep Deliveries Found</h3>
+                  <p className="text-slate-500 font-medium text-sm max-w-md mx-auto mb-5">
+                    {doorstepSearch || doorstepFilter !== "ALL"
+                      ? "No doorstep bills match your current search or filter criteria."
+                      : "When drivers leave water bottles at customers' doors and print 58mm QR slips, they appear here for bank account credit verification."}
+                  </p>
+                  {doorstepFilter !== "ALL" && (
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        setDoorstepFilter("ALL");
+                        setDoorstepSearch("");
+                      }}
+                    >
+                      Show All Deliveries
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                filteredDoorstepDeliveries.map(d => {
+                  const client = realClients.find(c => c.id === d.client_id);
+                  const assignment = realAssignments.find(a => a.id === d.assignment_id);
+                  const driver = realStaff.find(s => s.id === assignment?.driver_id);
+                  const vehicle = realVehicles.find(v => v.id === assignment?.vehicle_id);
+                  const route = realRoutes.find(r => r.id === assignment?.route_id);
+
+                  return (
+                    <DoorstepBillCard
+                      key={d.id}
+                      delivery={d}
+                      client={client}
+                      driver={driver}
+                      vehicle={vehicle}
+                      route={route}
+                      inventoryTypes={inventoryTypes}
+                      onVerifyClick={() => handleOpenDoorstepModal(d)}
+                      onPrintSlip={() => handlePrintSlipForDelivery(d)}
+                      onDelete={(e) => handleDeleteDoorstepDelivery(e, d.id, client?.name || "Customer")}
+                    />
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Assign Modal */}
         <Modal
@@ -1277,6 +1709,290 @@ export default function DeliveriesPage() {
             </p>
           </div>
         </Modal>
+
+        {/* Modal: Doorstep Slip QR Detailed Breakdown & Account Verification */}
+        {selectedDoorstepDelivery && (() => {
+          const client = realClients.find(c => c.id === selectedDoorstepDelivery.client_id);
+          const assignment = realAssignments.find(a => a.id === selectedDoorstepDelivery.assignment_id);
+          const driver = realStaff.find(s => s.id === assignment?.driver_id);
+          const vehicle = realVehicles.find(v => v.id === assignment?.vehicle_id);
+          const route = realRoutes.find(r => r.id === assignment?.route_id);
+          const isPending = selectedDoorstepDelivery.status === "PENDING_PAYMENT" || selectedDoorstepDelivery.status === "PENDING" || selectedDoorstepDelivery.status === "PENDING_VERIFICATION";
+          const isCredited = selectedDoorstepDelivery.status === "CREDITED";
+          const isCompleted = selectedDoorstepDelivery.status === "COMPLETED";
+
+          return (
+            <Modal
+              isOpen={!!selectedDoorstepDelivery}
+              onClose={() => setSelectedDoorstepDelivery(null)}
+              title="Doorstep Bill Breakdown & Account Verification"
+              subtitle={`Slip Ref: FL-${selectedDoorstepDelivery.id.slice(0, 6).toUpperCase()} • Delivered on ${new Date(selectedDoorstepDelivery.created_at).toLocaleString("en-IN")}`}
+              width="4xl"
+              actions={
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 w-full">
+                  <Button
+                    variant="secondary"
+                    onClick={() => setSelectedDoorstepDelivery(null)}
+                    className="w-full sm:w-auto"
+                  >
+                    Close Window
+                  </Button>
+
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <Button
+                      variant="outline"
+                      onClick={() => handlePrintSlipForDelivery(selectedDoorstepDelivery)}
+                      icon={<Printer className="w-4 h-4" />}
+                      className="flex-1 sm:flex-initial"
+                    >
+                      Print 58mm Slip
+                    </Button>
+
+                    {isPending && (
+                      <Button
+                        variant="secondary"
+                        onClick={handleMarkCredited}
+                        disabled={isVerifying}
+                        icon={<Clock className="w-4 h-4 text-sky-600" />}
+                        className="flex-1 sm:flex-initial border-sky-300 text-sky-800 hover:bg-sky-50"
+                      >
+                        Confirm as Unpaid Credit
+                      </Button>
+                    )}
+
+                    <Button
+                      variant="primary"
+                      onClick={handleVerifyPayment}
+                      disabled={isVerifying}
+                      icon={<ShieldCheck className="w-4 h-4" />}
+                      className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-700 shadow-md font-black"
+                    >
+                      {isVerifying ? "Verifying..." : "Verify & Mark as Paid (UPI)"}
+                    </Button>
+                  </div>
+                </div>
+              }
+            >
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Left Column: Customer Details, Crew, and Items Breakdown */}
+                <div className="lg:col-span-7 space-y-4">
+                  {/* Customer & Route Card */}
+                  <div className="p-4 bg-slate-50/90 rounded-2xl border border-slate-200/80 space-y-2">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-0.5">
+                          Customer Profile
+                        </span>
+                        <h4 className="font-black text-lg text-slate-900">{client?.name || "Customer Drop"}</h4>
+                        <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold mt-0.5">
+                          <Phone className="w-3.5 h-3.5 text-slate-500" />
+                          <span>{client?.phone || "No phone listed"}</span>
+                        </div>
+                      </div>
+                      <span className="text-xs font-black uppercase px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-800">
+                        {client?.tier || "Standard Tier"}
+                      </span>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-200/60 flex items-start gap-1.5 text-xs text-slate-600 font-medium">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                      <span>{client?.address || "Address not specified"}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60 font-semibold text-slate-600">
+                      <span>Delivery Route:</span>
+                      <span className="font-bold text-slate-800">{route?.name || "Route Zone"}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                      <span>Crew &amp; Van:</span>
+                      <span className="font-bold text-slate-800">{driver?.name || "Driver"} • {vehicle?.plate_number || "Van"}</span>
+                    </div>
+                  </div>
+
+                  {/* Delivered Items Breakdown Table */}
+                  <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-2xs">
+                    <div className="px-4 py-3 bg-slate-50 border-b border-slate-200/80 flex items-center justify-between">
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                        <Package className="w-3.5 h-3.5 text-slate-500" />
+                        Delivered Items Breakdown
+                      </span>
+                      <span className="text-xs font-bold text-slate-500">
+                        {selectedDoorstepDelivery.items?.length || 0} Products
+                      </span>
+                    </div>
+
+                    <div className="divide-y divide-slate-100 text-xs">
+                      {(selectedDoorstepDelivery.items || []).map((item, idx) => {
+                        const inv = inventoryTypes.find(i => i.id === item.inventory_type_id);
+                        return (
+                          <div key={idx} className="p-3.5 flex items-center justify-between">
+                            <div>
+                              <span className="font-bold text-slate-900 block">{inv?.name || "20L Mineral Jar"}</span>
+                              <span className="text-[11px] text-slate-500">
+                                {item.delivered_full} jar(s) delivered @ ₹{item.price_charged} each
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <span className="font-black text-slate-900 text-sm">
+                                ₹{item.delivered_full * item.price_charged}
+                              </span>
+                              {item.collected_empty > 0 && (
+                                <span className="block text-[10px] font-bold text-emerald-600">
+                                  {item.collected_empty} empties returned
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Financials & Balance Summary */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3.5 bg-gradient-to-br from-slate-50 to-slate-100/60 rounded-2xl border border-slate-200/80">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+                        Today&apos;s Drop Amount
+                      </span>
+                      <span className="text-2xl font-black text-slate-900 block mt-0.5">
+                        ₹{selectedDoorstepDelivery.total_amount}
+                      </span>
+                      <span className="text-[11px] font-medium text-slate-500">
+                        Charged on this delivery
+                      </span>
+                    </div>
+
+                    <div className="p-3.5 bg-gradient-to-br from-rose-50/60 to-amber-50/40 rounded-2xl border border-rose-200/80">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-rose-800 block">
+                        Customer Ledger Dues
+                      </span>
+                      <span className="text-2xl font-black text-rose-700 block mt-0.5">
+                        ₹{(client?.credit_amount || selectedDoorstepDelivery.total_amount).toLocaleString()}
+                      </span>
+                      <span className="text-[11px] font-medium text-rose-600">
+                        Total balance on account
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: QR Code & Bank Verification Form */}
+                <div className="lg:col-span-5 space-y-4 flex flex-col justify-between">
+                  {/* Scannable Dynamic UPI QR Box */}
+                  <div className="p-4 bg-white rounded-2xl border border-slate-200 text-center shadow-xs">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                        <QrCode className="w-3.5 h-3.5 text-primary" />
+                        Slip Payment QR Code
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-500 font-mono">
+                        {systemSettings.upi_id || "flyera@okhdfcbank"}
+                      </span>
+                    </div>
+
+                    {modalQrUrl ? (
+                      <div className="p-2 border-2 border-dashed border-slate-200 rounded-xl inline-block bg-white my-1 shadow-2xs">
+                        <img src={modalQrUrl} alt="UPI QR" className="w-40 h-40 mx-auto" />
+                      </div>
+                    ) : (
+                      <div className="w-40 h-40 flex items-center justify-center bg-slate-50 rounded-xl mx-auto text-xs text-slate-400">
+                        Generating QR...
+                      </div>
+                    )}
+
+                    <p className="text-[11px] text-slate-500 font-medium mt-1">
+                      Printed on customer&apos;s 58mm slip for scanning via GPay, PhonePe, Paytm, or BHIM.
+                    </p>
+                  </div>
+
+                  {/* Bank Account Verification Section */}
+                  <div className="p-4 bg-gradient-to-br from-emerald-50/90 to-teal-50/60 rounded-2xl border-2 border-emerald-300 shadow-sm space-y-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-emerald-600 text-white rounded-xl shadow-xs">
+                        <ShieldCheck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-slate-900">
+                          Verify With Bank Account
+                        </h4>
+                        <p className="text-[11px] text-slate-600 font-medium">
+                          Match incoming transaction on your bank statement
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Amount Credited Input */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                          Amount Credited in Account (₹) *
+                        </label>
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded">
+                          Deducts from credit dues
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-black text-sm text-slate-500">
+                          ₹
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={verifyAmount}
+                          onChange={e => setVerifyAmount(e.target.value)}
+                          placeholder="0.00"
+                          className="w-full pl-8 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 font-black text-base outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-2xs"
+                        />
+                      </div>
+                    </div>
+
+                    {/* UPI Reference / UTR Number Input */}
+                    <div>
+                      <label className="text-xs font-black uppercase tracking-wider text-slate-700 block mb-1">
+                        UPI Reference / UTR Number *
+                      </label>
+                      <input
+                        type="text"
+                        value={verifyUpiRef}
+                        onChange={e => setVerifyUpiRef(e.target.value)}
+                        placeholder="e.g. 428901234567 (12-digit UTR)"
+                        className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-900 font-mono font-bold text-xs outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-2xs"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Found in your GPay / PhonePe / Paytm / Bank SMS receipt.
+                      </p>
+                    </div>
+
+                    {/* Verification Notes */}
+                    <div>
+                      <label className="text-xs font-black uppercase tracking-wider text-slate-700 block mb-1">
+                        Verification Notes (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={verifyNotes}
+                        onChange={e => setVerifyNotes(e.target.value)}
+                        placeholder="e.g. Received via GPay from Rajesh"
+                        className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-slate-900 font-medium text-xs outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-2xs"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Modal>
+          );
+        })()}
+
+        {/* 58mm Thermal Slip Modal */}
+        {receiptModalOpen && receiptModalData && (
+          <ThermalReceiptModal
+            isOpen={receiptModalOpen}
+            onClose={() => setReceiptModalOpen(false)}
+            mode="success_receipt"
+            data={receiptModalData}
+          />
+        )}
       </main>
     </div>
   );
@@ -1479,6 +2195,201 @@ function AssignmentCard({
             </Button>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function DoorstepBillCard({
+  delivery,
+  client,
+  driver,
+  vehicle,
+  route,
+  inventoryTypes,
+  onVerifyClick,
+  onPrintSlip,
+  onDelete
+}: {
+  delivery: Delivery;
+  client?: Client;
+  driver?: User;
+  vehicle?: Vehicle;
+  route?: Route;
+  inventoryTypes: any[];
+  onVerifyClick: () => void;
+  onPrintSlip: () => void;
+  onDelete: (e: React.MouseEvent) => void;
+}) {
+  const isPending = delivery.status === "PENDING_PAYMENT" || delivery.status === "PENDING" || delivery.status === "PENDING_VERIFICATION";
+  const isCredited = delivery.status === "CREDITED";
+  const isCompleted = delivery.status === "COMPLETED";
+
+  const itemsSummary = (delivery.items || []).map(item => {
+    const inv = inventoryTypes.find(i => i.id === item.inventory_type_id);
+    return `${item.delivered_full}x ${inv?.name || "Can"}`;
+  }).join(", ") || "Bottles delivered";
+
+  const formattedDate = new Date(delivery.created_at).toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true
+  });
+
+  return (
+    <div
+      onClick={onVerifyClick}
+      className={`glass-card p-5 sm:p-6 flex flex-col justify-between relative group cursor-pointer transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 border ${
+        isPending
+          ? "border-amber-300/90 bg-gradient-to-br from-amber-50/40 via-white to-orange-50/30"
+          : isCredited
+          ? "border-sky-200/80 bg-sky-50/20"
+          : "border-emerald-200/70 bg-emerald-50/15"
+      }`}
+    >
+      <div>
+        {/* Top Header */}
+        <div className="flex justify-between items-start mb-3 gap-2">
+          <div className="flex items-center gap-3">
+            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center border shadow-xs ${
+              isPending
+                ? "bg-amber-500 text-white border-amber-400"
+                : isCredited
+                ? "bg-sky-500 text-white border-sky-400"
+                : "bg-emerald-600 text-white border-emerald-500"
+            }`}>
+              <QrCode className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-black text-base sm:text-lg text-slate-900 tracking-tight group-hover:text-primary transition-colors">
+                  {client?.name || "Customer Drop"}
+                </h3>
+              </div>
+              <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 font-semibold">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                <span>{formattedDate}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className={`text-[10px] sm:text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border flex items-center gap-1 shadow-2xs ${
+              isPending
+                ? "bg-amber-100 text-amber-900 border-amber-300 animate-pulse"
+                : isCredited
+                ? "bg-sky-100 text-sky-900 border-sky-300"
+                : "bg-emerald-100 text-emerald-900 border-emerald-300"
+            }`}>
+              {isPending && <AlertTriangle className="w-3 h-3 text-amber-600" />}
+              {isCredited && <Clock className="w-3 h-3 text-sky-600" />}
+              {isCompleted && <Check className="w-3 h-3 text-emerald-600" />}
+              <span>
+                {isPending ? "Awaiting Verification" : isCredited ? "Unpaid Credit" : "Paid & Verified"}
+              </span>
+            </span>
+
+            <button
+              onClick={onDelete}
+              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+              title="Delete record"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Customer & Route Details */}
+        <div className="space-y-2 py-3 border-y border-slate-200/60 my-3 text-xs sm:text-sm">
+          <div className="flex items-center justify-between text-slate-600">
+            <span className="font-semibold flex items-center gap-1.5">
+              <Phone className="w-3.5 h-3.5 text-slate-400" /> Phone:
+            </span>
+            <span className="font-bold text-slate-900">{client?.phone || "No phone listed"}</span>
+          </div>
+
+          <div className="flex items-center justify-between text-slate-600">
+            <span className="font-semibold flex items-center gap-1.5">
+              <Truck className="w-3.5 h-3.5 text-slate-400" /> Delivered By:
+            </span>
+            <span className="font-bold text-slate-900">
+              {driver?.name || "Driver"} • {vehicle?.plate_number || "Van"}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between text-slate-600">
+            <span className="font-semibold flex items-center gap-1.5">
+              <Package className="w-3.5 h-3.5 text-slate-400" /> Items:
+            </span>
+            <span className="font-bold text-slate-900 truncate max-w-[200px]" title={itemsSummary}>
+              {itemsSummary}
+            </span>
+          </div>
+
+          {/* Amount Due Box */}
+          <div className="p-3 bg-white/90 rounded-xl border border-slate-200/80 flex items-center justify-between shadow-2xs mt-2">
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                Slip Drop Amount
+              </span>
+              <span className="text-xl font-black text-slate-900">
+                ₹{delivery.total_amount}
+              </span>
+            </div>
+
+            <div className="text-right">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                Customer Ledger Dues
+              </span>
+              <span className={`text-sm font-black ${
+                (client?.credit_amount || 0) > 0 ? "text-rose-600" : "text-emerald-700"
+              }`}>
+                ₹{(client?.credit_amount || 0).toLocaleString()}
+              </span>
+            </div>
+          </div>
+
+          {delivery.upi_reference && (
+            <div className="p-2.5 bg-emerald-50/80 rounded-xl border border-emerald-200 text-xs flex items-center justify-between">
+              <span className="font-semibold text-emerald-800 flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Bank UTR:
+              </span>
+              <span className="font-mono font-black text-emerald-900">{delivery.upi_reference}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Bottom Actions */}
+      <div className="pt-1 flex gap-2">
+        <Button
+          variant={isPending ? "primary" : "secondary"}
+          size="sm"
+          className="flex-1 text-xs font-black shadow-xs"
+          icon={<ShieldCheck className="w-3.5 h-3.5" />}
+          onClick={(e) => {
+            e.stopPropagation();
+            onVerifyClick();
+          }}
+        >
+          {isPending ? "Verify Account Credit" : "View Breakdown"}
+        </Button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPrintSlip();
+          }}
+          className="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 rounded-xl text-xs font-bold transition-all active:scale-95 flex items-center gap-1 shadow-2xs"
+          title="Print 58mm Thermal Slip"
+        >
+          <Printer className="w-3.5 h-3.5 text-slate-500" />
+          <span>Slip</span>
+        </button>
       </div>
     </div>
   );

@@ -24,6 +24,18 @@ try:
                 conn.commit()
             except Exception:
                 pass
+        for col in ["credit_amount REAL DEFAULT 0.0"]:
+            try:
+                conn.execute(text(f"ALTER TABLE clients ADD COLUMN {col}"))
+                conn.commit()
+            except Exception:
+                pass
+        for col in ["upi_reference VARCHAR", "verified_at TIMESTAMP", "verified_by VARCHAR", "notes VARCHAR"]:
+            try:
+                conn.execute(text(f"ALTER TABLE deliveries ADD COLUMN {col}"))
+                conn.commit()
+            except Exception:
+                pass
 except Exception as e:
     print("Database migration check note:", e)
 
