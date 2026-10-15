@@ -60,12 +60,24 @@ def get_assignments(
     db: Session = Depends(get_db)
 ):
     from sqlalchemy import case
+    from sqlalchemy.orm import selectinload
     status_order = case(
         (models.Assignment.status == "ACTIVE", 0),
         (models.Assignment.status == "PENDING", 1),
         else_=2
     )
-    return db.query(models.Assignment).order_by(status_order, models.Assignment.created_at.asc()).offset(skip).limit(limit).all()
+    return (
+        db.query(models.Assignment)
+        .options(
+            selectinload(models.Assignment.allocations),
+            selectinload(models.Assignment.deliveries).selectinload(models.Delivery.items),
+            selectinload(models.Assignment.expenses),
+        )
+        .order_by(status_order, models.Assignment.created_at.asc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 @router.get("/{assignment_id}", response_model=schemas.AssignmentResponse)
 def get_assignment(

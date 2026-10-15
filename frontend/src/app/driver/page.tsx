@@ -285,28 +285,91 @@ export default function DriverApp() {
     }
   };
 
-  // Core assignment loader supporting both DRIVER and HELPER roles with live sync
-  const fetchAssignmentData = async (showFeedback: boolean = false) => {
+  // Master catalog cache to prevent redundant HTTP flooding every 12 seconds
+  const masterDataCache = useRef<{
+    allClients: any[];
+    allRoutes: any[];
+    invTypes: any[];
+    user: any;
+    allVehicles: any[];
+    settings: any;
+    allUsers: any[];
+    lastFetched: number;
+  }>({
+    allClients: [],
+    allRoutes: [],
+    invTypes: [],
+    user: null,
+    allVehicles: [],
+    settings: null,
+    allUsers: [],
+    lastFetched: 0
+  });
+
+  // Core assignment loader supporting both DRIVER and HELPER roles with intelligent delta sync
+  const fetchAssignmentData = async (showFeedback: boolean = false, isBackgroundPoll: boolean = false) => {
     if (isSyncing) return;
+    
+    // In background polling mode, pause if user switched tabs
+    if (isBackgroundPoll && typeof document !== "undefined" && document.visibilityState !== "visible") {
+      return;
+    }
+
     setIsSyncing(true);
 
     try {
-      const [assignments, allClients, allRoutes, invTypes, user, allVehicles, settings, allUsers] = await Promise.all([
-        getAssignments().catch(() => []),
-        getClients().catch(() => []),
-        getRoutes().catch(() => []),
-        getInventoryTypes().catch(() => []),
-        getCurrentUser().catch(() => {
-          try {
-            const cached = localStorage.getItem("flyera_user");
-            if (cached) return JSON.parse(cached);
-          } catch (e) { }
-          return null;
-        }),
-        getVehicles().catch(() => []),
-        getSettings().catch(() => null),
-        getUsers().catch(() => [])
-      ]);
+      const cacheExpired = Date.now() - masterDataCache.current.lastFetched > 300000; // 5 min TTL
+      let assignments: any[] = [];
+      let allClients = masterDataCache.current.allClients;
+      let allRoutes = masterDataCache.current.allRoutes;
+      let invTypes = masterDataCache.current.invTypes;
+      let user = masterDataCache.current.user;
+      let allVehicles = masterDataCache.current.allVehicles;
+      let settings = masterDataCache.current.settings;
+      let allUsers = masterDataCache.current.allUsers;
+
+      if (!isBackgroundPoll || cacheExpired || masterDataCache.current.lastFetched === 0) {
+        // Full initial / manual refresh: load master data
+        const [aData, cData, rData, iData, uData, vData, sData, usersData] = await Promise.all([
+          getAssignments().catch(() => []),
+          getClients().catch(() => []),
+          getRoutes().catch(() => []),
+          getInventoryTypes().catch(() => []),
+          getCurrentUser().catch(() => {
+            try {
+              const cached = localStorage.getItem("flyera_user");
+              if (cached) return JSON.parse(cached);
+            } catch (e) { }
+            return null;
+          }),
+          getVehicles().catch(() => []),
+          getSettings().catch(() => null),
+          getUsers().catch(() => [])
+        ]);
+
+        assignments = aData;
+        allClients = cData;
+        allRoutes = rData;
+        invTypes = iData;
+        user = uData;
+        allVehicles = vData;
+        settings = sData;
+        allUsers = usersData;
+
+        masterDataCache.current = {
+          allClients,
+          allRoutes,
+          invTypes,
+          user,
+          allVehicles,
+          settings,
+          allUsers,
+          lastFetched: Date.now()
+        };
+      } else {
+        // High-speed background poll: fetch ONLY assignments (1 request instead of 8!)
+        assignments = await getAssignments().catch(() => []);
+      }
 
       setInventoryTypes(invTypes || []);
       if (settings) {
@@ -454,12 +517,13 @@ export default function DriverApp() {
   };
 
   useEffect(() => {
-    fetchAssignmentData(false);
+    // Initial full fetch on mount
+    fetchAssignmentData(false, false);
 
-    // Auto-sync polling every 12s to detect remote route closure or newly assigned vehicle
+    // Optimized background poll: only polls assignments every 20s if tab is visible
     const intervalTimer = setInterval(() => {
-      fetchAssignmentData(false);
-    }, 12000);
+      fetchAssignmentData(false, true);
+    }, 20000);
 
     return () => clearInterval(intervalTimer);
   }, []);

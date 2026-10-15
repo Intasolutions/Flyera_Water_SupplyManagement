@@ -587,6 +587,27 @@ export const updateSettings = (data: Record<string, any>) =>
     body: JSON.stringify(data),
   });
 
+export const updateSecureUpi = (data: { upi_id: string; admin_password: string }) =>
+  fetcher<Record<string, any>>('/settings/secure-upi', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const getSignedUpiQr = (params: { amount: number; note?: string; delivery_id?: string }) => {
+  const query = new URLSearchParams({
+    amount: params.amount.toString(),
+    ...(params.note ? { note: params.note } : {}),
+    ...(params.delivery_id ? { delivery_id: params.delivery_id } : {})
+  });
+  return fetcher<{
+    upi_uri: string;
+    upi_id: string;
+    amount: number;
+    company_name: string;
+    is_verified: boolean;
+  }>(`/settings/signed-upi-qr?${query.toString()}`);
+};
+
 // --- Production Setup & Reset ---
 export interface SetupStatus {
   is_clean: boolean;

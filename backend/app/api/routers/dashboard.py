@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import func
 from datetime import datetime, time
 
@@ -23,13 +23,11 @@ def get_dashboard_stats(
         today_start = datetime.combine(datetime.utcnow().date(), time.min)
         today_end = datetime.combine(datetime.utcnow().date(), time.max)
     
-    # Total Clients
+    # 1. Fast scalar counts
     total_clients = db.query(models.Client).count()
-    
-    # Total Vehicles
     total_vehicles = db.query(models.Vehicle).filter(models.Vehicle.is_active == True).count()
     
-    # Active Assignments (PENDING or ACTIVE) in the date range if provided, else all active
+    # 2. Active Assignments count
     active_assignments_query = db.query(models.Assignment).filter(
         models.Assignment.status.in_(["PENDING", "ACTIVE"])
     )
@@ -40,48 +38,73 @@ def get_dashboard_stats(
         )
     active_assignments = active_assignments_query.count()
     
-    # Revenue in date range
-    today_deliveries = db.query(models.Delivery).filter(
+    # 3. Direct SQL SUM aggregate for revenue (avoids loading thousands of objects into RAM)
+    today_revenue = db.query(
+        func.coalesce(func.sum(models.Delivery.total_amount), 0.0)
+    ).filter(
         models.Delivery.created_at >= today_start,
         models.Delivery.created_at <= today_end
-    ).all()
+    ).scalar() or 0.0
     
-    today_revenue = sum(d.total_amount for d in today_deliveries)
-    
-    # Fetch all active/pending routes regardless of creation date
-    active_routes_data = active_assignments_query.all()
+    # 4. Fetch route client counts in a SINGLE grouped query
+    route_client_counts = dict(
+        db.query(models.Client.route_id, func.count(models.Client.id))
+        .filter(models.Client.route_id != None)
+        .group_by(models.Client.route_id)
+        .all()
+    )
+
+    # 5. Eager-load active assignments relations
+    active_routes_data = (
+        active_assignments_query
+        .options(
+            joinedload(models.Assignment.vehicle),
+            joinedload(models.Assignment.driver),
+            selectinload(models.Assignment.deliveries)
+        )
+        .all()
+    )
     
     active_routes = []
     for a in active_routes_data:
-        vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == a.vehicle_id).first()
-        driver = db.query(models.User).filter(models.User.id == a.driver_id).first()
-        total_route_clients = db.query(models.Client).filter(models.Client.route_id == a.route_id).count()
+        v_plate = a.vehicle.plate_number if a.vehicle else "Unknown"
+        d_name = a.driver.name if a.driver else "Unknown"
+        total_route_clients = route_client_counts.get(a.route_id, 0)
         delivered_count = len(a.deliveries)
-        
         progress = int((delivered_count / total_route_clients * 100)) if total_route_clients > 0 else 0
         
         active_routes.append({
-            "vehicle": vehicle.plate_number if vehicle else "Unknown",
-            "driver": driver.name if driver else "Unknown",
+            "vehicle": v_plate,
+            "driver": d_name,
             "progress": progress,
             "deliveries": f"{delivered_count}/{total_route_clients}"
         })
         
-    recent_deliveries = db.query(models.Delivery).order_by(models.Delivery.created_at.desc()).limit(5).all()
+    # 6. Eager-load recent deliveries with client and assignment driver
+    recent_deliveries = (
+        db.query(models.Delivery)
+        .options(
+            joinedload(models.Delivery.client),
+            joinedload(models.Delivery.assignment).joinedload(models.Assignment.driver)
+        )
+        .order_by(models.Delivery.created_at.desc())
+        .limit(5)
+        .all()
+    )
+
     recent_activity = []
     for d in recent_deliveries:
-        client = db.query(models.Client).filter(models.Client.id == d.client_id).first()
-        assignment = db.query(models.Assignment).filter(models.Assignment.id == d.assignment_id).first()
-        driver = db.query(models.User).filter(models.User.id == assignment.driver_id).first() if assignment else None
+        c_name = d.client.name if d.client else "Unknown"
+        driver_obj = d.assignment.driver if d.assignment else None
+        driver_name = driver_obj.name if driver_obj else "Driver"
         
-        text = ""
         if d.status == "COMPLETED":
             if d.total_amount and d.total_amount > 0:
-                text = f"{driver.name if driver else 'Someone'} collected ₹{d.total_amount} from {client.name if client else 'Unknown'}"
+                text = f"{driver_name} collected ₹{d.total_amount} from {c_name}"
             else:
-                text = f"{driver.name if driver else 'Someone'} delivered to {client.name if client else 'Unknown'}"
+                text = f"{driver_name} delivered to {c_name}"
         else:
-            text = f"{driver.name if driver else 'Someone'} skipped {client.name if client else 'Unknown'}"
+            text = f"{driver_name} marked {c_name} as {d.status}"
             
         recent_activity.append({
             "text": text,
@@ -92,7 +115,7 @@ def get_dashboard_stats(
         "totalClients": total_clients,
         "totalVehicles": total_vehicles,
         "activeAssignments": active_assignments,
-        "todayRevenue": today_revenue,
+        "todayRevenue": round(today_revenue, 2),
         "activeRoutes": active_routes,
         "recentActivity": recent_activity
     }

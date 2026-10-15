@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/ui/Sidebar";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import { useStore } from "@/lib/StoreContext";
 import { 
   Save, 
@@ -13,15 +14,19 @@ import {
   Package, 
   CheckCircle2, 
   ShieldAlert,
+  ShieldCheck,
   AlertCircle,
-  Check
+  Check,
+  Lock,
+  KeyRound
 } from "lucide-react";
 import { 
   getInventoryTypes, 
   updateInventoryType, 
   InventoryType, 
   getSettings, 
-  updateSettings 
+  updateSettings,
+  updateSecureUpi 
 } from "@/lib/api";
 import { sanitizePhone } from "@/lib/validation";
 import { toast } from "react-hot-toast";
@@ -34,6 +39,8 @@ const DEFAULT_SETTINGS = {
   loyalty_rate: 0.50,
   upi_id: ""
 };
+
+const UPI_VPA_REGEX = /^[a-zA-Z0-9.\-_]{2,100}@[a-zA-Z]{2,64}$/;
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -56,6 +63,13 @@ export default function SettingsPage() {
   const [dispatchHotline, setDispatchHotline] = useState(DEFAULT_SETTINGS.dispatch_hotline);
   const [centralAddress, setCentralAddress] = useState(DEFAULT_SETTINGS.central_address);
   const [upiId, setUpiId] = useState(DEFAULT_SETTINGS.upi_id);
+  const [initialUpiId, setInitialUpiId] = useState(DEFAULT_SETTINGS.upi_id);
+  const [upiVerified, setUpiVerified] = useState<boolean>(true);
+  const [upiSecurityAlert, setUpiSecurityAlert] = useState<string | null>(null);
+
+  // Sudo Password Modal State
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
 
   // Billing States
   const [loyaltyRate, setLoyaltyRate] = useState(DEFAULT_SETTINGS.loyalty_rate);
@@ -71,12 +85,15 @@ export default function SettingsPage() {
         if (parsed.support_email) setSupportEmail(parsed.support_email);
         if (parsed.dispatch_hotline) setDispatchHotline(parsed.dispatch_hotline);
         if (parsed.central_address) setCentralAddress(parsed.central_address);
-        if (parsed.upi_id) setUpiId(parsed.upi_id);
+        if (parsed.upi_id) {
+          setUpiId(parsed.upi_id);
+          setInitialUpiId(parsed.upi_id);
+        }
         if (parsed.loyalty_rate !== undefined) setLoyaltyRate(Number(parsed.loyalty_rate));
       }
     } catch (e) {}
 
-    // 2. Fetch from backend
+    // 2. Fetch from backend with HMAC verification
     getSettings()
       .then(res => {
         if (res) {
@@ -84,7 +101,12 @@ export default function SettingsPage() {
           if (res.support_email) setSupportEmail(res.support_email);
           if (res.dispatch_hotline) setDispatchHotline(res.dispatch_hotline);
           if (res.central_address) setCentralAddress(res.central_address);
-          if (res.upi_id) setUpiId(res.upi_id);
+          if (res.upi_id) {
+            setUpiId(res.upi_id);
+            setInitialUpiId(res.upi_id);
+          }
+          if (res.upi_verified !== undefined) setUpiVerified(res.upi_verified);
+          if (res.upi_security_alert) setUpiSecurityAlert(res.upi_security_alert);
           if (res.loyalty_rate !== undefined) setLoyaltyRate(Number(res.loyalty_rate));
           try {
             localStorage.setItem("flyera_system_settings", JSON.stringify(res));
@@ -99,28 +121,59 @@ export default function SettingsPage() {
       .catch(console.error);
   }, []);
 
-  const handleSave = async () => {
-    setLoading(true);
+  const handleInitiateSave = () => {
     const cleanHotline = sanitizePhone(dispatchHotline);
     if (dispatchHotline.trim() && cleanHotline.length !== 10) {
       toast.error("Dispatch hotline must be a valid 10-digit mobile number");
-      setLoading(false);
       return;
     }
 
+    const cleanUpi = upiId.trim();
+    if (cleanUpi && !UPI_VPA_REGEX.test(cleanUpi)) {
+      toast.error("Invalid UPI ID format! Expected standard NPCI VPA (e.g. company@okhdfcbank)");
+      return;
+    }
+
+    // If UPI ID was altered, require SuperAdmin password authorization
+    if (cleanUpi !== initialUpiId.trim() && cleanUpi) {
+      setAdminPassword("");
+      setIsPasswordModalOpen(true);
+      return;
+    }
+
+    executeSave();
+  };
+
+  const executeSave = async (overridePassword?: string) => {
+    setLoading(true);
+    const cleanHotline = sanitizePhone(dispatchHotline);
+
     try {
+      const cleanUpi = upiId.trim();
+
+      // If UPI ID changed, execute secure UPI update with HMAC sealing
+      if (cleanUpi !== initialUpiId.trim() && cleanUpi && overridePassword) {
+        await updateSecureUpi({
+          upi_id: cleanUpi,
+          admin_password: overridePassword
+        });
+        setInitialUpiId(cleanUpi);
+        setUpiVerified(true);
+        setUpiSecurityAlert(null);
+      }
+
       const settingsPayload = {
         company_name: companyName,
         support_email: supportEmail,
         dispatch_hotline: cleanHotline || "",
         central_address: centralAddress,
-        upi_id: upiId,
         loyalty_rate: String(loyaltyRate)
       };
 
       // Save to localStorage immediately
       try {
-        localStorage.setItem("flyera_system_settings", JSON.stringify(settingsPayload));
+        const existing = JSON.parse(localStorage.getItem("flyera_system_settings") || "{}");
+        localStorage.setItem("flyera_system_settings", JSON.stringify({ ...existing, ...settingsPayload, upi_id: cleanUpi }));
       } catch (e) {}
 
       // Persist to backend settings API
@@ -142,10 +195,11 @@ export default function SettingsPage() {
 
       await Promise.all([settingsPromise, inventoryPromise]);
 
-      toast.success("Settings saved successfully!");
-    } catch (err) {
+      setIsPasswordModalOpen(false);
+      toast.success("Settings & sealed credentials saved successfully!");
+    } catch (err: any) {
       console.error("Save settings error:", err);
-      toast.error("Failed to save settings. Please try again.");
+      toast.error(err.message || "Failed to save settings. Please verify password.");
     } finally {
       setLoading(false);
     }
@@ -203,7 +257,7 @@ export default function SettingsPage() {
           badgeText="System Configuration"
           actionSlot={
             <Button
-              onClick={handleSave}
+              onClick={handleInitiateSave}
               disabled={loading}
               icon={<Save className="w-4 h-4" />}
             >
@@ -350,16 +404,33 @@ export default function SettingsPage() {
                     </div>
 
                     <div>
-                      <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-2">
-                        Merchant UPI ID (VPA for QR Payments)
-                      </label>
-                      <input
-                        type="text"
-                        value={upiId}
-                        onChange={e => setUpiId(e.target.value)}
-                        placeholder="e.g. flyera@okhdfcbank"
-                        className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-sm shadow-xs"
-                      />
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-xs font-black uppercase tracking-wider text-slate-700">
+                          Merchant UPI ID (VPA for QR Payments)
+                        </label>
+                        {upiVerified ? (
+                          <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+                            <ShieldCheck className="w-3 h-3 text-emerald-600" /> HMAC-SHA256 Sealed
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 px-2 py-0.5 rounded border border-rose-300 flex items-center gap-1 animate-pulse">
+                            <ShieldAlert className="w-3 h-3 text-rose-600" /> Tamper Mismatch!
+                          </span>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={upiId}
+                          onChange={e => setUpiId(e.target.value)}
+                          placeholder="e.g. flyera@okhdfcbank"
+                          className="w-full border border-slate-200 rounded-xl pl-10 pr-4 py-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all text-sm shadow-xs"
+                        />
+                        <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5" />
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1.5">
+                        Receiving bank VPA. Altering requires SuperAdmin password authorization.
+                      </p>
                     </div>
 
                     <div className="md:col-span-2">
@@ -495,7 +566,7 @@ export default function SettingsPage() {
                 </Button>
                 <Button
                   variant="primary"
-                  onClick={handleSave}
+                  onClick={handleInitiateSave}
                   disabled={loading}
                   icon={<Save className="w-4 h-4" />}
                 >
@@ -505,6 +576,64 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* Sudo Re-Authentication Modal for Changing Merchant UPI ID */}
+        <Modal
+          isOpen={isPasswordModalOpen}
+          onClose={() => !loading && setIsPasswordModalOpen(false)}
+          title="Security Re-Authentication Required"
+        >
+          <form onSubmit={(e) => { e.preventDefault(); executeSave(adminPassword); }} className="space-y-4">
+            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs">
+              <div className="flex items-center gap-2 font-bold mb-1 text-amber-950">
+                <Lock className="w-4 h-4 text-amber-700" />
+                <span>SuperAdmin Authorization Check</span>
+              </div>
+              <p>
+                You are updating the company&apos;s receiving UPI ID to: <strong className="font-mono text-slate-900 bg-white px-1.5 py-0.5 rounded border border-amber-300">{upiId}</strong>.
+              </p>
+              <p className="mt-1 text-[11px] text-amber-800">
+                To prevent unauthorized bank account hijacking or malware tampering, please enter your SuperAdmin password to authorize this update.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                SuperAdmin Password *
+              </label>
+              <div className="relative">
+                <input
+                  type="password"
+                  required
+                  value={adminPassword}
+                  onChange={e => setAdminPassword(e.target.value)}
+                  placeholder="Enter your login password"
+                  autoFocus
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                />
+                <KeyRound className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={loading}
+                onClick={() => setIsPasswordModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={loading || !adminPassword.trim()}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                {loading ? "Sealing & Saving..." : "Authorize & Save"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
       </main>
     </div>
   );

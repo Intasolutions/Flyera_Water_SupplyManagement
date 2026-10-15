@@ -62,18 +62,18 @@ def reset_and_create_superuser(
 
     # Master key verification
     existing_users = db.query(models.User).count()
-    accepted_keys = {
-        os.environ.get("SETUP_MASTER_KEY", "FLYERA_PROD_RESET_2026"),
-        security.SECRET_KEY,
-        "FLYERA_PROD_RESET_2026",
-        "aqua_glass_super_secret_key_change_in_production"
-    }
+    env_master_key = os.environ.get("SETUP_MASTER_KEY")
 
     if existing_users > 0:
-        if not payload.master_key or payload.master_key.strip() not in accepted_keys:
+        if not env_master_key:
             raise HTTPException(
                 status_code=403,
-                detail="Invalid master security key. Master authorization key is required to wipe production data."
+                detail="Production database wipe is disabled. SETUP_MASTER_KEY environment variable is not configured on this server."
+            )
+        if not payload.master_key or payload.master_key.strip() != env_master_key.strip():
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid master authorization key. Complete database wipe unauthorized."
             )
 
     try:
@@ -121,11 +121,15 @@ def reset_and_create_superuser(
                 db.add(models.SystemSetting(key="dispatch_hotline", value=payload.dispatch_hotline.strip()))
 
         if payload.upi_id:
-            u_id = db.query(models.SystemSetting).filter(models.SystemSetting.key == "upi_id").first()
-            if u_id:
-                u_id.value = payload.upi_id.strip()
-            else:
-                db.add(models.SystemSetting(key="upi_id", value=payload.upi_id.strip()))
+            from app.api.routers.settings import compute_upi_hmac
+            clean_upi = payload.upi_id.strip()
+            hmac_seal = compute_upi_hmac(clean_upi)
+            for k, v in [("upi_id", clean_upi), ("upi_id_hmac", hmac_seal)]:
+                row = db.query(models.SystemSetting).filter(models.SystemSetting.key == k).first()
+                if row:
+                    row.value = v
+                else:
+                    db.add(models.SystemSetting(key=k, value=v))
 
         db.commit()
         db.refresh(superuser)

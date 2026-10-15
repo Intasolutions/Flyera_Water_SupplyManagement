@@ -204,12 +204,29 @@ export default function DeliveriesPage() {
 
   useEffect(() => {
     fetchRealData();
-    // Poll for real-time updates every 3 seconds
-    const interval = setInterval(() => {
-      getAssignments().then(setRealAssignments).catch(console.error);
-      getPendingDoorstepDeliveries(true).then(setDoorstepDeliveries).catch(console.error);
-      getAllExpenses().then(setAllTripExpenses).catch(console.error);
-    }, 3000);
+
+    // Smart background poll every 20 seconds only when tab is active and visible
+    let isPolling = false;
+    const interval = setInterval(async () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      if (isPolling) return;
+      isPolling = true;
+      try {
+        const [aData, dData, eData] = await Promise.all([
+          getAssignments().catch(() => null),
+          getPendingDoorstepDeliveries(true).catch(() => null),
+          getAllExpenses().catch(() => null)
+        ]);
+        if (aData) setRealAssignments(aData);
+        if (dData) setDoorstepDeliveries(dData);
+        if (eData) setAllTripExpenses(eData);
+      } catch (err) {
+        console.warn("Deliveries background poll error:", err);
+      } finally {
+        isPolling = false;
+      }
+    }, 20000);
+
     return () => clearInterval(interval);
   }, []);
 

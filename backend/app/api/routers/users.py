@@ -1,26 +1,48 @@
 import os
 import shutil
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import List
 
 from app import crud, schemas, models
 from app.database import get_db
+from app.api import deps
 
 router = APIRouter()
 
+ALLOWED_UPLOAD_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".pdf"}
+
 @router.post("/upload-id")
-def upload_id_proof(file: UploadFile = File(...)):
+def upload_id_proof(
+    file: UploadFile = File(...),
+    current_user: models.User = Depends(deps.get_current_active_user)
+):
     os.makedirs("uploads", exist_ok=True)
-    file_location = f"uploads/{file.filename}"
+    raw_name = file.filename or "upload.jpg"
+    ext = os.path.splitext(raw_name)[1].lower()
+    if ext not in ALLOWED_UPLOAD_EXTS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file format. Allowed formats: {', '.join(ALLOWED_UPLOAD_EXTS)}"
+        )
+
+    # Cryptographically random safe filename to eliminate directory traversal attacks
+    safe_filename = f"{uuid.uuid4().hex}{ext}"
+    file_location = os.path.join("uploads", safe_filename)
+    
     with open(file_location, "wb+") as file_object:
         shutil.copyfileobj(file.file, file_object)
-    return {"url": f"/api/users/uploads/{file.filename}"}
+    return {"url": f"/api/users/uploads/{safe_filename}"}
 
 @router.get("/uploads/{filename}")
 def get_upload(filename: str):
-    file_path = f"uploads/{filename}"
+    clean_filename = os.path.basename(filename)
+    if ".." in filename or clean_filename != filename:
+        raise HTTPException(status_code=400, detail="Invalid file path")
+        
+    file_path = os.path.join("uploads", clean_filename)
     if os.path.exists(file_path):
         return FileResponse(file_path)
     raise HTTPException(status_code=404, detail="File not found")
@@ -39,7 +61,11 @@ def _ensure_user_columns(db: Session):
 
 @router.post("", response_model=schemas.UserResponse, include_in_schema=False)
 @router.post("/", response_model=schemas.UserResponse)
-def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+def create_user(
+    user: schemas.UserCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.require_roles(["ADMIN", "Owner"]))
+):
     if user.phone:
         try:
             existing_user = crud.get_user_by_phone(db, phone=user.phone)
@@ -61,7 +87,12 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 @router.get("", response_model=List[schemas.UserResponse], include_in_schema=False)
 @router.get("/", response_model=List[schemas.UserResponse])
-def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def read_users(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_active_user)
+):
     try:
         users = crud.get_users(db, skip=skip, limit=limit)
         return users
@@ -72,7 +103,11 @@ def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
         raise e
 
 @router.get("/{user_id}", response_model=schemas.UserResponse)
-def read_user(user_id: str, db: Session = Depends(get_db)):
+def read_user(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_active_user)
+):
     try:
         db_user = crud.get_user(db, user_id=user_id)
     except Exception as e:
@@ -86,7 +121,11 @@ def read_user(user_id: str, db: Session = Depends(get_db)):
     return db_user
 
 @router.delete("/{user_id}")
-def delete_user(user_id: str, db: Session = Depends(get_db)):
+def delete_user(
+    user_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.require_roles(["ADMIN", "Owner"]))
+):
     db_user = crud.get_user(db, user_id=user_id)
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -98,7 +137,12 @@ def delete_user(user_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to delete user: {str(e)}")
 
 @router.put("/{user_id}", response_model=schemas.UserResponse)
-def update_user(user_id: str, user: schemas.UserUpdate, db: Session = Depends(get_db)):
+def update_user(
+    user_id: str,
+    user: schemas.UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.require_roles(["ADMIN", "Owner"]))
+):
     try:
         db_user = crud.get_user(db, user_id=user_id)
     except Exception as e:

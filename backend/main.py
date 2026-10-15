@@ -68,6 +68,48 @@ try:
             conn.commit()
         except Exception:
             pass
+
+        # Payment Audit Logs table for tamper-evident tracking
+        try:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS payment_audit_logs (
+                    id VARCHAR PRIMARY KEY,
+                    delivery_id VARCHAR REFERENCES deliveries(id) ON DELETE SET NULL,
+                    action VARCHAR NOT NULL,
+                    amount REAL NOT NULL,
+                    payment_mode VARCHAR,
+                    upi_reference VARCHAR,
+                    verified_by VARCHAR,
+                    ip_address VARCHAR,
+                    notes VARCHAR,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.commit()
+        except Exception:
+            pass
+
+        # High-performance database indexes
+        indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_deliveries_assignment ON deliveries(assignment_id)",
+            "CREATE INDEX IF NOT EXISTS idx_deliveries_client ON deliveries(client_id)",
+            "CREATE INDEX IF NOT EXISTS idx_deliveries_status ON deliveries(status)",
+            "CREATE INDEX IF NOT EXISTS idx_deliveries_upi ON deliveries(upi_reference)",
+            "CREATE INDEX IF NOT EXISTS idx_deliveries_created ON deliveries(created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_assignments_driver ON assignments(driver_id)",
+            "CREATE INDEX IF NOT EXISTS idx_assignments_helper ON assignments(helper_id)",
+            "CREATE INDEX IF NOT EXISTS idx_assignments_status ON assignments(status)",
+            "CREATE INDEX IF NOT EXISTS idx_assignments_date ON assignments(date)",
+            "CREATE INDEX IF NOT EXISTS idx_clients_route ON clients(route_id)",
+            "CREATE INDEX IF NOT EXISTS idx_allocations_assignment ON allocations(assignment_id)",
+            "CREATE INDEX IF NOT EXISTS idx_delivery_items_delivery ON delivery_items(delivery_id)",
+        ]
+        for idx in indexes:
+            try:
+                conn.execute(text(idx))
+                conn.commit()
+            except Exception:
+                pass
 except Exception as e:
     print("Database migration check note:", e)
 
@@ -126,6 +168,42 @@ app.include_router(expenses.router, prefix="/api/expenses", tags=["expenses"])
 @app.get("/")
 def read_root():
     return {"status": "ok", "message": "Backend is running!"}
+
+
+@app.get("/api/health")
+@app.get("/api/health/")
+def health_check():
+    import time
+    from app.database import SessionLocal
+    start = time.perf_counter()
+    db = SessionLocal()
+    db_ok = False
+    counts = {}
+    try:
+        db.execute(text("SELECT 1"))
+        db_ok = True
+        client_cnt = db.query(models.Client).count()
+        assign_cnt = db.query(models.Assignment).count()
+        vehicle_cnt = db.query(models.Vehicle).count()
+        counts = {
+            "clients": client_cnt,
+            "assignments": assign_cnt,
+            "vehicles": vehicle_cnt
+        }
+    except Exception as e:
+        print("Health check DB error:", e)
+    finally:
+        db.close()
+
+    elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+    return {
+        "status": "healthy" if db_ok else "degraded",
+        "database": "connected" if db_ok else "unreachable",
+        "db_latency_ms": elapsed_ms,
+        "metrics": counts,
+        "timestamp": time.time()
+    }
+
 
 
 

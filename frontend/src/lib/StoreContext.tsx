@@ -208,45 +208,48 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     
     setIsLoaded(true);
 
-    // Sync live glass data from backend if server is active
-    Promise.all([
-      getGlassCollections().catch(() => null),
-      getGlassInventoryList().catch(() => null),
-      getGlassVendorPickups().catch(() => null)
-    ]).then(([colls, inv, pickups]) => {
-      if (colls && colls.length > 0) {
-        setGlassCollections(colls.map((c: any) => ({
-          id: c.id,
-          driverId: c.driver_id || c.driverId || "",
-          driverName: c.driver_name || c.driverName || "Driver",
-          vehicle: c.vehicle || "",
-          property: c.property || "",
-          location: c.location,
-          phone: c.phone,
-          tonsCollected: c.tons_collected ?? c.tonsCollected ?? 0,
-          paymentAmount: c.payment_amount ?? c.paymentAmount ?? 0,
-          status: c.status || "collected",
-          date: c.date || new Date().toISOString()
-        })));
-      }
-      if (inv && inv.length > 0) {
-        setGlassInventory(inv.map((i: any) => ({
-          id: i.id,
-          type: i.type,
-          tons: i.tons
-        })));
-      }
-      if (pickups && pickups.length > 0) {
-        setGlassVendorPickups(pickups.map((p: any) => ({
-          id: p.id,
-          vendorName: p.vendor_name || p.vendorName || "Vendor",
-          type: p.type,
-          tons: p.tons,
-          pricePerTon: p.price_per_ton ?? p.pricePerTon ?? 0,
-          date: p.date || new Date().toISOString()
-        })));
-      }
-    }).catch(() => {});
+    // Sync live glass data from backend only when Glass business or glass route is active
+    const isGlassActive = savedBusiness === "glass" || (typeof window !== "undefined" && window.location.pathname.startsWith("/glass"));
+    if (isGlassActive) {
+      Promise.all([
+        getGlassCollections().catch(() => null),
+        getGlassInventoryList().catch(() => null),
+        getGlassVendorPickups().catch(() => null)
+      ]).then(([colls, inv, pickups]) => {
+        if (colls && colls.length > 0) {
+          setGlassCollections(colls.map((c: any) => ({
+            id: c.id,
+            driverId: c.driver_id || c.driverId || "",
+            driverName: c.driver_name || c.driverName || "Driver",
+            vehicle: c.vehicle || "",
+            property: c.property || "",
+            location: c.location,
+            phone: c.phone,
+            tonsCollected: c.tons_collected ?? c.tonsCollected ?? 0,
+            paymentAmount: c.payment_amount ?? c.paymentAmount ?? 0,
+            status: c.status || "collected",
+            date: c.date || new Date().toISOString()
+          })));
+        }
+        if (inv && inv.length > 0) {
+          setGlassInventory(inv.map((i: any) => ({
+            id: i.id,
+            type: i.type,
+            tons: i.tons
+          })));
+        }
+        if (pickups && pickups.length > 0) {
+          setGlassVendorPickups(pickups.map((p: any) => ({
+            id: p.id,
+            vendorName: p.vendor_name || p.vendorName || "Vendor",
+            type: p.type,
+            tons: p.tons,
+            pricePerTon: p.price_per_ton ?? p.pricePerTon ?? 0,
+            date: p.date || new Date().toISOString()
+          })));
+        }
+      }).catch(() => {});
+    }
   }, []);
 
   // Save to localStorage whenever state changes

@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from . import models, schemas
 
 # --- Users ---
@@ -68,7 +68,13 @@ def get_client(db: Session, client_id: str):
     return db.query(models.Client).filter(models.Client.id == client_id).first()
 
 def get_clients(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.Client).offset(skip).limit(limit).all()
+    return (
+        db.query(models.Client)
+        .options(selectinload(models.Client.bottle_credits))
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 def create_client(db: Session, client: schemas.ClientCreate):
     db_client = models.Client(**client.model_dump())

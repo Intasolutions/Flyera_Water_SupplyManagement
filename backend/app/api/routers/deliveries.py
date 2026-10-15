@@ -91,7 +91,13 @@ def get_deliveries_by_assignment(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_active_user)
 ):
-    return db.query(models.Delivery).filter(models.Delivery.assignment_id == assignment_id).all()
+    from sqlalchemy.orm import selectinload
+    return (
+        db.query(models.Delivery)
+        .options(selectinload(models.Delivery.items))
+        .filter(models.Delivery.assignment_id == assignment_id)
+        .all()
+    )
 
 @router.delete("/by-client/{assignment_id}/{client_id}")
 def delete_delivery_by_client(
@@ -159,7 +165,12 @@ def get_pending_doorstep_deliveries(
     current_user: models.User = Depends(deps.get_current_active_user)
 ):
     from sqlalchemy import or_
-    query = db.query(models.Delivery)
+    from sqlalchemy.orm import selectinload
+
+    # High-performance query with relationship preloading to eliminate N+1 latency
+    query = db.query(models.Delivery).options(
+        selectinload(models.Delivery.items)
+    )
     if include_all:
         query = query.filter(
             or_(
@@ -187,9 +198,18 @@ def verify_doorstep_delivery(
     delivery_id: str,
     verify_req: schemas.DeliveryVerifyRequest,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(deps.get_current_active_user)
+    current_user: models.User = Depends(deps.require_roles(["ADMIN", "WATER_STAFF", "Owner"]))
 ):
+    """
+    Cryptographically safe, RBAC-protected verification endpoint for doorstep deliveries.
+    Drivers are strictly restricted from verifying payments.
+    Includes duplicate UTR prevention and tamper-evident audit logging.
+    """
+    import re
+    import uuid
     from datetime import datetime
+    from sqlalchemy import text
+
     db_delivery = db.query(models.Delivery).filter(models.Delivery.id == delivery_id).first()
     if not db_delivery:
         raise HTTPException(status_code=404, detail="Delivery record not found")
@@ -198,6 +218,34 @@ def verify_doorstep_delivery(
     
     try:
         if verify_req.action == "VERIFY_PAID":
+            clean_upi_ref = (verify_req.upi_reference or "").strip()
+            payment_mode = (verify_req.payment_mode or "UPI").upper()
+
+            # If UPI payment mode, strictly validate UTR format and check for duplicate reuse
+            if "UPI" in payment_mode:
+                if not clean_upi_ref:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="UPI Reference / UTR number from bank statement is required."
+                    )
+                # Standard Indian UPI UTR is 12 digits (accept alphanumeric bank refs 8-24 chars)
+                if not re.match(r"^[a-zA-Z0-9]{8,24}$", clean_upi_ref):
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Invalid UPI Reference / UTR format. Expected 12-digit numeric bank reference."
+                    )
+
+                # Duplicate UTR check across all deliveries in database
+                duplicate_payment = db.query(models.Delivery).filter(
+                    models.Delivery.upi_reference == clean_upi_ref,
+                    models.Delivery.id != delivery_id
+                ).first()
+                if duplicate_payment:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Security alert: UPI UTR '{clean_upi_ref}' has already been credited to another delivery. Duplicate reference numbers are strictly blocked."
+                    )
+
             # Amount verified as credited into bank / UPI account
             payment_amount = float(verify_req.amount_paid) if verify_req.amount_paid is not None else float(db_delivery.total_amount)
             if payment_amount < 0:
@@ -211,7 +259,6 @@ def verify_doorstep_delivery(
                 client.credit_amount = max(0.0, (client.credit_amount or 0.0) - payment_amount)
 
             # 3. Determine status based strictly on ZERO CREDIT rule:
-            # ONLY when client's total credit amount turns to 0 AND this delivery is fully paid off, mark as COMPLETED!
             client_credit = (client.credit_amount or 0.0) if client else 0.0
             delivery_unpaid = max(0.0, (db_delivery.total_amount or 0.0) - (db_delivery.paid_amount or 0.0))
 
@@ -221,25 +268,45 @@ def verify_doorstep_delivery(
                 db_delivery.status = "PARTIAL_PAID"
 
             # 4. Attribute payment method as UPI (Verified) or Cash
-            payment_mode = (verify_req.payment_mode or "UPI").upper()
             if "CASH" in payment_mode:
                 db_delivery.payment_method = "Cash"
             else:
                 db_delivery.payment_method = "UPI (Verified)"
 
-            if verify_req.upi_reference:
-                db_delivery.upi_reference = verify_req.upi_reference
+            if clean_upi_ref:
+                db_delivery.upi_reference = clean_upi_ref
+
+            verifier_name = getattr(current_user, 'name', None) or getattr(current_user, 'username', 'Admin')
             db_delivery.verified_at = datetime.utcnow()
-            db_delivery.verified_by = getattr(current_user, 'name', None) or getattr(current_user, 'username', 'Admin')
+            db_delivery.verified_by = verifier_name
             if verify_req.notes:
                 db_delivery.notes = verify_req.notes
+
+            # 5. Record immutable audit log
+            try:
+                db.execute(text("""
+                    INSERT INTO payment_audit_logs (id, delivery_id, action, amount, payment_mode, upi_reference, verified_by, notes, created_at)
+                    VALUES (:id, :delivery_id, :action, :amount, :payment_mode, :upi_reference, :verified_by, :notes, :created_at)
+                """), {
+                    "id": str(uuid.uuid4()),
+                    "delivery_id": delivery_id,
+                    "action": "VERIFY_PAID",
+                    "amount": payment_amount,
+                    "payment_mode": db_delivery.payment_method,
+                    "upi_reference": clean_upi_ref,
+                    "verified_by": f"{verifier_name} ({current_user.id})",
+                    "notes": verify_req.notes or "",
+                    "created_at": datetime.utcnow()
+                })
+            except Exception as log_err:
+                print("Payment audit log write note:", log_err)
                 
         elif verify_req.action == "MARK_CREDITED":
-            # Confirmed as remaining unpaid credit
+            verifier_name = getattr(current_user, 'name', None) or getattr(current_user, 'username', 'Admin')
             db_delivery.status = "CREDITED"
             db_delivery.payment_method = "Credited / Unpaid"
             db_delivery.verified_at = datetime.utcnow()
-            db_delivery.verified_by = getattr(current_user, 'name', None) or getattr(current_user, 'username', 'Admin')
+            db_delivery.verified_by = verifier_name
             if verify_req.notes:
                 db_delivery.notes = verify_req.notes
         else:

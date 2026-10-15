@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/ui/Sidebar";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 import Link from "next/link";
 import { 
   TrendingUp, 
@@ -20,14 +21,19 @@ import {
   CheckCircle2,
   QrCode,
   ShieldCheck,
+  ShieldAlert,
   Check,
-  Edit2
+  Edit2,
+  Lock,
+  KeyRound
 } from "lucide-react";
 import { getDashboardStats } from "@/lib/actions";
-import { getSettings, updateSettings } from "@/lib/api";
+import { getSettings, updateSettings, updateSecureUpi } from "@/lib/api";
 import { useStore } from "@/lib/StoreContext";
 import QRCode from "qrcode";
 import { toast } from "react-hot-toast";
+
+const UPI_VPA_REGEX = /^[a-zA-Z0-9.\-_]{2,100}@[a-zA-Z]{2,64}$/;
 
 export default function DashboardPage() {
   const { currentUserRole } = useStore();
@@ -49,6 +55,12 @@ export default function DashboardPage() {
   const [tempUpi, setTempUpi] = useState("");
   const [savingUpi, setSavingUpi] = useState(false);
   const [adminQrUrl, setAdminQrUrl] = useState("");
+  const [upiVerified, setUpiVerified] = useState<boolean>(true);
+  const [upiSecurityAlert, setUpiSecurityAlert] = useState<string | null>(null);
+
+  // Sudo Security Modal State
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [adminPassword, setAdminPassword] = useState("");
 
   useEffect(() => {
     // 1. Try local storage cache
@@ -63,12 +75,20 @@ export default function DashboardPage() {
       }
     } catch (e) {}
 
-    // 2. Fetch from backend settings API
+    // 2. Fetch from backend settings API with HMAC verification
     getSettings()
       .then(s => {
-        if (s && s.upi_id) {
-          setUpiId(s.upi_id);
-          setTempUpi(s.upi_id);
+        if (s) {
+          if (s.upi_id) {
+            setUpiId(s.upi_id);
+            setTempUpi(s.upi_id);
+          }
+          if (s.upi_verified !== undefined) {
+            setUpiVerified(s.upi_verified);
+          }
+          if (s.upi_security_alert) {
+            setUpiSecurityAlert(s.upi_security_alert);
+          }
           try {
             const existing = JSON.parse(localStorage.getItem("flyera_system_settings") || "{}");
             localStorage.setItem("flyera_system_settings", JSON.stringify({ ...existing, ...s }));
@@ -80,32 +100,59 @@ export default function DashboardPage() {
 
   useEffect(() => {
     // Generate live sample QR code for Admin
+    if (!upiId) return;
     const sampleUri = `upi://pay?pa=${upiId}&pn=Flyera%20Logistics&am=100.00&tn=Test%20Payment&cu=INR`;
     QRCode.toDataURL(sampleUri, { width: 140, margin: 1 })
       .then(url => setAdminQrUrl(url))
       .catch(() => {});
   }, [upiId]);
 
-  const handleSaveUpi = async () => {
-    if (!tempUpi.trim()) {
+  const handleInitiateSaveUpi = () => {
+    const clean = tempUpi.trim();
+    if (!clean) {
       toast.error("Please enter a valid UPI ID (e.g. name@bank)");
       return;
     }
+    if (!UPI_VPA_REGEX.test(clean)) {
+      toast.error("Invalid UPI format! Expected standard NPCI VPA (e.g. company@okhdfcbank or merchant@icici)");
+      return;
+    }
+    // Open Sudo re-authentication modal
+    setAdminPassword("");
+    setIsPasswordModalOpen(true);
+  };
+
+  const handleConfirmSecureUpi = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminPassword.trim()) {
+      toast.error("Admin account password is required to authorize UPI modification.");
+      return;
+    }
+
     const cleanUpi = tempUpi.trim();
     setSavingUpi(true);
+
     try {
+      const updated = await updateSecureUpi({
+        upi_id: cleanUpi,
+        admin_password: adminPassword.trim()
+      });
+
+      setUpiId(cleanUpi);
+      setUpiVerified(true);
+      setUpiSecurityAlert(null);
+      setIsEditingUpi(false);
+      setIsPasswordModalOpen(false);
+
       try {
         const existing = JSON.parse(localStorage.getItem("flyera_system_settings") || "{}");
-        localStorage.setItem("flyera_system_settings", JSON.stringify({ ...existing, upi_id: cleanUpi }));
+        localStorage.setItem("flyera_system_settings", JSON.stringify({ ...existing, upi_id: cleanUpi, upi_verified: true }));
       } catch (e) {}
 
-      await updateSettings({ upi_id: cleanUpi });
-      setUpiId(cleanUpi);
-      setIsEditingUpi(false);
-      toast.success("Merchant UPI ID updated! All drivers will now collect to this VPA.");
-    } catch (err) {
-      console.error("Failed to update UPI ID", err);
-      toast.error("Failed to save UPI ID to server. Please try again.");
+      toast.success("Merchant UPI ID cryptographically sealed & updated! Fleet QR codes synced.");
+    } catch (err: any) {
+      console.error("Failed to securely update UPI ID:", err);
+      toast.error(err.message || "Authorization failed: Incorrect admin password.");
     } finally {
       setSavingUpi(false);
     }
@@ -207,10 +254,26 @@ export default function DashboardPage() {
                     <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-md flex items-center gap-1 border border-emerald-200">
                       <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Driver Locked (Admin Only)
                     </span>
+                    {upiVerified ? (
+                      <span className="text-[10px] font-black uppercase tracking-wider bg-sky-50 text-sky-800 px-2.5 py-0.5 rounded-md flex items-center gap-1 border border-sky-200">
+                        <Lock className="w-3 h-3 text-sky-600" /> HMAC-SHA256 Sealed
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-black uppercase tracking-wider bg-rose-100 text-rose-800 px-2.5 py-0.5 rounded-md flex items-center gap-1 border border-rose-300 animate-pulse">
+                        <ShieldAlert className="w-3.5 h-3.5 text-rose-600" /> Tamper Seal Mismatch!
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-slate-500 font-medium mt-0.5">
-                    Controls the receiving bank account for all drivers&apos; dynamic QR codes and thermal printed receipts across the fleet.
+                    Controls the receiving bank account for all drivers&apos; dynamic QR codes and thermal printed receipts across the fleet. Protected by Superadmin re-authentication and HMAC cryptographic signature.
                   </p>
+
+                  {upiSecurityAlert && (
+                    <div className="mt-2.5 p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-900 text-xs font-semibold flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>{upiSecurityAlert} Please re-save with your Admin password immediately.</span>
+                    </div>
+                  )}
                   
                   {/* Active UPI ID Display / Edit Input */}
                   <div className="mt-3 flex items-center gap-2 flex-wrap">
@@ -221,17 +284,16 @@ export default function DashboardPage() {
                           type="text"
                           value={tempUpi}
                           onChange={e => setTempUpi(e.target.value)}
-                          placeholder="e.g. yourname@okhdfcbank"
+                          placeholder="e.g. yourcompany@okhdfcbank"
                           className="bg-white border-2 border-emerald-500 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-900 outline-none shadow-xs"
                         />
                         <button
                           type="button"
-                          onClick={handleSaveUpi}
-                          disabled={savingUpi}
-                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                          onClick={handleInitiateSaveUpi}
+                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
                         >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>{savingUpi ? "Saving..." : "Save UPI"}</span>
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>Verify & Save</span>
                         </button>
                         <button
                           type="button"
@@ -293,6 +355,64 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
+
+        {/* Sudo Re-Authentication Modal for Changing Merchant UPI ID */}
+        <Modal
+          isOpen={isPasswordModalOpen}
+          onClose={() => !savingUpi && setIsPasswordModalOpen(false)}
+          title="Security Re-Authentication Required"
+        >
+          <form onSubmit={handleConfirmSecureUpi} className="space-y-4">
+            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-xs">
+              <div className="flex items-center gap-2 font-bold mb-1 text-amber-950">
+                <Lock className="w-4 h-4 text-amber-700" />
+                <span>SuperAdmin Verification Check</span>
+              </div>
+              <p>
+                You are updating the company&apos;s payout UPI ID to: <strong className="font-mono text-slate-900 bg-white px-1.5 py-0.5 rounded border border-amber-300">{tempUpi}</strong>.
+              </p>
+              <p className="mt-1 text-[11px] text-amber-800">
+                To prevent hacker tampering and unauthorized bank account hijacking, please re-enter your SuperAdmin password to authorize this change and generate a new cryptographic seal.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                SuperAdmin Password *
+              </label>
+              <div className="relative">
+                <input
+                  type="password"
+                  required
+                  value={adminPassword}
+                  onChange={e => setAdminPassword(e.target.value)}
+                  placeholder="Enter your login password"
+                  autoFocus
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                />
+                <KeyRound className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={savingUpi}
+                onClick={() => setIsPasswordModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={savingUpi || !adminPassword.trim()}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                {savingUpi ? "Cryptographically Sealing..." : "Authorize & Save UPI"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
 
         {/* Date Filter Toolbar */}
         <div className="glass-panel p-4 md:p-5 mb-8 shadow-xs">

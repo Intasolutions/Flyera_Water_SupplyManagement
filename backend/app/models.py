@@ -52,7 +52,7 @@ class Client(Base):
     opt_in_loyalty = Column(Boolean, default=True)
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
-    route_id = Column(String, ForeignKey("routes.id"), nullable=True)
+    route_id = Column(String, ForeignKey("routes.id"), nullable=True, index=True)
     credit_amount = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -122,13 +122,13 @@ class Assignment(Base):
     __tablename__ = "assignments"
     
     id = Column(String, primary_key=True, default=generate_uuid)
-    date = Column(DateTime, nullable=False)
-    vehicle_id = Column(String, ForeignKey("vehicles.id"), nullable=False)
-    driver_id = Column(String, ForeignKey("users.id"), nullable=False)
-    helper_id = Column(String, ForeignKey("users.id"), nullable=True)
-    route_id = Column(String, ForeignKey("routes.id"), nullable=True)
-    status = Column(String, default="PENDING")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    date = Column(DateTime, nullable=False, index=True)
+    vehicle_id = Column(String, ForeignKey("vehicles.id"), nullable=False, index=True)
+    driver_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    helper_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    route_id = Column(String, ForeignKey("routes.id"), nullable=True, index=True)
+    status = Column(String, default="PENDING", index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     vehicle = relationship("Vehicle", back_populates="assignments")
@@ -148,8 +148,8 @@ class Allocation(Base):
     __tablename__ = "allocations"
     
     id = Column(String, primary_key=True, default=generate_uuid)
-    assignment_id = Column(String, ForeignKey("assignments.id"), nullable=False)
-    inventory_type_id = Column(String, ForeignKey("inventory_types.id"), nullable=False)
+    assignment_id = Column(String, ForeignKey("assignments.id"), nullable=False, index=True)
+    inventory_type_id = Column(String, ForeignKey("inventory_types.id"), nullable=False, index=True)
     allocated_count = Column(Integer, nullable=False)
     returned_full = Column(Integer, default=0)
     returned_empty = Column(Integer, default=0)
@@ -161,17 +161,17 @@ class Delivery(Base):
     __tablename__ = "deliveries"
     
     id = Column(String, primary_key=True, default=generate_uuid)
-    assignment_id = Column(String, ForeignKey("assignments.id"), nullable=False)
-    client_id = Column(String, ForeignKey("clients.id"), nullable=False)
+    assignment_id = Column(String, ForeignKey("assignments.id"), nullable=False, index=True)
+    client_id = Column(String, ForeignKey("clients.id"), nullable=False, index=True)
     total_amount = Column(Float, default=0)
     paid_amount = Column(Float, default=0.0)
     payment_method = Column(String, nullable=True)
-    status = Column(String, default="COMPLETED") # "COMPLETED", "PARTIAL_PAID", "PENDING_PAYMENT", "CREDITED", "SKIPPED"
-    upi_reference = Column(String, nullable=True)
+    status = Column(String, default="COMPLETED", index=True) # "COMPLETED", "PARTIAL_PAID", "PENDING_PAYMENT", "CREDITED", "SKIPPED"
+    upi_reference = Column(String, nullable=True, index=True)
     verified_at = Column(DateTime, nullable=True)
     verified_by = Column(String, nullable=True)
     notes = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
     assignment = relationship("Assignment", back_populates="deliveries")
     client = relationship("Client", back_populates="deliveries")
@@ -181,8 +181,8 @@ class DeliveryItem(Base):
     __tablename__ = "delivery_items"
     
     id = Column(String, primary_key=True, default=generate_uuid)
-    delivery_id = Column(String, ForeignKey("deliveries.id"), nullable=False)
-    inventory_type_id = Column(String, ForeignKey("inventory_types.id"), nullable=False)
+    delivery_id = Column(String, ForeignKey("deliveries.id"), nullable=False, index=True)
+    inventory_type_id = Column(String, ForeignKey("inventory_types.id"), nullable=False, index=True)
     delivered_full = Column(Integer, nullable=False)
     collected_empty = Column(Integer, nullable=False)
     price_charged = Column(Float, nullable=False)
