@@ -307,7 +307,7 @@ export default function StaffPage() {
     <div className="flex min-h-screen bg-background">
       <Sidebar />
       
-      <main className="flex-1 ml-0 md:ml-72 p-4 sm:p-6 md:p-10 lg:p-12 pt-20 md:pt-10 pb-24 md:pb-12 transition-all max-w-7xl">
+      <main className="flex-1 min-w-0 p-4 sm:p-6 md:p-8 lg:p-10 pt-20 md:pt-8 pb-24 md:pb-12 transition-all max-w-7xl">
         <PageHeader 
           title="Staff & Personnel" 
           subtitle="Manage delivery drivers, route helpers, warehouse operators, and credentials."

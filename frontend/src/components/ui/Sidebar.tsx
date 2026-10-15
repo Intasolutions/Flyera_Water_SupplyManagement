@@ -189,10 +189,10 @@ export function Sidebar() {
         />
       )}
 
-      {/* Sidebar Navigation Drawer */}
+      {/* Sidebar Navigation Drawer (Sticky In-Flow on Desktop, Overlay Drawer on Mobile) */}
       <aside
-        className={`w-72 max-w-[85vw] inset-y-0 h-full min-h-dvh bg-white backdrop-blur-2xl fixed left-0 top-0 flex flex-col p-5 z-50 border-r border-slate-200/80 shadow-2xl transition-transform duration-300 md:translate-x-0 ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
+        className={`w-72 max-w-[85vw] md:max-w-72 flex flex-col p-5 border-r border-slate-200/80 bg-white transition-transform duration-300 fixed inset-y-0 left-0 h-full min-h-dvh shadow-2xl z-50 md:sticky md:top-0 md:h-screen md:shrink-0 md:translate-x-0 md:shadow-none md:z-30 ${
+          isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >
         {/* Brand Header */}

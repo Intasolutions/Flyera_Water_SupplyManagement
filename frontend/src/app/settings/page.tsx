@@ -227,7 +227,7 @@ export default function SettingsPage() {
     return (
       <div className="flex min-h-screen bg-[#FDFBF7]">
         <Sidebar />
-        <main className="flex-1 ml-0 md:ml-72 p-6 md:p-12 flex flex-col items-center justify-center text-center">
+        <main className="flex-1 min-w-0 p-6 md:p-12 flex flex-col items-center justify-center text-center">
           <div className="max-w-md p-8 bg-white/90 backdrop-blur-xl rounded-3xl shadow-sm border border-slate-200">
             <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-4 border border-rose-200">
               <ShieldAlert className="w-6 h-6" />
@@ -249,7 +249,7 @@ export default function SettingsPage() {
     <div className="flex min-h-screen bg-[#FDFBF7]">
       <Sidebar />
 
-      <main className="flex-1 ml-0 md:ml-72 p-4 sm:p-6 md:p-10 lg:p-12 pt-20 md:pt-10 pb-24 md:pb-12 transition-all relative">
+      <main className="flex-1 min-w-0 p-4 sm:p-6 md:p-8 lg:p-10 pt-20 md:pt-8 pb-24 md:pb-12 transition-all relative">
         {/* Page Header */}
         <PageHeader
           title="System Settings"

@@ -278,7 +278,7 @@ export default function RoutesPage() {
     <div className="flex min-h-screen bg-[#FDFBF7]">
       <Sidebar />
 
-      <main className="flex-1 ml-0 md:ml-72 p-4 sm:p-6 md:p-10 lg:p-12 pt-20 md:pt-10 pb-24 md:pb-12 transition-all relative">
+      <main className="flex-1 min-w-0 p-4 sm:p-6 md:p-8 lg:p-10 pt-20 md:pt-8 pb-24 md:pb-12 transition-all relative">
         {/* Page Header */}
         <PageHeader
           title="Delivery Routes"
@@ -774,22 +774,22 @@ function RouteCard({
       <div>
         {/* Top Header */}
         <div className="flex items-start justify-between gap-3 mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center justify-center shrink-0 text-emerald-600">
-              <Map className="w-6 h-6" />
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-11 h-11 bg-emerald-50 border border-emerald-100 rounded-2xl flex items-center justify-center shrink-0 text-emerald-600 shadow-2xs">
+              <Map className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="font-black text-lg text-slate-800 tracking-tight leading-tight">
+            <div className="min-w-0">
+              <h3 className="font-black text-base sm:text-lg text-slate-800 tracking-tight leading-tight truncate">
                 {route.name}
               </h3>
-              <div className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-600 mt-1">
-                <MapPin className="w-4 h-4 text-slate-500" />
-                <span>{route.area || "General Zone"}</span>
+              <div className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-600 mt-1 truncate">
+                <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <span className="truncate">{route.area || "General Zone"}</span>
               </div>
             </div>
           </div>
 
-          <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-lg shrink-0">
+          <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-black uppercase tracking-wider px-2.5 py-1 rounded-lg shrink-0 whitespace-nowrap shadow-2xs">
             {clients.length} Clients
           </span>
         </div>
