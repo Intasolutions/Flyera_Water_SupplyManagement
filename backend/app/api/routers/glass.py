@@ -538,7 +538,8 @@ def create_glass_assignment(
         route_id=assignment_in.route_id if assignment_in.route_id else None,
         status=assignment_in.status or "PENDING",
         business_type="GLASS",
-        target_capacity_tons=assignment_in.target_capacity_tons or 0.0
+        target_capacity_tons=assignment_in.target_capacity_tons or 0.0,
+        petty_cash=assignment_in.petty_cash or 0.0
     )
     db.add(db_a)
     db.commit()
@@ -569,6 +570,8 @@ def update_glass_assignment(
         a.status = assignment_in.status
     if assignment_in.target_capacity_tons is not None:
         a.target_capacity_tons = assignment_in.target_capacity_tons
+    if assignment_in.petty_cash is not None:
+        a.petty_cash = assignment_in.petty_cash
 
     a.updated_at = datetime.utcnow()
     db.commit()
