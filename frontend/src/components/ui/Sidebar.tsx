@@ -87,7 +87,7 @@ export function Sidebar() {
     }
   }, []);
 
-  const isDriver = userRole === "DRIVER" || userRole === "GLASS_DRIVER";
+  const isDriver = userRole === "DRIVER" || userRole === "HELPER" || userRole === "GLASS_DRIVER";
 
   const waterLinks = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -108,7 +108,17 @@ export function Sidebar() {
   ];
 
   const isGlass = currentUserRole === "GlassStaff" || (currentUserRole === "Owner" && activeBusiness === "Glass");
-  const rawLinks = isGlass ? glassLinks : waterLinks;
+
+  const driverWaterLinks = [
+    { name: "Driver Co-Pilot", href: "/driver", icon: Truck },
+  ];
+  const driverGlassLinks = [
+    { name: "Driver Collections", href: "/glass/driver", icon: Truck },
+  ];
+
+  const rawLinks = isDriver
+    ? (userRole === "GLASS_DRIVER" ? driverGlassLinks : driverWaterLinks)
+    : (isGlass ? glassLinks : waterLinks);
   const links = rawLinks.filter(link => {
     // Only Admin / Owner can see Settings
     if (link.href === "/settings" && currentUserRole !== "Owner") {
@@ -125,9 +135,14 @@ export function Sidebar() {
   };
 
   // Quick bottom bar links for mobile phone navigation
-  const mobileQuickLinks = isGlass ? [
+  const mobileQuickLinks = isDriver ? (
+    userRole === "GLASS_DRIVER" ? [
+      { name: "Intake", href: "/glass/driver", icon: Truck },
+    ] : [
+      { name: "Co-Pilot", href: "/driver", icon: Truck },
+    ]
+  ) : isGlass ? [
     { name: "Dashboard", href: "/glass", icon: LayoutDashboard },
-    ...(isDriver ? [{ name: "Intake", href: "/glass/driver", icon: Truck }] : []),
     { name: "Godown", href: "/glass/godown", icon: Factory },
     { name: "Vendors", href: "/glass/vendor", icon: Warehouse },
   ] : [
