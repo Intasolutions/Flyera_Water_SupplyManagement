@@ -331,6 +331,7 @@ export interface Assignment {
   helper_id: string | null;
   route_id: string | null;
   status: string;
+  petty_cash?: number;
   allocations: Allocation[];
   created_at?: string;
   updated_at?: string;

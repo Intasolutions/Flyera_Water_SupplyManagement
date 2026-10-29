@@ -227,6 +227,7 @@ class AssignmentBase(BaseModel):
     helper_id: Optional[str] = None
     route_id: Optional[str] = None
     status: str = "PENDING"
+    petty_cash: float = 0.0
 
 class AssignmentCreate(AssignmentBase):
     allocations: List[AllocationCreate] = []
@@ -239,6 +240,7 @@ class AssignmentUpdate(BaseModel):
     route_id: Optional[str] = None
     status: Optional[str] = None
     allocations: Optional[List[AllocationCreate]] = None
+    petty_cash: Optional[float] = None
 
 class AssignmentResponse(AssignmentBase):
     id: str

@@ -24,6 +24,12 @@ try:
                 conn.commit()
             except Exception:
                 pass
+        for col in ["petty_cash REAL DEFAULT 0.0"]:
+            try:
+                conn.execute(text(f"ALTER TABLE assignments ADD COLUMN {col}"))
+                conn.commit()
+            except Exception:
+                pass
         for col in ["credit_amount REAL DEFAULT 0.0"]:
             try:
                 conn.execute(text(f"ALTER TABLE clients ADD COLUMN {col}"))

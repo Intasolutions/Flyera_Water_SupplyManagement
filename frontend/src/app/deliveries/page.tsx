@@ -417,6 +417,7 @@ export default function DeliveriesPage() {
   const [assignHelper, setAssignHelper] = useState("");
   const [assignRoute, setAssignRoute] = useState("");
   const [assignVehicle, setAssignVehicle] = useState("");
+  const [assignPettyCash, setAssignPettyCash] = useState<string>("");
   const [assignStock, setAssignStock] = useState<Record<string, number>>({});
 
   // Edit modal state
@@ -425,6 +426,7 @@ export default function DeliveriesPage() {
   const [editHelper, setEditHelper] = useState("");
   const [editRoute, setEditRoute] = useState("");
   const [editVehicle, setEditVehicle] = useState("");
+  const [editPettyCash, setEditPettyCash] = useState<string>("");
   const [editStatus, setEditStatus] = useState<string>("PENDING");
   const [editDate, setEditDate] = useState<string>("");
   const [editStock, setEditStock] = useState<Record<string, number>>({});
@@ -433,6 +435,7 @@ export default function DeliveriesPage() {
   const handleOpenEdit = (assignment: ApiAssignment) => {
     setEditAssignment(assignment);
     setEditDriver(assignment.driver_id || "");
+    setEditPettyCash(assignment.petty_cash ? String(assignment.petty_cash) : "");
     setEditHelper(assignment.helper_id || "");
     setEditRoute(assignment.route_id || "");
     setEditVehicle(assignment.vehicle_id || "");
@@ -475,6 +478,7 @@ export default function DeliveriesPage() {
         helper_id: editHelper || null,
         route_id: editRoute,
         status: editStatus,
+        petty_cash: parseFloat(editPettyCash) || 0.0,
         allocations,
       });
       setEditAssignment(null);
@@ -510,6 +514,7 @@ export default function DeliveriesPage() {
         helper_id: assignHelper || null,
         route_id: assignRoute,
         status: "PENDING",
+        petty_cash: parseFloat(assignPettyCash) || 0.0,
         allocations
       });
       setModalOpen(false);
@@ -517,6 +522,7 @@ export default function DeliveriesPage() {
       setAssignHelper("");
       setAssignRoute("");
       setAssignVehicle("");
+      setAssignPettyCash("");
       setAssignStock({});
       // Instant refresh
       const refreshed = await getAssignments();
@@ -976,6 +982,7 @@ export default function DeliveriesPage() {
                       status={a.status.toLowerCase()}
                       progress={progress}
                       date={a.date}
+                      pettyCash={a.petty_cash || 0}
                       onEdit={() => handleOpenEdit(a)}
                       onAssign={() => setDispatchConfirmOpen(a)}
                       onTrack={() => setTrackOpen(a.id)}
@@ -1341,6 +1348,29 @@ export default function DeliveriesPage() {
               </div>
             </div>
 
+            {/* In-Hand Petty Cash to Driver */}
+            <div className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-200/80">
+              <label className="block text-xs font-black uppercase tracking-wider text-emerald-950 mb-1.5 flex items-center justify-between">
+                <span>In-Hand Petty Cash (₹)</span>
+                <span className="text-[10px] font-bold text-emerald-700 normal-case bg-emerald-100/90 px-2 py-0.5 rounded-md">Given to driver at morning departure</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-700 font-bold text-sm">₹</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={assignPettyCash}
+                  onChange={e => setAssignPettyCash(e.target.value)}
+                  placeholder="e.g. 500.00"
+                  className="w-full pl-8 pr-4 py-2.5 border border-emerald-300 rounded-xl bg-white text-slate-800 font-bold outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-500/10 transition-all text-sm shadow-2xs"
+                />
+              </div>
+              <p className="text-[11px] font-medium text-emerald-800 mt-1.5">
+                Starting physical cash given to driver for on-road fuel, toll, customer change, or trip emergencies.
+              </p>
+            </div>
+
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-xs font-black uppercase tracking-wider text-slate-700">
@@ -1537,6 +1567,26 @@ export default function DeliveriesPage() {
                     <option key={r.id} value={r.id}>{r.name} ({r.area || "General Area"})</option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            {/* In-Hand Petty Cash in Edit modal */}
+            <div className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-200/80">
+              <label className="block text-xs font-black uppercase tracking-wider text-emerald-950 mb-1.5 flex items-center justify-between">
+                <span>In-Hand Petty Cash (₹)</span>
+                <span className="text-[10px] font-bold text-emerald-700 normal-case bg-emerald-100/90 px-2 py-0.5 rounded-md">Given to driver at departure</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-700 font-bold text-sm">₹</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={editPettyCash}
+                  onChange={e => setEditPettyCash(e.target.value)}
+                  placeholder="e.g. 500.00"
+                  className="w-full pl-8 pr-4 py-2.5 border border-emerald-300 rounded-xl bg-white text-slate-800 font-bold outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-500/10 transition-all text-sm shadow-2xs"
+                />
               </div>
             </div>
 

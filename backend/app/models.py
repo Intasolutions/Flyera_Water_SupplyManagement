@@ -128,6 +128,7 @@ class Assignment(Base):
     helper_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     route_id = Column(String, ForeignKey("routes.id"), nullable=True, index=True)
     status = Column(String, default="PENDING", index=True)
+    petty_cash = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

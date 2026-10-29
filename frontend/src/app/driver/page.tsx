@@ -75,6 +75,7 @@ export default function DriverApp() {
   const [currentStock, setCurrentStock] = useState(0);
   const [assignedRouteId, setAssignedRouteId] = useState<string | null>(null);
   const [activeAssignmentId, setActiveAssignmentId] = useState<string | null>(null);
+  const [activePettyCash, setActivePettyCash] = useState<number>(0);
   const [inventoryTypes, setInventoryTypes] = useState<any[]>([]);
 
   const [isAddClientOpen, setIsAddClientOpen] = useState(false);
@@ -411,6 +412,7 @@ export default function DriverApp() {
         setAssignedRouteId(active.route_id);
         setActiveAssignmentId(active.id);
         setAssignmentStatus(active.status);
+        setActivePettyCash(active.petty_cash || 0);
 
         // Resolve driver and helper display names
         const matchedDriver = (allUsers as any[]).find(u => u.id === active.driver_id);
@@ -467,6 +469,7 @@ export default function DriverApp() {
 
         setAssignmentStatus("UNASSIGNED");
         setActiveAssignmentId(null);
+        setActivePettyCash(0);
         setAssignedRouteId(null);
         setClients([]);
         setInitialStock(0);
@@ -1070,6 +1073,14 @@ export default function DriverApp() {
             <RefreshCw className={`w-3.5 h-3.5 text-sky-600 ${isSyncing ? "animate-spin" : ""}`} />
             <span className="hidden sm:inline">{isSyncing ? "Checking..." : "Live Sync"}</span>
           </button>
+
+          {/* In-Hand Petty Cash */}
+          {assignmentStatus !== "UNASSIGNED" && activePettyCash > 0 && (
+            <div className="bg-emerald-50 border border-emerald-200/90 px-3.5 py-2 rounded-xl text-xs font-black shadow-xs flex items-center gap-2 text-emerald-950">
+              <IndianRupee className="w-3.5 h-3.5 text-emerald-600" />
+              <span>In-Hand Cash: <strong className="text-emerald-800 text-sm font-black">₹{activePettyCash.toLocaleString()}</strong></span>
+            </div>
+          )}
 
           {/* Van Stock (only when active route is present) */}
           {assignmentStatus !== "UNASSIGNED" && (
