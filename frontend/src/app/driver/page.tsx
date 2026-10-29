@@ -1322,28 +1322,70 @@ export default function DriverApp() {
             </div>
 
             {/* Daily Work Summary Card */}
-            <div className="glass-card p-5 mb-5 bg-gradient-to-br from-slate-900 to-slate-800 text-white border-0 shadow-md">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-300">
-                  Daily Route Progress
-                </span>
-                <span className="text-xs font-black bg-white/10 px-2.5 py-1 rounded-lg text-emerald-300">
-                  Live Sync
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white/5 p-3 rounded-2xl border border-white/5">
-                  <p className="text-2xl sm:text-3xl font-black">{clients.filter(c => (c as any).isCompleted).length}</p>
-                  <p className="text-xs sm:text-sm text-slate-200 font-bold">Stops Completed</p>
+            {(() => {
+              const completedCount = clients.filter(c => (c as any).isCompleted).length;
+              const totalStops = clients.length;
+              const bottlesDelivered = clients.reduce((acc, c) => acc + ((c as any).deliveredCount || 0), 0);
+              const progressPct = totalStops > 0 ? Math.round((completedCount / totalStops) * 100) : 0;
+
+              return (
+                <div className="p-4 sm:p-5 mb-5 rounded-2xl bg-slate-900 text-white shadow-md border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-300 block">
+                        Daily Route Progress
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-medium">
+                        {completedCount} of {totalStops} stops completed ({progressPct}%)
+                      </span>
+                    </div>
+
+                    <span className="text-[11px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Live Sync
+                    </span>
+                  </div>
+
+                  {/* Visual Progress Bar */}
+                  <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                    <div 
+                      className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+
+                  {/* 3 High-Contrast Metric Pillars */}
+                  <div className="grid grid-cols-3 gap-2.5 pt-1">
+                    <div className="bg-slate-800/90 p-3 rounded-xl border border-slate-700/60">
+                      <span className="text-[10px] sm:text-xs text-slate-400 font-bold block uppercase tracking-wider">
+                        Stops Done
+                      </span>
+                      <div className="text-xl sm:text-2xl font-black text-white mt-0.5">
+                        {completedCount} <span className="text-xs font-semibold text-slate-400">/ {totalStops}</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-800/90 p-3 rounded-xl border border-slate-700/60">
+                      <span className="text-[10px] sm:text-xs text-slate-400 font-bold block uppercase tracking-wider">
+                        Delivered
+                      </span>
+                      <div className="text-xl sm:text-2xl font-black text-emerald-400 mt-0.5">
+                        {bottlesDelivered} <span className="text-xs font-semibold text-emerald-300/70">Jars</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-800/90 p-3 rounded-xl border border-slate-700/60">
+                      <span className="text-[10px] sm:text-xs text-slate-400 font-bold block uppercase tracking-wider">
+                        In Van
+                      </span>
+                      <div className="text-xl sm:text-2xl font-black text-sky-400 mt-0.5">
+                        {currentStock} <span className="text-xs font-semibold text-sky-300/70">Left</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="bg-white/5 p-3 rounded-2xl border border-white/5">
-                  <p className="text-2xl sm:text-3xl font-black">
-                    {clients.reduce((acc, c) => acc + ((c as any).deliveredCount || 0), 0)}
-                  </p>
-                  <p className="text-xs sm:text-sm text-slate-200 font-bold">Bottles Handed Off</p>
-                </div>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Stops Directory */}
             <div className="space-y-3.5">
