@@ -1215,7 +1215,7 @@ export default function DeliveriesPage() {
                                       ? "bg-amber-100 text-amber-800 border border-amber-200"
                                       : "bg-slate-100 text-slate-700 border border-slate-200"
                                 }`}>
-                                {e.category === "FUEL" ? "⛽ FUEL" : e.category === "TOLL" ? "🛣️ TOLL" : e.category === "MAINTENANCE" ? "🔧 REPAIR" : e.category}
+                                {e.category === "FUEL" ? "FUEL" : e.category === "TOLL" ? "TOLL" : e.category === "MAINTENANCE" ? "REPAIR" : e.category}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-slate-600 max-w-xs">

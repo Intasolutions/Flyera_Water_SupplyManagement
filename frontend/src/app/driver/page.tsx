@@ -56,7 +56,10 @@ import {
   ShieldCheck,
   RotateCcw,
   LogOut,
-  Fuel
+  Fuel,
+  CircleParking,
+  Wrench,
+  Coffee
 } from "lucide-react";
 
 export default function DriverApp() {
@@ -1071,9 +1074,9 @@ export default function DriverApp() {
                 <span className="text-slate-400">•</span>
                 <span className="font-bold text-slate-700 bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded-xl text-xs flex items-center gap-1.5">
                   <span className="text-slate-400 text-[10px] uppercase font-black">Run Crew:</span>
-                  <span>🚚 {driverName}</span>
+                  <span className="flex items-center gap-1"><Truck className="w-3.5 h-3.5 text-slate-500" /> {driverName}</span>
                   <span className="text-slate-300">+</span>
-                  <span>🤝 {helperName}</span>
+                  <span className="flex items-center gap-1"><UserIcon className="w-3.5 h-3.5 text-slate-500" /> {helperName}</span>
                 </span>
               </>
             )}
@@ -1535,7 +1538,7 @@ export default function DriverApp() {
                         className="w-full py-2.5 px-3 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
                       >
                         <MapPin className="w-3.5 h-3.5 text-amber-700" />
-                        <span>{isUpdatingLocation ? "Acquiring GPS..." : "📍 Pin Client's Current Location Now"}</span>
+                        <span>{isUpdatingLocation ? "Acquiring GPS..." : "Pin Client's Current Location Now"}</span>
                       </button>
                     )}
 
@@ -1812,7 +1815,7 @@ export default function DriverApp() {
               className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${locationMethod === "gps" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-700"
                 }`}
             >
-              📍 Auto-Detect GPS
+              Auto-Detect GPS
             </button>
             <button
               type="button"
@@ -1820,7 +1823,7 @@ export default function DriverApp() {
               className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${locationMethod === "link" ? "bg-white text-slate-800 shadow-xs" : "text-slate-500 hover:text-slate-700"
                 }`}
             >
-              🔗 Paste Map Link
+              Paste Map Link
             </button>
           </div>
 
@@ -2128,26 +2131,29 @@ export default function DriverApp() {
             </label>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { key: "FUEL", label: "Fuel / Petrol", icon: "⛽" },
-                { key: "TOLL", label: "Toll Gate", icon: "🛣️" },
-                { key: "PARKING", label: "Parking", icon: "🅿️" },
-                { key: "MAINTENANCE", label: "Repair", icon: "🔧" },
-                { key: "OTHER", label: "Food / Other", icon: "🍱" }
-              ].map(cat => (
-                <button
-                  key={cat.key}
-                  type="button"
-                  onClick={() => setExpenseCategory(cat.key as any)}
-                  className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1 transition-all ${
-                    expenseCategory === cat.key
-                      ? "bg-amber-100 border-amber-400 text-amber-950 ring-2 ring-amber-400/20 font-black shadow-xs"
-                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  <span className="text-base">{cat.icon}</span>
-                  <span>{cat.label}</span>
-                </button>
-              ))}
+                { key: "FUEL", label: "Fuel / Petrol", icon: Fuel },
+                { key: "TOLL", label: "Toll Gate", icon: Navigation },
+                { key: "PARKING", label: "Parking", icon: CircleParking },
+                { key: "MAINTENANCE", label: "Repair", icon: Wrench },
+                { key: "OTHER", label: "Food / Other", icon: Coffee }
+              ].map(cat => {
+                const IconComponent = cat.icon;
+                return (
+                  <button
+                    key={cat.key}
+                    type="button"
+                    onClick={() => setExpenseCategory(cat.key as any)}
+                    className={`p-2.5 rounded-xl border text-xs font-bold flex flex-col items-center justify-center gap-1.5 transition-all ${
+                      expenseCategory === cat.key
+                        ? "bg-amber-100 border-amber-400 text-amber-950 ring-2 ring-amber-400/20 font-black shadow-xs"
+                        : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <IconComponent className="w-4 h-4 text-amber-700" />
+                    <span>{cat.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -2292,12 +2298,12 @@ export default function DriverApp() {
             {/* Quick Chips */}
             <div className="flex flex-wrap gap-1.5 mt-2">
               {[
-                "⛽ Diesel 5L",
-                "🛣️ Toll Gate",
-                "🅿️ Parking Slip",
-                "🔧 Tyre Puncture",
-                "🍱 Food & Tea",
-                "💧 Vehicle Wash"
+                "Diesel Fuel",
+                "Toll Gate Fee",
+                "Parking Slip",
+                "Tyre Puncture Repair",
+                "Food & Tea",
+                "Vehicle Wash"
               ].map(chip => (
                 <button
                   key={chip}
