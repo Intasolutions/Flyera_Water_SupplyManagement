@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { 
   LayoutDashboard, 
+  BarChart3,
   Truck, 
   Users, 
   Package, 
@@ -97,6 +98,7 @@ export function Sidebar() {
     { name: "Inventory", href: "/inventory", icon: Package },
     { name: "Clients", href: "/clients", icon: Users },
     { name: "Staff", href: "/staff", icon: Users },
+    { name: "Reports", href: "/reports", icon: BarChart3 },
     { name: "Settings", href: "/settings", icon: Settings },
   ];
 

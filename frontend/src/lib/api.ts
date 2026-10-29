@@ -714,3 +714,66 @@ export const getBottleCreditBalance = (clientId: string) =>
   fetcher<{ balances: { inventory_type_id: string; name: string; balance: number }[] }>(
     `/clients/${clientId}/bottle-credit-balance`
   );
+
+
+// --- Financial & Vehicle Reports ---
+
+export interface FinancialSummaryReport {
+  summary: {
+    total_revenue: number;
+    total_expenses: number;
+    net_profit: number;
+    profit_margin_pct: number;
+    total_cash_collected: number;
+    total_upi_collected: number;
+    total_credit_sales: number;
+    total_deliveries_count: number;
+    total_bottles_delivered: number;
+    total_trips: number;
+    inhand_cash_spent: number;
+    personal_expenses: number;
+    morning_petty_cash_total: number;
+    petty_cash_to_return: number;
+  };
+  expense_categories: {
+    category: string;
+    amount: number;
+    percentage: number;
+    count: number;
+  }[];
+  vehicle_reports: {
+    vehicle_id: string;
+    plate_number: string;
+    model: string;
+    capacity: number;
+    assigned_driver: string;
+    trips_count: number;
+    bottles_delivered: number;
+    gross_revenue: number;
+    cash_collected: number;
+    upi_collected: number;
+    credit_sales: number;
+    total_expenses: number;
+    inhand_cash_spent: number;
+    personal_expenses: number;
+    net_profit: number;
+    profit_margin_pct: number;
+    petty_cash_allocated: number;
+    petty_cash_returned: number;
+    expenses_breakdown: Record<string, number>;
+  }[];
+  date_filter: {
+    start_date?: string;
+    end_date?: string;
+    vehicle_id?: string;
+  };
+}
+
+export const getFinancialSummaryReport = (params?: {
+  start_date?: string;
+  end_date?: string;
+  vehicle_id?: string;
+}) => {
+  const q = params ? new URLSearchParams(Object.entries(params).filter(([_, v]) => Boolean(v)) as any).toString() : '';
+  return fetcher<FinancialSummaryReport>(`/reports/financial-summary${q ? `?${q}` : ''}`);
+};

@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
 from app import models
-from app.api.routers import users, clients, vehicles, inventory, routes, auth, assignments, deliveries, dashboard, glass, settings, setup, expenses
+from app.api.routers import users, clients, vehicles, inventory, routes, auth, assignments, deliveries, dashboard, glass, settings, setup, expenses, reports
 
 # Create all tables in the database (simple alternative to migrations for now)
 Base.metadata.create_all(bind=engine)
@@ -178,6 +178,7 @@ app.include_router(glass.router, prefix="/api/glass", tags=["glass"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(setup.router, prefix="/api/setup", tags=["setup"])
 app.include_router(expenses.router, prefix="/api/expenses", tags=["expenses"])
+app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 
 @app.get("/")
 def read_root():
