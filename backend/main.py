@@ -12,12 +12,47 @@ Base.metadata.create_all(bind=engine)
 try:
     from sqlalchemy import text
     with engine.connect() as conn:
-        for col in ["latitude REAL", "longitude REAL"]:
+        for col in ["latitude REAL", "longitude REAL", "property_id VARCHAR", "assignment_id VARCHAR"]:
             try:
                 conn.execute(text(f"ALTER TABLE glass_collections ADD COLUMN {col}"))
                 conn.commit()
             except Exception:
                 pass
+        for col in ["business_type VARCHAR DEFAULT 'WATER'"]:
+            try:
+                conn.execute(text(f"ALTER TABLE routes ADD COLUMN {col}"))
+                conn.commit()
+            except Exception:
+                pass
+        for col in ["business_type VARCHAR DEFAULT 'WATER'", "target_capacity_tons REAL DEFAULT 0.0"]:
+            try:
+                conn.execute(text(f"ALTER TABLE assignments ADD COLUMN {col}"))
+                conn.commit()
+            except Exception:
+                pass
+        # Glass Properties table
+        try:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS glass_properties (
+                    id VARCHAR PRIMARY KEY,
+                    name VARCHAR NOT NULL,
+                    category VARCHAR DEFAULT 'Hotel & Resort',
+                    contact_person VARCHAR,
+                    phone VARCHAR,
+                    address VARCHAR,
+                    latitude REAL,
+                    longitude REAL,
+                    route_id VARCHAR REFERENCES routes(id) ON DELETE SET NULL,
+                    pickup_frequency VARCHAR DEFAULT 'Daily',
+                    notes VARCHAR,
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            conn.commit()
+        except Exception:
+            pass
         for col in ["is_active BOOLEAN DEFAULT 1", "token_version INTEGER DEFAULT 1", "driving_license VARCHAR"]:
             try:
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {col}"))

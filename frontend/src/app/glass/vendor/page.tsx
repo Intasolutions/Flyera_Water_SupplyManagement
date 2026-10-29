@@ -16,7 +16,8 @@ import {
   Building2,
   AlertTriangle,
   RefreshCw,
-  Scale
+  Scale,
+  IndianRupee
 } from "lucide-react";
 import { createGlassVendorPickup, getGlassVendorPickups, getGlassInventoryList } from "@/lib/api";
 import { toast } from "react-hot-toast";
@@ -26,6 +27,7 @@ export default function GlassVendorPage() {
   const [vendorName, setVendorName] = useState("");
   const [glassType, setGlassType] = useState<"white" | "mixed">("white");
   const [tons, setTons] = useState("");
+  const [pricePerTon, setPricePerTon] = useState("5500");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -36,13 +38,39 @@ export default function GlassVendorPage() {
     return glassVendorPickups.reduce((sum, p) => sum + (p.tons || 0), 0);
   }, [glassVendorPickups]);
 
+  const totalSalesRevenue = useMemo(() => {
+    return glassVendorPickups.reduce((sum, p) => {
+      const rate = p.pricePerTon ?? p.price_per_ton ?? (p.type === "white" ? 5500 : 3800);
+      return sum + ((p.tons || 0) * rate);
+    }, 0);
+  }, [glassVendorPickups]);
+
+  const handleTypeChange = (type: "white" | "mixed") => {
+    setGlassType(type);
+    if (type === "white" && (!pricePerTon || pricePerTon === "3800")) {
+      setPricePerTon("5500");
+    } else if (type === "mixed" && (!pricePerTon || pricePerTon === "5500")) {
+      setPricePerTon("3800");
+    }
+  };
+
+  const numTons = parseFloat(tons) || 0;
+  const numRate = parseFloat(pricePerTon) || 0;
+  const calculatedTotal = numTons * numRate;
+
   const handlePickup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     const t = parseFloat(tons);
+    const r = parseFloat(pricePerTon);
 
     if (!vendorName.trim() || !t || t <= 0) {
       setError("Please provide a valid vendor company name and tonnage.");
+      return;
+    }
+
+    if (!r || r <= 0) {
+      setError("Please enter a valid rate / price per ton (INR).");
       return;
     }
 
@@ -56,15 +84,16 @@ export default function GlassVendorPage() {
     }
 
     setIsSubmitting(true);
-    recordVendorPickup(glassType, t, vendorName.trim());
+    recordVendorPickup(glassType, t, vendorName.trim(), r);
 
     try {
       await createGlassVendorPickup({
         vendor_name: vendorName.trim(),
         type: glassType,
-        tons: t
+        tons: t,
+        price_per_ton: r
       });
-      toast.success("Vendor dispatch recorded successfully!");
+      toast.success(`Vendor dispatch recorded! ${t.toFixed(1)} T @ ₹${r.toLocaleString("en-IN")}/T`);
       setVendorName("");
       setTons("");
     } catch (err: any) {
@@ -114,12 +143,12 @@ export default function GlassVendorPage() {
             category="Outbound Sales"
           />
           <StatCard
-            label="Vendor Shipments"
-            value={glassVendorPickups.length}
-            subtext="Partner factory gate-outs"
-            icon={<Building2 className="w-6 h-6" />}
+            label="Total Sales Revenue"
+            value={`₹${totalSalesRevenue.toLocaleString("en-IN")}`}
+            subtext={`${glassVendorPickups.length} vendor dispatches`}
+            icon={<IndianRupee className="w-6 h-6" />}
             color="amber"
-            category="Shipments"
+            category="Revenue"
           />
         </div>
 
@@ -166,10 +195,10 @@ export default function GlassVendorPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
-                      onClick={() => setGlassType("white")}
+                      onClick={() => handleTypeChange("white")}
                       className={`p-3 rounded-xl border text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${glassType === "white"
-                          ? "bg-sky-50 border-sky-300 text-sky-700 ring-2 ring-sky-200/50 shadow-xs"
-                          : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                        ? "bg-sky-50 border-sky-300 text-sky-700 ring-2 ring-sky-200/50 shadow-xs"
+                        : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
                         }`}
                     >
                       <span>Flint (White)</span>
@@ -180,10 +209,10 @@ export default function GlassVendorPage() {
 
                     <button
                       type="button"
-                      onClick={() => setGlassType("mixed")}
+                      onClick={() => handleTypeChange("mixed")}
                       className={`p-3 rounded-xl border text-xs font-black uppercase tracking-wider transition-all flex flex-col items-center gap-1 ${glassType === "mixed"
-                          ? "bg-purple-50 border-purple-300 text-purple-700 ring-2 ring-purple-200/50 shadow-xs"
-                          : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                        ? "bg-purple-50 border-purple-300 text-purple-700 ring-2 ring-purple-200/50 shadow-xs"
+                        : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
                         }`}
                     >
                       <span>Mixed / Amber</span>
@@ -194,30 +223,69 @@ export default function GlassVendorPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-xs font-black uppercase tracking-wider text-slate-700 mb-2 block">
-                    Weight Dispatched (Tons) *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    required
-                    value={tons}
-                    onChange={e => setTons(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 outline-none text-slate-800 font-black text-lg focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all shadow-xs"
-                    placeholder="e.g. 4.5"
-                  />
-                </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-black uppercase tracking-wider text-slate-700 mb-2 block">
+                        Weight (Tons) *
+                      </label>
+                      <input
+                        type="number"
+                        step="0.1"
+                        required
+                        value={tons}
+                        onChange={e => setTons(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 outline-none text-slate-800 font-black text-lg focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all shadow-xs"
+                        placeholder="e.g. 4.5"
+                      />
+                    </div>
 
-                <Button
-                  variant="primary"
-                  fullWidth
-                  disabled={isSubmitting}
-                  className="py-3.5 text-sm font-black shadow-md mt-2"
-                  icon={<ArrowUpRight className="w-4 h-4" />}
-                >
-                  {isSubmitting ? "Recording..." : "Authorize Gate-Out & Deduct Stock"}
-                </Button>
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="text-xs font-black uppercase tracking-wider text-slate-700 block">
+                          Rate / Ton (₹) *
+                        </label>
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-black text-slate-400 text-sm">₹</span>
+                        <input
+                          type="number"
+                          step="50"
+                          required
+                          value={pricePerTon}
+                          onChange={e => setPricePerTon(e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-3 outline-none text-slate-800 font-black text-lg focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all shadow-xs"
+                          placeholder={glassType === "white" ? "5500" : "3800"}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Live Invoice Preview */}
+                  {calculatedTotal > 0 && (
+                    <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">
+                          Calculated Sale Invoice
+                        </span>
+                        <span className="text-xs text-emerald-700 font-semibold">
+                          {numTons.toFixed(1)} Tons × ₹{numRate.toLocaleString("en-IN")}/T
+                        </span>
+                      </div>
+                      <span className="text-lg font-black text-emerald-900 font-mono">
+                        ₹{calculatedTotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  )}
+
+                  <Button
+                    variant="primary"
+                    fullWidth
+                    disabled={isSubmitting}
+                    className="py-3.5 text-sm font-black shadow-md mt-2"
+                    icon={<ArrowUpRight className="w-4 h-4" />}
+                  >
+                    {isSubmitting ? "Recording..." : "Authorize Gate-Out & Deduct Stock"}
+                  </Button>
               </form>
             </div>
           </div>
@@ -245,39 +313,51 @@ export default function GlassVendorPage() {
                     <p className="text-slate-400 text-xs mt-1 font-medium">Use the gate-out form to record scrap handed over to buyers.</p>
                   </div>
                 ) : (
-                  glassVendorPickups.map(pickup => (
-                    <div
-                      key={pickup.id}
-                      className="p-4 bg-white/90 rounded-2xl border border-slate-100 flex justify-between items-center shadow-xs"
-                    >
-                      <div>
-                        <p className="font-black text-slate-800 text-sm">{pickup.vendorName}</p>
-                        <p className="text-xs text-slate-400 font-medium mt-0.5">
-                          {new Date(pickup.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} at{" "}
-                          {new Date(pickup.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        </p>
-                      </div>
+                  glassVendorPickups.map(pickup => {
+                    const rate = pickup.pricePerTon ?? pickup.price_per_ton ?? (pickup.type === "white" ? 5500 : 3800);
+                      const billAmt = (pickup.tons || 0) * rate;
+                      return (
+                      <div
+                        key={pickup.id}
+                        className="p-4 bg-white/90 rounded-2xl border border-slate-100 flex justify-between items-center shadow-xs"
+                      >
+                        <div>
+                          <p className="font-black text-slate-800 text-sm">{pickup.vendorName || (pickup as any).vendor_name}</p>
+                          <p className="text-xs text-slate-400 font-medium mt-0.5">
+                            {new Date(pickup.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} at{" "}
+                            {new Date(pickup.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </p>
+                          <p className="text-xs font-bold text-emerald-700 mt-1 font-mono">
+                            Rate: ₹{rate.toLocaleString("en-IN")}/Ton
+                          </p>
+                        </div>
 
-                      <div className="text-right">
-                        <span className="text-base font-black text-slate-800 block">
-                          {pickup.tons} Tons
-                        </span>
-                        <span
-                          className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md inline-block mt-0.5 ${pickup.type === "white"
-                              ? "bg-sky-50 text-sky-700 border border-sky-100"
-                              : "bg-purple-50 text-purple-700 border border-purple-100"
-                            }`}
-                        >
-                          {pickup.type} Cullet
-                        </span>
-                      </div>
-                    </div>
-                  ))
+                          <div className="text-right">
+                            <span className="text-base font-black text-slate-900 block font-mono">
+                              ₹{billAmt.toLocaleString("en-IN")}
+                            </span>
+                            <div className="flex items-center justify-end gap-1.5 mt-0.5">
+                              <span className="text-xs font-bold text-slate-500">
+                                {pickup.tons} Tons
+                              </span>
+                              <span
+                                className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md inline-block ${pickup.type === "white"
+                                  ? "bg-sky-50 text-sky-700 border border-sky-100"
+                                  : "bg-purple-50 text-purple-700 border border-purple-100"
+                                  }`}
+                              >
+                                {pickup.type} Cullet
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                  })
                 )}
-              </div>
+                    </div>
+            </div>
             </div>
           </div>
-        </div>
       </main>
     </div>
   );

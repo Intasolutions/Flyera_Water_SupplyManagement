@@ -73,6 +73,7 @@ class UserResponse(BaseModel):
 class RouteBase(BaseModel):
     name: str
     area: Optional[str] = None
+    business_type: Optional[str] = "WATER"
 
 class RouteCreate(RouteBase):
     pass
@@ -227,6 +228,8 @@ class AssignmentBase(BaseModel):
     helper_id: Optional[str] = None
     route_id: Optional[str] = None
     status: str = "PENDING"
+    business_type: Optional[str] = "WATER"
+    target_capacity_tons: Optional[float] = 0.0
 
 class AssignmentCreate(AssignmentBase):
     allocations: List[AllocationCreate] = []
@@ -238,6 +241,8 @@ class AssignmentUpdate(BaseModel):
     helper_id: Optional[str] = None
     route_id: Optional[str] = None
     status: Optional[str] = None
+    business_type: Optional[str] = None
+    target_capacity_tons: Optional[float] = None
     allocations: Optional[List[AllocationCreate]] = None
 
 class AssignmentResponse(AssignmentBase):
@@ -319,7 +324,49 @@ class GlassInventoryResponse(GlassInventoryBase):
     class Config:
         from_attributes = True
 
+# --- Glass Property Schemas ---
+class GlassPropertyBase(BaseModel):
+    name: str
+    category: str = "Hotel & Resort"
+    contact_person: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    route_id: Optional[str] = None
+    pickup_frequency: str = "Daily"
+    notes: Optional[str] = None
+    is_active: bool = True
+
+class GlassPropertyCreate(GlassPropertyBase):
+    pass
+
+class GlassPropertyUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    contact_person: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    route_id: Optional[str] = None
+    pickup_frequency: Optional[str] = None
+    notes: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class GlassPropertyResponse(GlassPropertyBase):
+    id: str
+    created_at: datetime
+    updated_at: datetime
+    route_name: Optional[str] = None
+    total_tons_collected: float = 0.0
+
+    class Config:
+        from_attributes = True
+
 class GlassCollectionBase(BaseModel):
+    property_id: Optional[str] = None
+    assignment_id: Optional[str] = None
     driver_id: Optional[str] = None
     driver_name: Optional[str] = None
     vehicle: str

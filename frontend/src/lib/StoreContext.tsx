@@ -66,6 +66,10 @@ export type GlassCollection = {
   driverName: string;
   driver_id?: string;
   driver_name?: string;
+  property_id?: string;
+  propertyId?: string;
+  assignment_id?: string;
+  assignmentId?: string;
   vehicle: string;
   property: string;
   location?: string;
@@ -83,7 +87,7 @@ export type GlassCollection = {
 export type GlassSeparation = {
   id: string;
   staffId: string;
-  tonsSeparated: number; 
+  tonsSeparated: number;
   whiteTons: number;
   mixedTons: number;
   date: string;
@@ -135,7 +139,7 @@ interface StoreContextType {
   dropGlassAtGodown: (collectionId: string) => void;
   dropAllGlassAtGodown: (driverId: string) => void;
   separateGlass: (collectionId: string, whiteTons: number, mixedTons: number, staffId: string) => void;
-  recordVendorPickup: (type: "white" | "mixed", tons: number, vendorName: string) => void;
+  recordVendorPickup: (type: "white" | "mixed", tons: number, vendorName: string, pricePerTon?: number) => void;
 }
 
 const defaultClients: Client[] = [];
@@ -166,7 +170,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [glassInventory, setGlassInventory] = useState<GlassInventory[]>(defaultGlassInventory);
   const [glassCollections, setGlassCollections] = useState<GlassCollection[]>(defaultGlassCollections);
   const [glassVendorPickups, setGlassVendorPickups] = useState<GlassVendorPickup[]>(defaultGlassVendorPickups);
-  
+
   const [isLoaded, setIsLoaded] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
@@ -199,13 +203,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (savedAssignments) setAssignments(JSON.parse(savedAssignments));
     if (savedStaff) setStaff(JSON.parse(savedStaff));
     if (savedRoutes) setRoutes(JSON.parse(savedRoutes));
-    
+
     if (savedGlassInv) setGlassInventory(JSON.parse(savedGlassInv));
     if (savedGlassColl) setGlassCollections(JSON.parse(savedGlassColl));
     if (savedGlassVend) setGlassVendorPickups(JSON.parse(savedGlassVend));
     if (savedRole) setCurrentUserRole(savedRole as AppRole);
     if (savedBusiness) setActiveBusiness(savedBusiness as AppBusiness);
-    
+
     setIsLoaded(true);
 
     // Sync live glass data from backend only when Glass business or glass route is active
@@ -248,7 +252,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             date: p.date || new Date().toISOString()
           })));
         }
-      }).catch(() => {});
+      }).catch(() => { });
     }
   }, []);
 
@@ -260,7 +264,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("aqua_assignments_v2", JSON.stringify(assignments));
     localStorage.setItem("aqua_staff_v2", JSON.stringify(staff));
     localStorage.setItem("aqua_routes_v2", JSON.stringify(routes));
-    
+
     localStorage.setItem("glass_inventory_v2", JSON.stringify(glassInventory));
     localStorage.setItem("glass_collections_v2", JSON.stringify(glassCollections));
     localStorage.setItem("glass_vendors_v2", JSON.stringify(glassVendorPickups));
@@ -269,11 +273,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [clients, inventory, assignments, staff, routes, glassInventory, glassCollections, glassVendorPickups, currentUserRole, activeBusiness, isLoaded]);
 
   const addClient = (c: Client) => setClients([...clients, c]);
-  
+
   const addInventoryItem = (i: Inventory) => setInventory([...inventory, i]);
 
   const updateInventory = (id: string, fullDelta: number, emptyDelta: number, damagedDelta: number) => {
-    setInventory(prev => prev.map(inv => 
+    setInventory(prev => prev.map(inv =>
       inv.id === id ? { ...inv, full: inv.full + fullDelta, empty: inv.empty + emptyDelta, damaged: inv.damaged + damagedDelta } : inv
     ));
   };
@@ -285,18 +289,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   };
 
   const completeAssignment = (id: string) => {
-    setAssignments(prev => prev.map(a => 
+    setAssignments(prev => prev.map(a =>
       a.id === id ? { ...a, status: "completed", progress: 100 } : a
     ));
   };
 
   const completeDelivery = (assignmentId: string, clientId: string, fullDelivered: number, pointsEarned: number, paymentMethod: string) => {
     // 1. Update Client history & points
-    setClients(prev => prev.map(c => 
+    setClients(prev => prev.map(c =>
       c.id === clientId ? { ...c, points: c.points + pointsEarned, history: `Last: ${fullDelivered}x 20L (Today via ${paymentMethod})` } : c
     ));
     // 2. Update Main Inventory (Deduct full, add empty)
-    updateInventory("i1", -fullDelivered, fullDelivered, 0); 
+    updateInventory("i1", -fullDelivered, fullDelivered, 0);
     // 3. Update Assignment Stock & Progress
     setAssignments(prev => prev.map(a => {
       if (a.id === assignmentId) {
@@ -315,7 +319,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addStaff = (s: Staff) => setStaff([...staff, s]);
-  
+
   const addRoute = (r: Route) => setRoutes([...routes, r]);
 
   // Glass Actions
@@ -328,9 +332,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   };
 
   const dropAllGlassAtGodown = (driverId: string) => {
-    setGlassCollections(prev => prev.map(c => 
-      (c.driverId === driverId && c.status === "collected") 
-        ? { ...c, status: "dropped_at_godown" } 
+    setGlassCollections(prev => prev.map(c =>
+      (c.driverId === driverId && c.status === "collected")
+        ? { ...c, status: "dropped_at_godown" }
         : c
     ));
   };
@@ -338,7 +342,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const separateGlass = (collectionId: string, whiteTons: number, mixedTons: number, staffId: string) => {
     // 1. Mark collection as separated
     setGlassCollections(prev => prev.map(c => c.id === collectionId ? { ...c, status: "separated" } : c));
-    
+
     // 2. Increase white and mixed inventory
     setGlassInventory(prev => prev.map(inv => {
       if (inv.type === "white") return { ...inv, tons: inv.tons + whiteTons };
@@ -347,42 +351,44 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }));
   };
 
-  const recordVendorPickup = (type: "white" | "mixed", tons: number, vendorName: string) => {
-    const pickup: GlassVendorPickup = {
-      id: Date.now().toString(),
-      vendorName,
-      type,
-      tons,
-      date: new Date().toISOString()
+    const recordVendorPickup = (type: "white" | "mixed", tons: number, vendorName: string, pricePerTon?: number) => {
+      const pickup: GlassVendorPickup = {
+        id: Date.now().toString(),
+        vendorName,
+        type,
+        tons,
+        pricePerTon: pricePerTon || 0,
+        price_per_ton: pricePerTon || 0,
+        date: new Date().toISOString()
+      };
+      setGlassVendorPickups(prev => [pickup, ...prev]);
+
+      // Reduce separated inventory
+      setGlassInventory(prev => prev.map(inv => {
+        if (inv.type === type) return { ...inv, tons: Math.max(0, inv.tons - tons) };
+        return inv;
+      }));
     };
-    setGlassVendorPickups([...glassVendorPickups, pickup]);
 
-    // Reduce separated inventory
-    setGlassInventory(prev => prev.map(inv => {
-      if (inv.type === type) return { ...inv, tons: Math.max(0, inv.tons - tons) };
-      return inv;
-    }));
+    if (!isLoaded) return null; // Avoid hydration mismatch
+
+    return (
+      <StoreContext.Provider value={{
+        currentUserRole, activeBusiness, setCurrentUserRole, setActiveBusiness,
+        clients, inventory, assignments, staff, routes,
+        addClient, addInventoryItem, updateInventory,
+        addAssignment, deleteAssignment, completeAssignment, completeDelivery,
+        addStaff, addRoute,
+        glassInventory, glassCollections, glassVendorPickups,
+        addGlassCollection, dropGlassAtGodown, dropAllGlassAtGodown, separateGlass, recordVendorPickup
+      }}>
+        {children}
+      </StoreContext.Provider>
+    );
+  }
+
+  export const useStore = () => {
+    const context = useContext(StoreContext);
+    if (!context) throw new Error("useStore must be used within a StoreProvider");
+    return context;
   };
-
-  if (!isLoaded) return null; // Avoid hydration mismatch
-
-  return (
-    <StoreContext.Provider value={{ 
-      currentUserRole, activeBusiness, setCurrentUserRole, setActiveBusiness,
-      clients, inventory, assignments, staff, routes, 
-      addClient, addInventoryItem, updateInventory, 
-      addAssignment, deleteAssignment, completeAssignment, completeDelivery, 
-      addStaff, addRoute,
-      glassInventory, glassCollections, glassVendorPickups,
-      addGlassCollection, dropGlassAtGodown, dropAllGlassAtGodown, separateGlass, recordVendorPickup
-    }}>
-      {children}
-    </StoreContext.Provider>
-  );
-}
-
-export const useStore = () => {
-  const context = useContext(StoreContext);
-  if (!context) throw new Error("useStore must be used within a StoreProvider");
-  return context;
-};

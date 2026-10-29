@@ -34,11 +34,13 @@ class Route(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     name = Column(String, nullable=False)
     area = Column(String, nullable=True)
+    business_type = Column(String, default="WATER", index=True) # "WATER" or "GLASS"
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     clients = relationship("Client", back_populates="route")
     assignments = relationship("Assignment", back_populates="route")
+    glass_properties = relationship("GlassProperty", back_populates="route")
 
 class Client(Base):
     __tablename__ = "clients"
@@ -128,6 +130,8 @@ class Assignment(Base):
     helper_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
     route_id = Column(String, ForeignKey("routes.id"), nullable=True, index=True)
     status = Column(String, default="PENDING", index=True)
+    business_type = Column(String, default="WATER", index=True) # "WATER" or "GLASS"
+    target_capacity_tons = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -139,6 +143,7 @@ class Assignment(Base):
     allocations = relationship("Allocation", back_populates="assignment", cascade="all, delete-orphan")
     deliveries = relationship("Delivery", back_populates="assignment", cascade="all, delete-orphan")
     expenses = relationship("TripExpense", back_populates="assignment", cascade="all, delete-orphan")
+    glass_collections = relationship("GlassCollection", back_populates="assignment")
 
     @property
     def deliveries_count(self) -> int:
@@ -200,6 +205,27 @@ class GlassInventory(Base):
     tons = Column(Float, default=0.0)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+class GlassProperty(Base):
+    __tablename__ = "glass_properties"
+    
+    id = Column(String, primary_key=True, default=generate_uuid)
+    name = Column(String, nullable=False)
+    category = Column(String, default="Hotel & Resort") # "Hotel & Resort", "Bar & Pub", "Restaurant", "Commercial Complex", "Other"
+    contact_person = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    address = Column(String, nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    route_id = Column(String, ForeignKey("routes.id"), nullable=True, index=True)
+    pickup_frequency = Column(String, default="Daily") # "Daily", "Weekly", "Bi-Weekly", "On-Demand"
+    notes = Column(String, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    route = relationship("Route", back_populates="glass_properties")
+    collections = relationship("GlassCollection", back_populates="property_rel")
+
 class GlassCollection(Base):
     __tablename__ = "glass_collections"
     
@@ -216,7 +242,12 @@ class GlassCollection(Base):
     status = Column(String, default="collected") # "collected", "dropped_at_godown", "separated"
     date = Column(DateTime, default=datetime.utcnow)
     
+    property_id = Column(String, ForeignKey("glass_properties.id"), nullable=True, index=True)
+    assignment_id = Column(String, ForeignKey("assignments.id"), nullable=True, index=True)
+    
     driver = relationship("User", foreign_keys=[driver_id])
+    property_rel = relationship("GlassProperty", back_populates="collections")
+    assignment = relationship("Assignment", back_populates="glass_collections")
 
 class GlassSeparation(Base):
     __tablename__ = "glass_separations"

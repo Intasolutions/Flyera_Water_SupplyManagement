@@ -3,26 +3,27 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { 
-  LayoutDashboard, 
-  Truck, 
-  Users, 
-  Package, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Truck,
+  Users,
+  Package,
+  Settings,
   Droplet,
-  Menu, 
-  X, 
-  Map, 
-  Recycle, 
-  Factory, 
-  Warehouse, 
-  LogOut, 
+  Menu,
+  X,
+  Map,
+  Recycle,
+  Factory,
+  Warehouse,
+  LogOut,
   ChevronRight,
   Download,
   Smartphone,
   MoreHorizontal,
   Share,
-  PlusSquare
+  PlusSquare,
+  FileText
 } from "lucide-react";
 import { useStore, AppRole, AppBusiness } from "@/lib/StoreContext";
 
@@ -37,7 +38,7 @@ export function Sidebar() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const isStandaloneMode = 
+      const isStandaloneMode =
         window.matchMedia("(display-mode: standalone)").matches ||
         (window.navigator as any).standalone === true;
       setIsStandalone(isStandaloneMode);
@@ -83,7 +84,7 @@ export function Sidebar() {
           const parsed = JSON.parse(raw);
           setUserRole(parsed.role?.toUpperCase() || "");
         }
-      } catch (e) {}
+      } catch (e) { }
     }
   }, []);
 
@@ -102,12 +103,15 @@ export function Sidebar() {
 
   const glassLinks = [
     { name: "Glass Dashboard", href: "/glass", icon: LayoutDashboard },
-    ...(isDriver ? [{ name: "Driver Collections", href: "/glass/driver", icon: Truck }] : []),
+    { name: "Routes & Dispatch", href: "/glass/dispatch", icon: Map },
+    { name: "Properties", href: "/glass/properties", icon: Users },
+    { name: "Driver Collections", href: "/glass/driver", icon: Truck },
     { name: "Godown Separation", href: "/glass/godown", icon: Factory },
     { name: "Vendor Pickups", href: "/glass/vendor", icon: Warehouse },
+    { name: "CA Reports", href: "/glass/reports", icon: FileText },
   ];
 
-  const isGlass = currentUserRole === "GlassStaff" || (currentUserRole === "Owner" && activeBusiness === "Glass");
+  const isGlass = (pathname && pathname.startsWith("/glass")) || currentUserRole === "GlassStaff" || (currentUserRole === "Owner" && activeBusiness === "Glass");
   const rawLinks = isGlass ? glassLinks : waterLinks;
   const links = rawLinks.filter(link => {
     // Only Admin / Owner can see Settings
@@ -127,9 +131,10 @@ export function Sidebar() {
   // Quick bottom bar links for mobile phone navigation
   const mobileQuickLinks = isGlass ? [
     { name: "Dashboard", href: "/glass", icon: LayoutDashboard },
-    ...(isDriver ? [{ name: "Intake", href: "/glass/driver", icon: Truck }] : []),
+    { name: "Dispatch", href: "/glass/dispatch", icon: Map },
+    { name: "Properties", href: "/glass/properties", icon: Users },
+    { name: "Driver", href: "/glass/driver", icon: Truck },
     { name: "Godown", href: "/glass/godown", icon: Factory },
-    { name: "Vendors", href: "/glass/vendor", icon: Warehouse },
   ] : [
     { name: "Home", href: "/", icon: LayoutDashboard },
     { name: "Dispatch", href: "/deliveries", icon: Truck },
@@ -142,7 +147,7 @@ export function Sidebar() {
       {/* Mobile Top Header */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white/95 backdrop-blur-xl border-b border-black/5 flex items-center justify-between px-4 z-40 shadow-xs">
         <div className="flex items-center gap-2.5">
-          <button 
+          <button
             onClick={() => setIsOpen(true)}
             className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-700 bg-slate-100 hover:bg-slate-200 active:scale-95 transition-all"
             aria-label="Open navigation menu"
@@ -150,11 +155,10 @@ export function Sidebar() {
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2.5">
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white shadow-sm ${
-              isGlass 
-                ? "bg-gradient-to-tr from-emerald-600 to-teal-500 shadow-emerald-500/20" 
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white shadow-sm ${isGlass
+                ? "bg-gradient-to-tr from-emerald-600 to-teal-500 shadow-emerald-500/20"
                 : "bg-gradient-to-tr from-sky-600 to-blue-500 shadow-sky-500/20"
-            }`}>
+              }`}>
               {isGlass ? <Recycle className="w-4 h-4" /> : <Droplet className="w-4 h-4" />}
             </div>
             <div>
@@ -183,7 +187,7 @@ export function Sidebar() {
 
       {/* Backdrop for Mobile Drawer */}
       {isOpen && (
-        <div 
+        <div
           onClick={() => setIsOpen(false)}
           className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 md:hidden animate-fade-in"
         />
@@ -191,20 +195,18 @@ export function Sidebar() {
 
       {/* Sidebar Navigation Drawer (Sticky In-Flow on Desktop, Overlay Drawer on Mobile) */}
       <aside
-        className={`w-72 max-w-[85vw] md:max-w-72 flex flex-col p-5 border-r border-slate-200/80 bg-white transition-transform duration-300 fixed inset-y-0 left-0 h-full min-h-dvh shadow-2xl z-50 md:sticky md:top-0 md:h-screen md:shrink-0 md:translate-x-0 md:shadow-none md:z-30 ${
-          isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-        }`}
+        className={`w-72 max-w-[85vw] md:max-w-72 flex flex-col p-5 border-r border-slate-200/80 bg-white transition-transform duration-300 fixed inset-y-0 left-0 h-full min-h-dvh shadow-2xl z-50 md:sticky md:top-0 md:h-screen md:shrink-0 md:translate-x-0 md:shadow-none md:z-30 ${isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+          }`}
       >
         {/* Brand Header */}
         <div className="flex flex-col mb-4">
           <div className="flex items-center justify-between mb-4 pt-1">
             <div className="flex items-center gap-3">
               <div
-                className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white shadow-md transition-transform hover:scale-105 shrink-0 ${
-                  isGlass 
-                    ? "bg-gradient-to-tr from-emerald-600 to-teal-500 shadow-emerald-500/25" 
+                className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white shadow-md transition-transform hover:scale-105 shrink-0 ${isGlass
+                    ? "bg-gradient-to-tr from-emerald-600 to-teal-500 shadow-emerald-500/25"
                     : "bg-gradient-to-tr from-sky-600 to-blue-500 shadow-sky-500/25"
-                }`}
+                  }`}
               >
                 {isGlass ? <Recycle className="w-6 h-6" /> : <Droplet className="w-6 h-6" />}
               </div>
@@ -233,22 +235,20 @@ export function Sidebar() {
             <div className="p-1 bg-slate-100/80 border border-slate-200/60 rounded-xl mb-2 flex gap-1">
               <button
                 onClick={() => setActiveBusiness("Water")}
-                className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                  activeBusiness === "Water"
+                className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${activeBusiness === "Water"
                     ? "bg-white shadow-xs text-sky-600"
                     : "text-slate-600 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 <Droplet className="w-3.5 h-3.5" />
                 Water
               </button>
               <button
                 onClick={() => setActiveBusiness("Glass")}
-                className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                  activeBusiness === "Glass"
+                className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${activeBusiness === "Glass"
                     ? "bg-white shadow-xs text-emerald-600"
                     : "text-slate-600 hover:text-slate-900"
-                }`}
+                  }`}
               >
                 <Recycle className="w-3.5 h-3.5" />
                 Glass
@@ -262,27 +262,25 @@ export function Sidebar() {
           {links.map(link => {
             const isActive = pathname === link.href;
             const Icon = link.icon;
-            
+
             return (
               <Link
                 key={link.name}
                 href={link.href}
                 onClick={() => setIsOpen(false)}
-                className={`group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${
-                  isActive 
+                className={`group flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${isActive
                     ? isGlass
                       ? "bg-emerald-50 text-emerald-700 font-bold shadow-2xs border border-emerald-100"
                       : "bg-sky-50 text-primary font-bold shadow-2xs border border-sky-100"
                     : "text-slate-600 hover:bg-slate-100/70 hover:text-slate-900 border border-transparent"
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-3">
                   <Icon
-                    className={`w-4.5 h-4.5 shrink-0 transition-transform group-hover:scale-105 ${
-                      isActive 
-                        ? isGlass ? "text-emerald-600" : "text-primary" 
+                    className={`w-4.5 h-4.5 shrink-0 transition-transform group-hover:scale-105 ${isActive
+                        ? isGlass ? "text-emerald-600" : "text-primary"
                         : "text-slate-400 group-hover:text-slate-600"
-                    }`}
+                      }`}
                   />
                   <span>{link.name}</span>
                 </div>
@@ -320,11 +318,10 @@ export function Sidebar() {
           <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/60 flex items-center justify-between gap-3 shadow-2xs">
             <div className="flex items-center gap-2.5 min-w-0">
               <div
-                className={`w-9 h-9 rounded-lg flex items-center justify-center text-white text-xs font-bold shadow-2xs shrink-0 ${
-                  isGlass 
-                    ? "bg-gradient-to-tr from-emerald-600 to-teal-500" 
+                className={`w-9 h-9 rounded-lg flex items-center justify-center text-white text-xs font-bold shadow-2xs shrink-0 ${isGlass
+                    ? "bg-gradient-to-tr from-emerald-600 to-teal-500"
                     : "bg-gradient-to-tr from-sky-600 to-blue-500"
-                }`}
+                  }`}
               >
                 {currentUserRole === "Owner" ? "AD" : currentUserRole === "GlassStaff" ? "GS" : currentUserRole === "WaterStaff" ? "WS" : "DR"}
               </div>
@@ -374,13 +371,12 @@ export function Sidebar() {
             <Link
               key={link.name}
               href={link.href}
-              className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-2xl transition-all ${
-                isActive
-                  ? isGlass 
-                    ? "text-emerald-700 font-black" 
+              className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-2xl transition-all ${isActive
+                  ? isGlass
+                    ? "text-emerald-700 font-black"
                     : "text-primary font-black"
                   : "text-slate-600 font-bold hover:text-slate-900"
-              }`}
+                }`}
             >
               <Icon className="w-5 h-5" />
               <span className="text-xs font-bold leading-tight mt-0.5">{link.name}</span>
@@ -391,11 +387,10 @@ export function Sidebar() {
         {/* 5th Tab: Opens Full Menu Drawer */}
         <button
           onClick={() => setIsOpen(true)}
-          className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-2xl transition-all ${
-            isOpen 
-              ? "text-primary font-black" 
+          className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-2xl transition-all ${isOpen
+              ? "text-primary font-black"
               : "text-slate-600 font-bold hover:text-slate-900"
-          }`}
+            }`}
           aria-label="Open full menu"
         >
           <MoreHorizontal className="w-5 h-5" />

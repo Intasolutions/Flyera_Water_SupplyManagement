@@ -458,6 +458,78 @@ export const revokeAllUserTokens = (userId: string) =>
 export const getCurrentUser = () => fetcher<User>('/auth/me');
 
 // --- Glass Business API ---
+export interface GlassProperty {
+  id: string;
+  name: string;
+  category: string;
+  contact_person?: string;
+  contactPerson?: string;
+  phone?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  route_id?: string | null;
+  routeId?: string | null;
+  route_name?: string | null;
+  routeName?: string | null;
+  pickup_frequency?: string;
+  pickupFrequency?: string;
+  notes?: string;
+  is_active?: boolean;
+  isActive?: boolean;
+  total_tons_collected?: number;
+  totalTonsCollected?: number;
+  created_at?: string;
+}
+
+export interface GlassRoute {
+  id: string;
+  name: string;
+  area?: string | null;
+  business_type?: string;
+  businessType?: string;
+  properties_count?: number;
+  propertiesCount?: number;
+  created_at?: string;
+}
+
+export interface GlassAssignment {
+  id: string;
+  date: string;
+  vehicle_id: string;
+  vehicleId?: string;
+  vehicle_plate?: string;
+  vehiclePlate?: string;
+  vehicle_model?: string;
+  driver_id: string;
+  driverId?: string;
+  driver_name?: string;
+  driverName?: string;
+  helper_id?: string | null;
+  helperId?: string | null;
+  helper_name?: string | null;
+  helperName?: string | null;
+  route_id?: string | null;
+  routeId?: string | null;
+  route_name?: string | null;
+  routeName?: string | null;
+  route_area?: string | null;
+  status: "PENDING" | "ACTIVE" | "COMPLETED";
+  target_capacity_tons?: number;
+  targetCapacityTons?: number;
+  collected_tons?: number;
+  collectedTons?: number;
+  total_paid?: number;
+  totalPaid?: number;
+  stops_total?: number;
+  stopsTotal?: number;
+  stops_completed?: number;
+  stopsCompleted?: number;
+  total_expense?: number;
+  totalExpense?: number;
+  created_at?: string;
+}
+
 export interface GlassInventory {
   id: string;
   type: "unseparated" | "white" | "mixed";
@@ -467,6 +539,10 @@ export interface GlassInventory {
 
 export interface GlassCollection {
   id: string;
+  property_id?: string;
+  propertyId?: string;
+  assignment_id?: string;
+  assignmentId?: string;
   driver_id?: string;
   driverId?: string;
   driver_name?: string;
@@ -497,6 +573,32 @@ export interface GlassVendorPickup {
 }
 
 export interface GlassStats {
+  todayRevenue?: number;
+  today_revenue?: number;
+  todayExpenses?: number;
+  today_expenses?: number;
+  todayCulletCost?: number;
+  today_cullet_cost?: number;
+  todayTripExpenses?: number;
+  today_trip_expenses?: number;
+  todayProfit?: number;
+  today_profit?: number;
+  todayCollectedTons?: number;
+  today_collected_tons?: number;
+
+  periodRevenue?: number;
+  period_revenue?: number;
+  periodExpenses?: number;
+  period_expenses?: number;
+  periodCulletCost?: number;
+  period_cullet_cost?: number;
+  periodTripExpenses?: number;
+  period_trip_expenses?: number;
+  netProfit?: number;
+  net_profit?: number;
+  profitMarginPercent?: number;
+  profit_margin_percent?: number;
+
   totalCollectedTons: number;
   total_collected_tons?: number;
   totalPaid: number;
@@ -514,8 +616,88 @@ export interface GlassStats {
   inTransitTons: number;
   in_transit_tons?: number;
   inTransitCount: number;
+  totalPropertiesCount?: number;
+  activeAssignmentsCount?: number;
   recentPickups: GlassVendorPickup[];
   recentCollections: GlassCollection[];
+}
+
+export interface GlassReportData {
+  company_name: string;
+  division: string;
+  fiscal_calendar: string;
+  generated_at: string;
+  period: {
+    start_date: string;
+    end_date: string;
+    label: string;
+  };
+  pl_statement: {
+    gross_sales_revenue: number;
+    white_sales_revenue: number;
+    white_sales_tons: number;
+    mixed_sales_revenue: number;
+    mixed_sales_tons: number;
+    total_sales_tons: number;
+    cost_of_materials_purchased: number;
+    total_purchased_tons: number;
+    gross_profit: number;
+    gross_margin_percent: number;
+    operating_expenses: {
+      fuel_and_diesel: number;
+      highway_tolls: number;
+      vehicle_maintenance: number;
+      other_logistics: number;
+      total_operating_expenses: number;
+    };
+    net_operating_profit: number;
+    net_margin_percent: number;
+  };
+  sales_ledger: Array<{
+    id: string;
+    invoice_no: string;
+    date: string;
+    vendor_name: string;
+    type: string;
+    tons: number;
+    price_per_ton: number;
+    total_amount: number;
+  }>;
+  purchases_ledger: Array<{
+    id: string;
+    voucher_no: string;
+    date: string;
+    property_name: string;
+    category: string;
+    location: string;
+    phone: string;
+    tons_collected: number;
+    payment_amount: number;
+    driver_name: string;
+    vehicle: string;
+    status: string;
+  }>;
+  expenses_ledger: Array<{
+    id: string;
+    voucher_no: string;
+    date: string;
+    category: string;
+    amount: number;
+    vehicle: string;
+    reported_by: string;
+    description: string;
+  }>;
+  closing_inventory: Array<{
+    category: string;
+    type: string;
+    quantity_tons: number;
+    benchmark_rate_per_ton: number;
+    valuation_amount: number;
+  }>;
+  inventory_summary: {
+    total_stock_tons: number;
+    total_stock_valuation: number;
+  };
 }
 
 export const getGlassStats = (startDate?: string, endDate?: string) => {
@@ -524,6 +706,14 @@ export const getGlassStats = (startDate?: string, endDate?: string) => {
     url += `?start_date=${startDate}&end_date=${endDate}`;
   }
   return fetcher<GlassStats>(url);
+};
+
+export const getGlassReport = (startDate?: string, endDate?: string) => {
+  const p = new URLSearchParams();
+  if (startDate) p.append('start_date', startDate);
+  if (endDate) p.append('end_date', endDate);
+  const q = p.toString();
+  return fetcher<GlassReportData>(`/glass/reports${q ? `?${q}` : ''}`);
 };
 
 export const getGlassCollections = (status?: string, startDate?: string, endDate?: string) => {
@@ -578,6 +768,78 @@ export const createGlassVendorPickup = (data: {
   });
 
 export const getGlassVendorPickups = () => fetcher<GlassVendorPickup[]>('/glass/vendor-pickups');
+
+// --- Glass Properties ---
+export const getGlassProperties = (routeId?: string, category?: string, search?: string) => {
+  const p = new URLSearchParams();
+  if (routeId) p.append('route_id', routeId);
+  if (category) p.append('category', category);
+  if (search) p.append('search', search);
+  const q = p.toString();
+  return fetcher<GlassProperty[]>(`/glass/properties${q ? `?${q}` : ''}`);
+};
+
+export const createGlassProperty = (data: Partial<GlassProperty>) =>
+  fetcher<GlassProperty>('/glass/properties', { method: 'POST', body: JSON.stringify(data) });
+
+export const updateGlassProperty = (id: string, data: Partial<GlassProperty>) =>
+  fetcher<GlassProperty>(`/glass/properties/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+
+export const deleteGlassProperty = (id: string) =>
+  fetcher<{ message: string }>(`/glass/properties/${id}`, { method: 'DELETE' });
+
+// --- Glass Routes ---
+export const getGlassRoutes = () => fetcher<GlassRoute[]>('/glass/routes');
+
+export const createGlassRoute = (data: { name: string; area?: string }) =>
+  fetcher<GlassRoute>('/glass/routes', { method: 'POST', body: JSON.stringify(data) });
+
+export const updateGlassRoute = (id: string, data: { name?: string; area?: string }) =>
+  fetcher<GlassRoute>(`/glass/routes/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+
+export const deleteGlassRoute = (id: string) =>
+  fetcher<{ message: string }>(`/glass/routes/${id}`, { method: 'DELETE' });
+
+export const assignPropertiesToGlassRoute = (routeId: string, propertyIds: string[]) =>
+  fetcher<{ message: string }>(`/glass/routes/${routeId}/assign-properties`, {
+    method: 'POST',
+    body: JSON.stringify({ property_ids: propertyIds }),
+  });
+
+// --- Glass Fleet & Collection Run Assignments ---
+export const getGlassAssignments = (status?: string, date?: string) => {
+  const p = new URLSearchParams();
+  if (status) p.append('status', status);
+  if (date) p.append('date', date);
+  const q = p.toString();
+  return fetcher<GlassAssignment[]>(`/glass/assignments${q ? `?${q}` : ''}`);
+};
+
+export const createGlassAssignment = (data: {
+  date: string;
+  vehicle_id: string;
+  driver_id: string;
+  helper_id?: string | null;
+  route_id?: string | null;
+  target_capacity_tons?: number;
+  status?: string;
+}) =>
+  fetcher<any>('/glass/assignments', { method: 'POST', body: JSON.stringify(data) });
+
+export const updateGlassAssignment = (id: string, data: any) =>
+  fetcher<any>(`/glass/assignments/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+
+export const completeGlassAssignment = (id: string) =>
+  fetcher<{ id: string; status: string; tons_dropped?: number; message: string }>(
+    `/glass/assignments/${id}/complete`,
+    { method: 'POST' }
+  );
+
+export const reopenGlassAssignment = (id: string) =>
+  fetcher<any>(`/glass/assignments/${id}/reopen`, { method: 'PUT' });
+
+export const deleteGlassAssignment = (id: string) =>
+  fetcher<{ message: string }>(`/glass/assignments/${id}`, { method: 'DELETE' });
 
 // --- System Settings ---
 export const getSettings = () => fetcher<Record<string, any>>('/settings');

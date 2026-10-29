@@ -26,7 +26,11 @@ import {
   Warehouse,
   ChevronRight,
   MapPin,
-  ExternalLink
+  ExternalLink,
+  Building2,
+  Map,
+  Fuel,
+  Wallet
 } from "lucide-react";
 
 export default function GlassDashboardPage() {
@@ -69,6 +73,8 @@ export default function GlassDashboardPage() {
 
     const totalPickupTons = pickups.reduce((acc, p: any) => acc + (p.tons || 0), 0);
     const totalPickupRevenue = pickups.reduce((acc, p: any) => acc + ((p.tons || 0) * (p.price_per_ton || p.pricePerTon || 0)), 0);
+    const netProfit = totalPickupRevenue - totalPaid;
+    const profitMarginPercent = totalPickupRevenue > 0 ? Math.round((netProfit / totalPickupRevenue) * 100) : 0;
 
     return {
       totalCollectedTons,
@@ -78,6 +84,15 @@ export default function GlassDashboardPage() {
       mixedTons,
       totalPickupTons,
       totalPickupRevenue,
+      todayRevenue: 0,
+      todayExpenses: 0,
+      todayCulletCost: 0,
+      todayTripExpenses: 0,
+      todayProfit: 0,
+      periodRevenue: totalPickupRevenue,
+      periodExpenses: totalPaid,
+      netProfit,
+      profitMarginPercent,
       inTransitTons,
       inTransitCount: inTransit.length,
       recentPickups: pickups.slice(0, 6) as any,
@@ -225,21 +240,37 @@ export default function GlassDashboardPage() {
         </header>
 
         {/* Quick Action Navigation Buttons */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8">
           <Link
-            href="/glass/driver"
+            href="/glass/dispatch"
             className="group flex items-center justify-between p-4 bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20 hover:border-emerald-500/40 rounded-2xl transition-all hover:shadow-md"
           >
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-emerald-500 text-white rounded-xl shadow-sm group-hover:scale-105 transition-transform">
+              <div className="p-2.5 bg-emerald-600 text-white rounded-xl shadow-xs group-hover:scale-105 transition-transform">
                 <Truck className="w-5 h-5" />
               </div>
               <div>
-                <p className="font-bold text-text text-sm">Driver Collection Portal</p>
-                <p className="text-xs text-text-muted">Log hotel & property drops</p>
+                <p className="font-bold text-text text-sm">Routes & Dispatch</p>
+                <p className="text-xs text-text-muted">Fleet runs & driver assignments</p>
               </div>
             </div>
-            <ArrowUpRight className="w-5 h-5 text-emerald-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+            <ArrowUpRight className="w-4 h-4 text-emerald-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+          </Link>
+
+          <Link
+            href="/glass/properties"
+            className="group flex items-center justify-between p-4 bg-gradient-to-r from-sky-500/10 to-blue-500/10 border border-sky-500/20 hover:border-sky-500/40 rounded-2xl transition-all hover:shadow-md"
+          >
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-sky-600 text-white rounded-xl shadow-xs group-hover:scale-105 transition-transform">
+                <Building2 className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-bold text-text text-sm">Glass Properties</p>
+                <p className="text-xs text-text-muted">Hotels, bars & resorts directory</p>
+              </div>
+            </div>
+            <ArrowUpRight className="w-4 h-4 text-sky-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
           </Link>
 
           <Link
@@ -247,7 +278,7 @@ export default function GlassDashboardPage() {
             className="group flex items-center justify-between p-4 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 hover:border-amber-500/40 rounded-2xl transition-all hover:shadow-md"
           >
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-sm group-hover:scale-105 transition-transform">
+              <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-xs group-hover:scale-105 transition-transform">
                 <Factory className="w-5 h-5" />
               </div>
               <div>
@@ -255,7 +286,7 @@ export default function GlassDashboardPage() {
                 <p className="text-xs text-text-muted">Process white & mixed cullet</p>
               </div>
             </div>
-            <ArrowUpRight className="w-5 h-5 text-amber-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+            <ArrowUpRight className="w-4 h-4 text-amber-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
           </Link>
 
           <Link
@@ -263,7 +294,7 @@ export default function GlassDashboardPage() {
             className="group flex items-center justify-between p-4 bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/20 hover:border-purple-500/40 rounded-2xl transition-all hover:shadow-md"
           >
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-purple-500 text-white rounded-xl shadow-sm group-hover:scale-105 transition-transform">
+              <div className="p-2.5 bg-purple-500 text-white rounded-xl shadow-xs group-hover:scale-105 transition-transform">
                 <Warehouse className="w-5 h-5" />
               </div>
               <div>
@@ -271,8 +302,131 @@ export default function GlassDashboardPage() {
                 <p className="text-xs text-text-muted">Sell & dispatch sorted glass</p>
               </div>
             </div>
-            <ArrowUpRight className="w-5 h-5 text-purple-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+            <ArrowUpRight className="w-4 h-4 text-purple-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
           </Link>
+        </div>
+
+        {/* Daily Profit & Financial Health Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+          {/* Today's Net Profit Card */}
+          <div className="glass-panel p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <Wallet className="w-3.5 h-3.5 text-emerald-600" /> Today's Net Profit
+                </span>
+                <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                  (currentStats.todayProfit ?? 0) >= 0
+                    ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                    : "bg-rose-50 text-rose-800 border border-rose-200"
+                }`}>
+                  {(currentStats.todayProfit ?? 0) >= 0 ? "Profitable Run" : "Net Outflow"}
+                </span>
+              </div>
+
+              <div className="flex items-baseline gap-2 mt-2">
+                <span className={`text-3xl sm:text-4xl font-black ${
+                  (currentStats.todayProfit ?? 0) >= 0 ? "text-emerald-700" : "text-rose-600"
+                }`}>
+                  ₹{Math.abs(currentStats.todayProfit ?? 0).toLocaleString()}
+                </span>
+                {(currentStats.todayProfit ?? 0) < 0 && (
+                  <span className="text-xs font-bold text-rose-500">Deficit</span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 font-medium mt-1">Real-time daily net earnings</p>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-slate-100 space-y-2 text-xs">
+              <div className="flex justify-between items-center text-slate-600">
+                <span className="flex items-center gap-1 text-slate-500 font-medium">
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-600" /> Vendor Sales:
+                </span>
+                <span className="font-bold text-emerald-700">+₹{(currentStats.todayRevenue ?? 0).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span className="flex items-center gap-1 text-slate-500 font-medium">
+                  <Building2 className="w-3.5 h-3.5 text-blue-600" /> Hotel Payouts:
+                </span>
+                <span className="font-bold text-blue-700">-₹{(currentStats.todayCulletCost ?? 0).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span className="flex items-center gap-1 text-slate-500 font-medium">
+                  <Fuel className="w-3.5 h-3.5 text-rose-500" /> Truck & Fuel:
+                </span>
+                <span className="font-bold text-rose-600">-₹{(currentStats.todayTripExpenses ?? 0).toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Period Net Profit Card */}
+          <div className="glass-panel p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <IndianRupee className="w-3.5 h-3.5 text-sky-600" /> Selected Period Profit
+                </span>
+                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-sky-50 text-sky-800 border border-sky-200">
+                  {currentStats.profitMarginPercent ?? 0}% Margin
+                </span>
+              </div>
+
+              <div className="flex items-baseline gap-2 mt-2">
+                <span className={`text-3xl sm:text-4xl font-black ${
+                  (currentStats.netProfit ?? 0) >= 0 ? "text-slate-800" : "text-rose-600"
+                }`}>
+                  ₹{Math.abs(currentStats.netProfit ?? 0).toLocaleString()}
+                </span>
+                {(currentStats.netProfit ?? 0) < 0 && (
+                  <span className="text-xs font-bold text-rose-500">Net Loss</span>
+                )}
+              </div>
+              <p className="text-xs text-slate-400 font-medium mt-1">For selected date range</p>
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-slate-100 space-y-2 text-xs">
+              <div className="flex justify-between items-center text-slate-600">
+                <span className="text-slate-500 font-medium">Total Mill Revenue:</span>
+                <span className="font-bold text-slate-800">₹{(currentStats.periodRevenue ?? currentStats.totalPickupRevenue ?? 0).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span className="text-slate-500 font-medium">Total Outflows:</span>
+                <span className="font-bold text-rose-600">₹{(currentStats.periodExpenses ?? currentStats.totalPaid ?? 0).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span className="text-slate-500 font-medium">Net Return Margin:</span>
+                <span className="font-bold text-emerald-700">{currentStats.profitMarginPercent ?? 0}%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Operations Summary */}
+          <div className="p-6 rounded-3xl bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-lg border border-slate-700/60 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <Map className="w-3.5 h-3.5 text-emerald-400" /> Fleet Operations
+                </span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              </div>
+
+              <h4 className="text-lg font-black text-white mb-2">Live Route Intake</h4>
+              <p className="text-xs text-slate-300 leading-relaxed mb-4">
+                Drivers collect cullet from enrolled properties and return it directly to the godown.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-3 border-t border-slate-700/60 text-xs">
+              <div className="bg-white/10 p-2.5 rounded-xl">
+                <span className="text-slate-400 text-[10px] uppercase font-bold block">Enrolled Hotels</span>
+                <span className="text-base font-black text-white mt-0.5 block">{currentStats.totalPropertiesCount ?? 4}</span>
+              </div>
+              <div className="bg-white/10 p-2.5 rounded-xl">
+                <span className="text-slate-400 text-[10px] uppercase font-bold block">Active Runs</span>
+                <span className="text-base font-black text-emerald-400 mt-0.5 block">{currentStats.activeAssignmentsCount ?? 0}</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Dynamic Metric Stat Cards */}
