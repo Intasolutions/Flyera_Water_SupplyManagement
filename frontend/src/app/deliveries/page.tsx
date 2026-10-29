@@ -417,6 +417,7 @@ export default function DeliveriesPage() {
   const [assignHelper, setAssignHelper] = useState("");
   const [assignRoute, setAssignRoute] = useState("");
   const [assignVehicle, setAssignVehicle] = useState("");
+  const [assignPettyCash, setAssignPettyCash] = useState<string>("");
   const [assignStock, setAssignStock] = useState<Record<string, number>>({});
 
   // Edit modal state
@@ -425,6 +426,7 @@ export default function DeliveriesPage() {
   const [editHelper, setEditHelper] = useState("");
   const [editRoute, setEditRoute] = useState("");
   const [editVehicle, setEditVehicle] = useState("");
+  const [editPettyCash, setEditPettyCash] = useState<string>("");
   const [editStatus, setEditStatus] = useState<string>("PENDING");
   const [editDate, setEditDate] = useState<string>("");
   const [editStock, setEditStock] = useState<Record<string, number>>({});
@@ -433,6 +435,7 @@ export default function DeliveriesPage() {
   const handleOpenEdit = (assignment: ApiAssignment) => {
     setEditAssignment(assignment);
     setEditDriver(assignment.driver_id || "");
+    setEditPettyCash(assignment.petty_cash ? String(assignment.petty_cash) : "");
     setEditHelper(assignment.helper_id || "");
     setEditRoute(assignment.route_id || "");
     setEditVehicle(assignment.vehicle_id || "");
@@ -475,6 +478,7 @@ export default function DeliveriesPage() {
         helper_id: editHelper || null,
         route_id: editRoute,
         status: editStatus,
+        petty_cash: parseFloat(editPettyCash) || 0.0,
         allocations,
       });
       setEditAssignment(null);
@@ -510,6 +514,7 @@ export default function DeliveriesPage() {
         helper_id: assignHelper || null,
         route_id: assignRoute,
         status: "PENDING",
+        petty_cash: parseFloat(assignPettyCash) || 0.0,
         allocations
       });
       setModalOpen(false);
@@ -517,6 +522,7 @@ export default function DeliveriesPage() {
       setAssignHelper("");
       setAssignRoute("");
       setAssignVehicle("");
+      setAssignPettyCash("");
       setAssignStock({});
       // Instant refresh
       const refreshed = await getAssignments();
@@ -976,6 +982,7 @@ export default function DeliveriesPage() {
                       status={a.status.toLowerCase()}
                       progress={progress}
                       date={a.date}
+                      pettyCash={a.petty_cash || 0}
                       onEdit={() => handleOpenEdit(a)}
                       onAssign={() => setDispatchConfirmOpen(a)}
                       onTrack={() => setTrackOpen(a.id)}
@@ -1208,14 +1215,27 @@ export default function DeliveriesPage() {
                                       ? "bg-amber-100 text-amber-800 border border-amber-200"
                                       : "bg-slate-100 text-slate-700 border border-slate-200"
                                 }`}>
-                                {e.category === "FUEL" ? "⛽ FUEL" : e.category === "TOLL" ? "🛣️ TOLL" : e.category === "MAINTENANCE" ? "🔧 REPAIR" : e.category}
+                                {e.category === "FUEL" ? "FUEL" : e.category === "TOLL" ? "TOLL" : e.category === "MAINTENANCE" ? "REPAIR" : e.category}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-slate-600 max-w-xs truncate">
-                              {e.description || "On-route travel cost"}
+                            <td className="px-4 py-3 text-slate-600 max-w-xs">
+                              <span className="font-bold text-slate-900 block truncate">{e.description || "On-route travel cost"}</span>
+                              <span className="text-[10px]">
+                                {e.paid_from_inhand ? (
+                                  <span className="text-emerald-700 font-bold">₹{e.inhand_amount ?? e.amount} from In-Hand Petty Cash</span>
+                                ) : (
+                                  <span className="text-amber-700 font-bold">Personal (Reimbursable)</span>
+                                )}
+                                {(e.inhand_amount ?? 0) < e.amount && e.paid_from_inhand && (
+                                  <span className="text-amber-700 font-medium ml-1">&bull; ₹{e.amount - (e.inhand_amount ?? 0)} personal</span>
+                                )}
+                              </span>
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap font-black text-slate-900 text-sm">
-                              ₹{e.amount}
+                              <div>₹{e.amount}</div>
+                              {e.paid_from_inhand && (
+                                <span className="text-[10px] text-emerald-700 block font-bold">Cash: ₹{e.inhand_amount ?? e.amount}</span>
+                              )}
                             </td>
                             <td className="px-4 py-3 whitespace-nowrap text-right">
                               <button
@@ -1339,6 +1359,29 @@ export default function DeliveriesPage() {
                   ))}
                 </select>
               </div>
+            </div>
+
+            {/* In-Hand Petty Cash to Driver */}
+            <div className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-200/80">
+              <label className="block text-xs font-black uppercase tracking-wider text-emerald-950 mb-1.5 flex items-center justify-between">
+                <span>In-Hand Petty Cash (₹)</span>
+                <span className="text-[10px] font-bold text-emerald-700 normal-case bg-emerald-100/90 px-2 py-0.5 rounded-md">Given to driver at morning departure</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-700 font-bold text-sm">₹</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={assignPettyCash}
+                  onChange={e => setAssignPettyCash(e.target.value)}
+                  placeholder="e.g. 500.00"
+                  className="w-full pl-8 pr-4 py-2.5 border border-emerald-300 rounded-xl bg-white text-slate-800 font-bold outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-500/10 transition-all text-sm shadow-2xs"
+                />
+              </div>
+              <p className="text-[11px] font-medium text-emerald-800 mt-1.5">
+                Starting physical cash given to driver for on-road fuel, toll, customer change, or trip emergencies.
+              </p>
             </div>
 
             <div>
@@ -1537,6 +1580,26 @@ export default function DeliveriesPage() {
                     <option key={r.id} value={r.id}>{r.name} ({r.area || "General Area"})</option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            {/* In-Hand Petty Cash in Edit modal */}
+            <div className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-200/80">
+              <label className="block text-xs font-black uppercase tracking-wider text-emerald-950 mb-1.5 flex items-center justify-between">
+                <span>In-Hand Petty Cash (₹)</span>
+                <span className="text-[10px] font-bold text-emerald-700 normal-case bg-emerald-100/90 px-2 py-0.5 rounded-md">Given to driver at departure</span>
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-700 font-bold text-sm">₹</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={editPettyCash}
+                  onChange={e => setEditPettyCash(e.target.value)}
+                  placeholder="e.g. 500.00"
+                  className="w-full pl-8 pr-4 py-2.5 border border-emerald-300 rounded-xl bg-white text-slate-800 font-bold outline-none focus:border-emerald-600 focus:ring-4 focus:ring-emerald-500/10 transition-all text-sm shadow-2xs"
+                />
               </div>
             </div>
 
@@ -1986,14 +2049,37 @@ export default function DeliveriesPage() {
                     </div>
                   </div>
 
-                  {/* Trip Expenses Deduction */}
+                  {/* Trip Expenses & Petty Cash Deduction */}
                   {(() => {
+                    const startingPettyCash = assignmentObj.petty_cash || 0;
                     const reconTotalExpenses = reconExpenses.reduce((s, e) => s + (e.amount || 0), 0);
-                    const netCashFromDriver = Math.max(0, totalCash - reconTotalExpenses);
+                    const inhandCashSpent = reconExpenses.reduce((s, e) => s + (e.paid_from_inhand ? (e.inhand_amount ?? e.amount) : 0), 0);
+                    const personalSpent = Math.max(0, reconTotalExpenses - inhandCashSpent);
+                    const remainingPettyCash = Math.max(0, startingPettyCash - inhandCashSpent);
+                    const netCashFromDriver = Math.max(0, (totalCash + remainingPettyCash) - personalSpent);
                     const netShiftProfit = (totalCash + totalUpi) - reconTotalExpenses;
 
                     return (
                       <div className="space-y-3 pt-1">
+                        {/* Petty Cash & Expenses summary grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                          <div className="bg-emerald-50/90 border border-emerald-200/90 p-3 rounded-xl">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">Morning In-Hand Cash</span>
+                            <span className="text-lg font-black text-emerald-950">₹{startingPettyCash.toLocaleString()}</span>
+                            <span className="text-[10px] text-emerald-600 font-semibold block">Petty cash given to driver</span>
+                          </div>
+                          <div className="bg-amber-50/90 border border-amber-200/90 p-3 rounded-xl">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 block">Cash Used by Driver</span>
+                            <span className="text-lg font-black text-amber-950">− ₹{inhandCashSpent.toLocaleString()}</span>
+                            <span className="text-[10px] text-amber-600 font-semibold block">From petty cash for trips</span>
+                          </div>
+                          <div className="bg-teal-50/90 border border-teal-200/90 p-3 rounded-xl">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-teal-800 block">Petty Cash to Return</span>
+                            <span className="text-lg font-black text-teal-950">₹{remainingPettyCash.toLocaleString()}</span>
+                            <span className="text-[10px] text-teal-600 font-semibold block">Unspent in-hand cash</span>
+                          </div>
+                        </div>
+
                         <div className="p-4 bg-amber-50/80 rounded-2xl border border-amber-200/80 shadow-xs space-y-2">
                           <div className="flex justify-between items-center pb-2 border-b border-amber-200/60">
                             <span className="text-xs font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
@@ -2001,19 +2087,31 @@ export default function DeliveriesPage() {
                               Trip Expenses Logged ({reconExpenses.length})
                             </span>
                             <span className="text-base font-black text-amber-950">
-                              {reconTotalExpenses > 0 ? `− ₹${reconTotalExpenses.toLocaleString()}` : "₹0"}
+                              {reconTotalExpenses > 0 ? `Total: ₹${reconTotalExpenses.toLocaleString()}` : "₹0"}
                             </span>
                           </div>
 
                           {reconExpenses.length > 0 ? (
-                            <div className="space-y-1 text-xs">
+                            <div className="space-y-1.5 text-xs">
                               {reconExpenses.map(exp => (
-                                <div key={exp.id} className="flex justify-between items-center text-slate-700">
-                                  <span>
-                                    <strong className="text-amber-900 uppercase font-black mr-1">{exp.category}</strong>
-                                    {exp.description ? `• ${exp.description}` : ""}
-                                  </span>
-                                  <span className="font-bold text-slate-900">₹{exp.amount}</span>
+                                <div key={exp.id} className="flex justify-between items-center text-slate-700 bg-white/70 p-2 rounded-lg border border-amber-100">
+                                  <div>
+                                    <span className="font-bold text-slate-800">
+                                      <strong className="text-amber-900 uppercase font-black mr-1">{exp.category}</strong>
+                                      {exp.description ? `• ${exp.description}` : ""}
+                                    </span>
+                                    <div className="text-[10px] text-slate-500">
+                                      {exp.paid_from_inhand ? (
+                                        <span className="text-emerald-700 font-bold">₹{exp.inhand_amount ?? exp.amount} from In-Hand Cash</span>
+                                      ) : (
+                                        <span className="text-amber-700 font-bold">Personal Out-of-pocket</span>
+                                      )}
+                                      {(exp.inhand_amount ?? 0) < exp.amount && exp.paid_from_inhand && (
+                                        <span className="text-amber-700 font-medium ml-1">&bull; ₹{exp.amount - (exp.inhand_amount ?? 0)} personal</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <span className="font-black text-slate-900 text-sm">₹{exp.amount}</span>
                                 </div>
                               ))}
                             </div>
@@ -2029,7 +2127,9 @@ export default function DeliveriesPage() {
                               <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">
                                 Net Cash from Driver
                               </span>
-                              <span className="text-slate-500 text-[11px] font-medium">(Cash Handover − Expenses)</span>
+                              <span className="text-slate-500 text-[11px] font-medium">
+                                (Customer Cash ₹{totalCash} + Returned Petty Cash ₹{remainingPettyCash}{personalSpent > 0 ? ` − Reimbursed ₹${personalSpent}` : ""})
+                              </span>
                             </div>
                             <span className="text-xl font-black text-emerald-950">
                               ₹{netCashFromDriver.toLocaleString()}
@@ -2041,22 +2141,12 @@ export default function DeliveriesPage() {
                               <span className="text-[10px] font-black uppercase tracking-wider text-sky-800 block">
                                 Net Shift Profit
                               </span>
-                              <span className="text-slate-500 text-[11px] font-medium">(Gross Collections − Expenses)</span>
+                              <span className="text-slate-500 text-[11px] font-medium">(Gross Collections − All Expenses)</span>
                             </div>
                             <span className="text-xl font-black text-sky-950">
                               ₹{netShiftProfit.toLocaleString()}
                             </span>
                           </div>
-                        </div>
-
-                        <div className="p-3 bg-slate-100/80 rounded-2xl border border-slate-200 flex items-center justify-between text-xs font-bold text-slate-700">
-                          <span className="flex items-center gap-1.5">
-                            <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                            <span>Total Gross Realized (Cash + Verified UPI):</span>
-                          </span>
-                          <span className="text-base font-black text-slate-800">
-                            ₹{(totalCash + totalUpi).toLocaleString()}
-                          </span>
                         </div>
                       </div>
                     );

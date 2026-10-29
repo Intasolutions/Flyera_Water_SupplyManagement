@@ -132,6 +132,7 @@ class Assignment(Base):
     status = Column(String, default="PENDING", index=True)
     business_type = Column(String, default="WATER", index=True) # "WATER" or "GLASS"
     target_capacity_tons = Column(Float, default=0.0)
+    petty_cash = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -293,6 +294,8 @@ class TripExpense(Base):
     # Category: FUEL | TOLL | PARKING | MAINTENANCE | OTHER
     category = Column(String, nullable=False, default="OTHER")
     amount = Column(Float, nullable=False)
+    paid_from_inhand = Column(Boolean, default=True)
+    inhand_amount = Column(Float, default=0.0)
     description = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

@@ -78,3 +78,7 @@ backend/uploads/*
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+*.db-shm
+*.db-wal
+backend/water_supply.db*

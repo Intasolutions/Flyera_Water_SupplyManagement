@@ -230,6 +230,7 @@ class AssignmentBase(BaseModel):
     status: str = "PENDING"
     business_type: Optional[str] = "WATER"
     target_capacity_tons: Optional[float] = 0.0
+    petty_cash: float = 0.0
 
 class AssignmentCreate(AssignmentBase):
     allocations: List[AllocationCreate] = []
@@ -244,6 +245,7 @@ class AssignmentUpdate(BaseModel):
     business_type: Optional[str] = None
     target_capacity_tons: Optional[float] = None
     allocations: Optional[List[AllocationCreate]] = None
+    petty_cash: Optional[float] = None
 
 class AssignmentResponse(AssignmentBase):
     id: str
@@ -434,6 +436,8 @@ class TripExpenseCreate(BaseModel):
     assignment_id: str
     category: str  # FUEL | TOLL | PARKING | MAINTENANCE | OTHER
     amount: float
+    paid_from_inhand: bool = True
+    inhand_amount: float = 0.0
     description: Optional[str] = None
     # reported_by is set server-side from auth token
 
@@ -444,6 +448,8 @@ class TripExpenseResponse(BaseModel):
     reporter_name: Optional[str] = None
     category: str
     amount: float
+    paid_from_inhand: bool = True
+    inhand_amount: float = 0.0
     description: Optional[str] = None
     created_at: datetime
 

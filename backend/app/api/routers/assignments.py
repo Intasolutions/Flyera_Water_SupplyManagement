@@ -27,7 +27,8 @@ def create_assignment(
         driver_id=assignment.driver_id,
         helper_id=assignment.helper_id,
         route_id=assignment.route_id,
-        status=assignment.status
+        status=assignment.status,
+        petty_cash=assignment.petty_cash or 0.0
     )
     db.add(db_assignment)
     db.commit()
@@ -112,6 +113,8 @@ def update_assignment(
         db_assignment.date = assignment_in.date
     if assignment_in.status is not None:
         db_assignment.status = assignment_in.status
+    if assignment_in.petty_cash is not None:
+        db_assignment.petty_cash = assignment_in.petty_cash
         
     if assignment_in.allocations is not None:
         # Restore previously allocated stock back to warehouse inventory

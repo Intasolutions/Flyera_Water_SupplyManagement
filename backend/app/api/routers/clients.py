@@ -13,7 +13,7 @@ router = APIRouter()
 def create_client(
     client: schemas.ClientCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(deps.require_roles(["ADMIN", "WATER_STAFF", "Owner"]))
+    current_user: models.User = Depends(deps.require_roles(["ADMIN", "WATER_STAFF", "DRIVER", "HELPER", "GLASS_DRIVER", "Owner"]))
 ):
     return crud.create_client(db=db, client=client)
 
@@ -44,7 +44,7 @@ def update_client(
     client_id: str,
     client: schemas.ClientUpdate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(deps.require_roles(["ADMIN", "WATER_STAFF", "Owner"]))
+    current_user: models.User = Depends(deps.require_roles(["ADMIN", "WATER_STAFF", "DRIVER", "HELPER", "GLASS_DRIVER", "Owner"]))
 ):
     db_client = crud.get_client(db, client_id=client_id)
     if db_client is None:

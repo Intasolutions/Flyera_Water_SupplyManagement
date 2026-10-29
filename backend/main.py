@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import engine, Base
 from app import models
-from app.api.routers import users, clients, vehicles, inventory, routes, auth, assignments, deliveries, dashboard, glass, settings, setup, expenses
+from app.api.routers import users, clients, vehicles, inventory, routes, auth, assignments, deliveries, dashboard, glass, settings, setup, expenses, reports
 
 # Create all tables in the database (simple alternative to migrations for now)
 Base.metadata.create_all(bind=engine)
@@ -59,6 +59,12 @@ try:
                 conn.commit()
             except Exception:
                 pass
+        for col in ["petty_cash REAL DEFAULT 0.0"]:
+            try:
+                conn.execute(text(f"ALTER TABLE assignments ADD COLUMN {col}"))
+                conn.commit()
+            except Exception:
+                pass
         for col in ["credit_amount REAL DEFAULT 0.0"]:
             try:
                 conn.execute(text(f"ALTER TABLE clients ADD COLUMN {col}"))
@@ -80,6 +86,8 @@ try:
                     reported_by VARCHAR REFERENCES users(id),
                     category VARCHAR NOT NULL DEFAULT 'OTHER',
                     amount REAL NOT NULL,
+                    paid_from_inhand BOOLEAN DEFAULT 1,
+                    inhand_amount REAL DEFAULT 0.0,
                     description VARCHAR,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -87,6 +95,12 @@ try:
             conn.commit()
         except Exception:
             pass
+        for col in ["paid_from_inhand BOOLEAN DEFAULT 1", "inhand_amount REAL DEFAULT 0.0"]:
+            try:
+                conn.execute(text(f"ALTER TABLE trip_expenses ADD COLUMN {col}"))
+                conn.commit()
+            except Exception:
+                pass
         # Bottle Credit Ledger table
         try:
             conn.execute(text("""
@@ -199,6 +213,7 @@ app.include_router(glass.router, prefix="/api/glass", tags=["glass"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(setup.router, prefix="/api/setup", tags=["setup"])
 app.include_router(expenses.router, prefix="/api/expenses", tags=["expenses"])
+app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
 
 @app.get("/")
 def read_root():

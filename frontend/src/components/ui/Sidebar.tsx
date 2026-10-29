@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
+  BarChart3,
   Truck,
   Users,
   Package,
@@ -88,7 +89,7 @@ export function Sidebar() {
     }
   }, []);
 
-  const isDriver = userRole === "DRIVER" || userRole === "GLASS_DRIVER";
+  const isDriver = userRole === "DRIVER" || userRole === "HELPER" || userRole === "GLASS_DRIVER";
 
   const waterLinks = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -98,6 +99,7 @@ export function Sidebar() {
     { name: "Inventory", href: "/inventory", icon: Package },
     { name: "Clients", href: "/clients", icon: Users },
     { name: "Staff", href: "/staff", icon: Users },
+    { name: "Reports", href: "/reports", icon: BarChart3 },
     { name: "Settings", href: "/settings", icon: Settings },
   ];
 
@@ -112,7 +114,17 @@ export function Sidebar() {
   ];
 
   const isGlass = (pathname && pathname.startsWith("/glass")) || currentUserRole === "GlassStaff" || (currentUserRole === "Owner" && activeBusiness === "Glass");
-  const rawLinks = isGlass ? glassLinks : waterLinks;
+
+  const driverWaterLinks = [
+    { name: "Driver Co-Pilot", href: "/driver", icon: Truck },
+  ];
+  const driverGlassLinks = [
+    { name: "Driver Collections", href: "/glass/driver", icon: Truck },
+  ];
+
+  const rawLinks = isDriver
+    ? (userRole === "GLASS_DRIVER" ? driverGlassLinks : driverWaterLinks)
+    : (isGlass ? glassLinks : waterLinks);
   const links = rawLinks.filter(link => {
     // Only Admin / Owner can see Settings
     if (link.href === "/settings" && currentUserRole !== "Owner") {
@@ -129,7 +141,13 @@ export function Sidebar() {
   };
 
   // Quick bottom bar links for mobile phone navigation
-  const mobileQuickLinks = isGlass ? [
+  const mobileQuickLinks = isDriver ? (
+    userRole === "GLASS_DRIVER" ? [
+      { name: "Intake", href: "/glass/driver", icon: Truck },
+    ] : [
+      { name: "Co-Pilot", href: "/driver", icon: Truck },
+    ]
+  ) : isGlass ? [
     { name: "Dashboard", href: "/glass", icon: LayoutDashboard },
     { name: "Dispatch", href: "/glass/dispatch", icon: Map },
     { name: "Properties", href: "/glass/properties", icon: Users },

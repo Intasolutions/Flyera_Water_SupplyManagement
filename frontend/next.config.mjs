@@ -12,7 +12,7 @@ const nextConfig = {
   reactStrictMode: true,
   turbopack: {},
   async rewrites() {
-    const backendUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://64.227.171.31';
+    const backendUrl = process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     const cleanBackendUrl = backendUrl.replace(/\/api\/?$/, '');
     return [
       {

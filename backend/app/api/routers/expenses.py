@@ -25,11 +25,17 @@ def create_expense(
     if expense_in.amount <= 0:
         raise HTTPException(status_code=400, detail="Expense amount must be greater than 0")
 
+    inhand_val = float(expense_in.inhand_amount) if expense_in.inhand_amount is not None and expense_in.inhand_amount > 0 else (float(expense_in.amount) if expense_in.paid_from_inhand else 0.0)
+    if inhand_val > float(expense_in.amount):
+        inhand_val = float(expense_in.amount)
+
     expense = models.TripExpense(
         assignment_id=expense_in.assignment_id,
         reported_by=current_user.id,
         category=expense_in.category.upper(),
         amount=float(expense_in.amount),
+        paid_from_inhand=expense_in.paid_from_inhand,
+        inhand_amount=inhand_val,
         description=expense_in.description,
     )
     db.add(expense)
@@ -43,6 +49,8 @@ def create_expense(
         reporter_name=current_user.name,
         category=expense.category,
         amount=expense.amount,
+        paid_from_inhand=expense.paid_from_inhand,
+        inhand_amount=expense.inhand_amount or 0.0,
         description=expense.description,
         created_at=expense.created_at,
     )
@@ -83,6 +91,8 @@ def get_all_expenses(
             reporter_name=reporter.name if reporter else None,
             category=e.category,
             amount=e.amount,
+            paid_from_inhand=getattr(e, 'paid_from_inhand', True),
+            inhand_amount=getattr(e, 'inhand_amount', 0.0) or 0.0,
             description=e.description,
             created_at=e.created_at,
         ))
@@ -113,6 +123,8 @@ def get_expenses_for_assignment(
             reporter_name=reporter.name if reporter else None,
             category=e.category,
             amount=e.amount,
+            paid_from_inhand=getattr(e, 'paid_from_inhand', True),
+            inhand_amount=getattr(e, 'inhand_amount', 0.0) or 0.0,
             description=e.description,
             created_at=e.created_at,
         ))
