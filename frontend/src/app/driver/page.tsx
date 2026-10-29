@@ -911,9 +911,9 @@ export default function DriverApp() {
       setLocationInput("");
       setLocationMethod("gps");
       toast.success("Client added and saved to route!");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to create client", err);
-      toast.error("Failed to add client. Try again.");
+      toast.error(err?.message || "Failed to add client. Try again.");
     } finally {
       setIsAddingClient(false);
     }

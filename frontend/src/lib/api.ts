@@ -2,7 +2,7 @@
 // without browser Mixed Content (HTTPS -> HTTP) or CORS issues.
 const API_BASE_URL = typeof window !== 'undefined'
   ? '/api'
-  : (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://64.227.171.31/api');
+  : (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api');
 
 // --- Token Rotation State ---
 let activeRefreshPromise: Promise<string | null> | null = null;
