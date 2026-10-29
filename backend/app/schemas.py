@@ -389,6 +389,8 @@ class TripExpenseCreate(BaseModel):
     assignment_id: str
     category: str  # FUEL | TOLL | PARKING | MAINTENANCE | OTHER
     amount: float
+    paid_from_inhand: bool = True
+    inhand_amount: float = 0.0
     description: Optional[str] = None
     # reported_by is set server-side from auth token
 
@@ -399,6 +401,8 @@ class TripExpenseResponse(BaseModel):
     reporter_name: Optional[str] = None
     category: str
     amount: float
+    paid_from_inhand: bool = True
+    inhand_amount: float = 0.0
     description: Optional[str] = None
     created_at: datetime
 

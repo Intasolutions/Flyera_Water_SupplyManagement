@@ -235,9 +235,18 @@ export default function DriverApp() {
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [expenseCategory, setExpenseCategory] = useState<'FUEL' | 'TOLL' | 'PARKING' | 'MAINTENANCE' | 'OTHER'>('FUEL');
   const [expenseAmount, setExpenseAmount] = useState<string>('');
+  const [expensePaidFromInhand, setExpensePaidFromInhand] = useState<boolean>(true);
+  const [expenseInhandAmount, setExpenseInhandAmount] = useState<string>('');
   const [expenseDescription, setExpenseDescription] = useState<string>('');
   const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
   const [tripExpenses, setTripExpenses] = useState<TripExpense[]>([]);
+
+  // Computed In-Hand Cash deductions
+  const inhandCashSpent = tripExpenses.reduce(
+    (sum, e) => sum + (e.paid_from_inhand ? (e.inhand_amount ?? e.amount) : 0),
+    0
+  );
+  const remainingInHandCash = Math.max(0, activePettyCash - inhandCashSpent);
 
   // Customer Bottle Credit / Balance State
   const [customerBottleBalance, setCustomerBottleBalance] = useState<number | null>(null);
@@ -264,18 +273,40 @@ export default function DriverApp() {
       return;
     }
 
+    const inhandAmt = expensePaidFromInhand
+      ? (expenseInhandAmount !== '' ? parseFloat(expenseInhandAmount) : amt)
+      : 0;
+
+    if (expensePaidFromInhand && (isNaN(inhandAmt) || inhandAmt < 0)) {
+      toast.error("Please enter a valid amount taken from in-hand cash");
+      return;
+    }
+    if (inhandAmt > amt) {
+      toast.error("Amount taken from in-hand cash cannot exceed total expense amount");
+      return;
+    }
+
+    if (!expenseDescription.trim()) {
+      toast.error("Please provide a description explaining the expense and cash deduction");
+      return;
+    }
+
     setIsSubmittingExpense(true);
     try {
       await createTripExpense({
         assignment_id: activeAssignmentId,
         category: expenseCategory,
         amount: amt,
-        description: expenseDescription.trim() || undefined
+        paid_from_inhand: expensePaidFromInhand,
+        inhand_amount: inhandAmt,
+        description: expenseDescription.trim()
       });
       toast.success(`Expense of ₹${amt} (${expenseCategory}) logged!`);
       setExpenseAmount("");
+      setExpenseInhandAmount("");
       setExpenseDescription("");
       setExpenseCategory("FUEL");
+      setExpensePaidFromInhand(true);
       setIsExpenseModalOpen(false);
       await fetchTripExpenses(activeAssignmentId);
     } catch (err: any) {
@@ -1078,7 +1109,7 @@ export default function DriverApp() {
           {assignmentStatus !== "UNASSIGNED" && activePettyCash > 0 && (
             <div className="bg-emerald-50 border border-emerald-200/90 px-3.5 py-2 rounded-xl text-xs font-black shadow-xs flex items-center gap-2 text-emerald-950">
               <IndianRupee className="w-3.5 h-3.5 text-emerald-600" />
-              <span>In-Hand Cash: <strong className="text-emerald-800 text-sm font-black">₹{activePettyCash.toLocaleString()}</strong></span>
+              <span>In-Hand Cash: <strong className="text-emerald-800 text-sm font-black">₹{remainingInHandCash.toLocaleString()}</strong>{inhandCashSpent > 0 && <span className="text-[10px] text-emerald-700 font-bold ml-1">(₹{inhandCashSpent} used)</span>}</span>
             </div>
           )}
 
@@ -2123,7 +2154,7 @@ export default function DriverApp() {
           {/* Amount Input */}
           <div>
             <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
-              Amount (₹ INR) *
+              Total Expense Amount (₹ INR) *
             </label>
             <div className="relative">
               <IndianRupee className="w-4 h-4 absolute left-3.5 top-3.5 text-slate-400" />
@@ -2133,38 +2164,176 @@ export default function DriverApp() {
                 min="1"
                 required
                 value={expenseAmount}
-                onChange={e => setExpenseAmount(e.target.value)}
+                onChange={e => {
+                  const val = e.target.value;
+                  setExpenseAmount(val);
+                  if (expensePaidFromInhand && (!expenseInhandAmount || expenseInhandAmount === expenseAmount)) {
+                    setExpenseInhandAmount(val);
+                  }
+                }}
                 placeholder="e.g. 250"
                 className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none text-slate-900 font-black text-lg focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 shadow-xs"
               />
             </div>
           </div>
 
-          {/* Description / Note */}
+          {/* In-Hand Cash Deduction Option */}
+          <div className="bg-emerald-50/80 border border-emerald-200/90 rounded-2xl p-3.5 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={expensePaidFromInhand}
+                  onChange={e => {
+                    const checked = e.target.checked;
+                    setExpensePaidFromInhand(checked);
+                    if (checked && !expenseInhandAmount) {
+                      setExpenseInhandAmount(expenseAmount || "");
+                    }
+                  }}
+                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 cursor-pointer"
+                />
+                <span className="text-xs font-black text-emerald-950 uppercase tracking-wider">
+                  Deduct From In-Hand Cash
+                </span>
+              </label>
+
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100/90 text-emerald-800 border border-emerald-300/60">
+                In-Hand Left: ₹{remainingInHandCash.toLocaleString()}
+              </span>
+            </div>
+
+            {expensePaidFromInhand && (
+              <div className="space-y-2 pt-1 border-t border-emerald-200/60">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-black uppercase tracking-wider text-emerald-900">
+                    Amount Taken From In-Hand Cash (₹) *
+                  </label>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setExpenseInhandAmount(expenseAmount || "0")}
+                      className="text-[10px] font-bold px-2 py-0.5 bg-white rounded border border-emerald-300 text-emerald-800 hover:bg-emerald-100 transition-colors"
+                    >
+                      Full ₹{expenseAmount || 0}
+                    </button>
+                    {remainingInHandCash > 0 && remainingInHandCash < (parseFloat(expenseAmount) || 0) && (
+                      <button
+                        type="button"
+                        onClick={() => setExpenseInhandAmount(String(remainingInHandCash))}
+                        className="text-[10px] font-bold px-2 py-0.5 bg-white rounded border border-emerald-300 text-emerald-800 hover:bg-emerald-100 transition-colors"
+                      >
+                        Max ₹{remainingInHandCash}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <IndianRupee className="w-4 h-4 absolute left-3.5 top-3 text-emerald-600" />
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    max={expenseAmount || undefined}
+                    required={expensePaidFromInhand}
+                    value={expenseInhandAmount}
+                    onChange={e => setExpenseInhandAmount(e.target.value)}
+                    placeholder="Enter amount taken from cash in hand"
+                    className="w-full pl-10 pr-4 py-2 bg-white border border-emerald-300 rounded-xl outline-none text-emerald-950 font-black text-base focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 shadow-xs"
+                  />
+                </div>
+
+                {/* Live Deduction Preview */}
+                {(() => {
+                  const expVal = parseFloat(expenseAmount) || 0;
+                  const inhandVal = parseFloat(expenseInhandAmount) || 0;
+                  const personalVal = Math.max(0, expVal - inhandVal);
+                  const newBalance = Math.max(0, remainingInHandCash - inhandVal);
+                  return (
+                    <div className="text-[11px] bg-white/90 p-2.5 rounded-xl border border-emerald-200/90 space-y-1 text-slate-700 font-medium">
+                      <div className="flex justify-between items-center">
+                        <span>Paid from In-Hand Cash:</span>
+                        <strong className="text-emerald-800 font-black">₹{inhandVal}</strong>
+                      </div>
+                      {personalVal > 0 && (
+                        <div className="flex justify-between items-center text-amber-700">
+                          <span>Personal Pocket (Reimbursable):</span>
+                          <strong className="font-bold">₹{personalVal}</strong>
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center text-slate-500 pt-1 border-t border-slate-100 text-[10px]">
+                        <span>Remaining In-Hand Cash after this:</span>
+                        <span className="font-bold text-slate-900">₹{newBalance}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+
+          {/* Description / Reason for Cash Deduction */}
           <div>
-            <label className="block text-xs font-black uppercase tracking-wider text-slate-700 mb-1.5">
-              Description / Note (Optional)
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-black uppercase tracking-wider text-slate-700">
+                Description / Reason for Deduction *
+              </label>
+              <span className="text-[10px] text-slate-400 font-medium">Explain expense</span>
+            </div>
             <input
               type="text"
+              required
               value={expenseDescription}
               onChange={e => setExpenseDescription(e.target.value)}
-              placeholder="e.g. HP Petrol Pump Wakad"
+              placeholder="e.g. 5 Litres Diesel at HP pump / Toll plaza NH66"
               className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl outline-none text-slate-800 font-semibold text-xs focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 shadow-xs"
             />
+            {/* Quick Chips */}
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {[
+                "⛽ Diesel 5L",
+                "🛣️ Toll Gate",
+                "🅿️ Parking Slip",
+                "🔧 Tyre Puncture",
+                "🍱 Food & Tea",
+                "💧 Vehicle Wash"
+              ].map(chip => (
+                <button
+                  key={chip}
+                  type="button"
+                  onClick={() => setExpenseDescription(chip)}
+                  className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-amber-100 hover:text-amber-900 text-slate-700 transition-colors"
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Recent Expenses in this trip */}
           {tripExpenses.length > 0 && (
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80">
               <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block mb-1">
-                Logged This Trip ({tripExpenses.length} entries &bull; ₹{tripExpenses.reduce((s, e) => s + e.amount, 0)})
+                Logged This Trip ({tripExpenses.length} entries &bull; Total ₹{tripExpenses.reduce((s, e) => s + e.amount, 0)})
               </span>
-              <div className="space-y-1 max-h-24 overflow-y-auto">
+              <div className="space-y-1.5 max-h-28 overflow-y-auto">
                 {tripExpenses.map(e => (
-                  <div key={e.id} className="flex justify-between text-[11px] text-slate-700">
-                    <span>{e.category}: {e.description || "Expense"}</span>
-                    <span className="font-bold">₹{e.amount}</span>
+                  <div key={e.id} className="flex justify-between items-center text-[11px] bg-white p-2 rounded-lg border border-slate-100">
+                    <div>
+                      <div className="font-bold text-slate-800">{e.category}: {e.description || "Expense"}</div>
+                      <div className="text-[10px] text-slate-500">
+                        {e.paid_from_inhand ? (
+                          <span className="text-emerald-700 font-bold">₹{e.inhand_amount ?? e.amount} from In-Hand Cash</span>
+                        ) : (
+                          <span className="text-amber-700 font-bold">Personal / Reimbursable</span>
+                        )}
+                        {(e.inhand_amount ?? 0) < e.amount && e.paid_from_inhand && (
+                          <span className="text-amber-700 font-medium"> &bull; ₹{e.amount - (e.inhand_amount ?? 0)} personal</span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="font-black text-slate-900 text-sm">₹{e.amount}</span>
                   </div>
                 ))}
               </div>

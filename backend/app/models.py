@@ -263,6 +263,8 @@ class TripExpense(Base):
     # Category: FUEL | TOLL | PARKING | MAINTENANCE | OTHER
     category = Column(String, nullable=False, default="OTHER")
     amount = Column(Float, nullable=False)
+    paid_from_inhand = Column(Boolean, default=True)
+    inhand_amount = Column(Float, default=0.0)
     description = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

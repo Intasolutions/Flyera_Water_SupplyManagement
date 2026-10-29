@@ -51,6 +51,8 @@ try:
                     reported_by VARCHAR REFERENCES users(id),
                     category VARCHAR NOT NULL DEFAULT 'OTHER',
                     amount REAL NOT NULL,
+                    paid_from_inhand BOOLEAN DEFAULT 1,
+                    inhand_amount REAL DEFAULT 0.0,
                     description VARCHAR,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -58,6 +60,12 @@ try:
             conn.commit()
         except Exception:
             pass
+        for col in ["paid_from_inhand BOOLEAN DEFAULT 1", "inhand_amount REAL DEFAULT 0.0"]:
+            try:
+                conn.execute(text(f"ALTER TABLE trip_expenses ADD COLUMN {col}"))
+                conn.commit()
+            except Exception:
+                pass
         # Bottle Credit Ledger table
         try:
             conn.execute(text("""

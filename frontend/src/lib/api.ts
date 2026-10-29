@@ -652,6 +652,8 @@ export interface TripExpense {
   reporter_name?: string;
   category: 'FUEL' | 'TOLL' | 'PARKING' | 'MAINTENANCE' | 'OTHER';
   amount: number;
+  paid_from_inhand?: boolean;
+  inhand_amount?: number;
   description: string | null;
   created_at: string;
 }
@@ -660,6 +662,8 @@ export const createTripExpense = (data: {
   assignment_id: string;
   category: string;
   amount: number;
+  paid_from_inhand?: boolean;
+  inhand_amount?: number;
   description?: string;
 }) =>
   fetcher<TripExpense>('/expenses', {
