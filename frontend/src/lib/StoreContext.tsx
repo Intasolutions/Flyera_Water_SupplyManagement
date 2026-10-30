@@ -193,8 +193,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           const u = JSON.parse(rawUser);
           const r = (u.role || "").toUpperCase();
           const p = window.location.pathname;
-          const isWaterField = r === "DRIVER" || r === "HELPER" || r === "CO_WORKER" || r === "WATER_COWORKER";
           const isGlassField = r.includes("GLASS") && r !== "ADMIN";
+          const isWaterField = !isGlassField && r !== "ADMIN";
 
           if (isWaterField && p !== "/driver") {
             window.location.href = "/driver";

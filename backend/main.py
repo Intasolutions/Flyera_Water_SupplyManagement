@@ -59,6 +59,12 @@ try:
                 conn.commit()
             except Exception:
                 pass
+        # Auto-migrate any legacy DRIVER or WATER_STAFF roles to HELPER (Co-Worker)
+        try:
+            conn.execute(text("UPDATE users SET role = 'HELPER' WHERE role = 'DRIVER' OR role = 'WATER_STAFF'"))
+            conn.commit()
+        except Exception:
+            pass
         for col in ["petty_cash REAL DEFAULT 0.0"]:
             try:
                 conn.execute(text(f"ALTER TABLE assignments ADD COLUMN {col}"))

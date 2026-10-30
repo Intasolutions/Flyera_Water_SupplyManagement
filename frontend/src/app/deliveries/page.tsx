@@ -1323,7 +1323,7 @@ export default function DeliveriesPage() {
                   className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all appearance-none cursor-pointer"
                 >
                   <option value="" disabled>Choose Driver</option>
-                  {realStaff.filter(s => s.role.toUpperCase() === "DRIVER").map(d => {
+                  {realStaff.filter(s => s.role.toUpperCase() !== "ADMIN" && !s.role.toUpperCase().includes("GLASS")).map(d => {
                     const isAssigned = realAssignments.some(a => (a.driver_id === d.id || a.helper_id === d.id) && a.status !== "COMPLETED");
                     return (
                       <option key={d.id} value={d.id} disabled={isAssigned}>
@@ -1344,7 +1344,7 @@ export default function DeliveriesPage() {
                   className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all appearance-none cursor-pointer"
                 >
                   <option value="">No Helper Assigned</option>
-                  {realStaff.filter(s => s.role.toUpperCase() === "HELPER").map(d => {
+                  {realStaff.filter(s => s.role.toUpperCase() !== "ADMIN" && !s.role.toUpperCase().includes("GLASS")).map(d => {
                     const isAssigned = realAssignments.some(a => (a.driver_id === d.id || a.helper_id === d.id) && a.status !== "COMPLETED");
                     return (
                       <option key={d.id} value={d.id} disabled={isAssigned}>
@@ -1538,7 +1538,7 @@ export default function DeliveriesPage() {
                   className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all appearance-none cursor-pointer"
                 >
                   <option value="" disabled>Choose Driver</option>
-                  {realStaff.filter(s => s.role.toUpperCase() === "DRIVER").map(d => {
+                  {realStaff.filter(s => s.role.toUpperCase() !== "ADMIN" && !s.role.toUpperCase().includes("GLASS")).map(d => {
                     const isAssigned = realAssignments.some(
                       a => a.id !== editAssignment?.id && (a.driver_id === d.id || a.helper_id === d.id) && a.status !== "COMPLETED"
                     );
@@ -1561,7 +1561,7 @@ export default function DeliveriesPage() {
                   className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all appearance-none cursor-pointer"
                 >
                   <option value="">No Helper Assigned</option>
-                  {realStaff.filter(s => s.role.toUpperCase() === "HELPER").map(d => {
+                  {realStaff.filter(s => s.role.toUpperCase() !== "ADMIN" && !s.role.toUpperCase().includes("GLASS")).map(d => {
                     const isAssigned = realAssignments.some(
                       a => a.id !== editAssignment?.id && (a.driver_id === d.id || a.helper_id === d.id) && a.status !== "COMPLETED"
                     );

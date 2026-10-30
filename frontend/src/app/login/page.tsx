@@ -137,13 +137,17 @@ export default function LoginPage() {
 
       setCurrentUserRole(mappedRole);
       
-      // Role-based destination: Co-Worker (Water) & Driver -> /driver, Glass Co-Worker -> /glass/driver, Admin -> /
-      if (roleUpper === "DRIVER" || roleUpper === "HELPER" || roleUpper === "CO_WORKER" || roleUpper === "WATER_COWORKER") {
-        router.push("/driver");
+      // Role-based destination:
+      // Co-Worker (Water) -> /driver (Water Driver Co-Pilot)
+      // Glass Co-Worker -> /glass/driver (Glass Driver Intake)
+      // Admin -> / (Management Dashboard)
+      if (roleUpper === "ADMIN") {
+        router.push("/");
       } else if (roleUpper.includes("GLASS")) {
         router.push("/glass/driver");
       } else {
-        router.push("/");
+        // Any water co-worker directly sees the water driver page
+        router.push("/driver");
       }
     } catch (err: any) {
       setError(err.message || "Invalid credentials. Please verify username and password.");

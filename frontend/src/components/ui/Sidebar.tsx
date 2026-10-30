@@ -90,8 +90,8 @@ export function Sidebar() {
     }
   }, []);
 
-  const isWaterField = userRole === "DRIVER" || userRole === "HELPER" || userRole === "CO_WORKER" || userRole === "WATER_COWORKER";
   const isGlassField = (userRole.includes("GLASS") && userRole !== "ADMIN") || userRole === "GLASS_DRIVER";
+  const isWaterField = !isGlassField && userRole !== "ADMIN" && userRole !== "";
   const isDriver = isWaterField || isGlassField;
 
   const waterLinks = [
@@ -368,13 +368,9 @@ export function Sidebar() {
                 <p className="text-sm font-bold text-slate-800 truncate">
                   {userRole === "ADMIN" || currentUserRole === "Owner"
                     ? "Administrator"
-                    : userRole === "DRIVER"
-                    ? "Driver"
-                    : isWaterField
-                    ? "Co-Worker (Water)"
                     : isGlassField
                     ? "Glass Co-Worker"
-                    : "Staff Member"}
+                    : "Co-Worker (Water)"}
                 </p>
                 <span className="text-xs text-slate-500 font-medium block">
                   {userRole === "ADMIN" || currentUserRole === "Owner" ? "Full Admin Access" : "Field Operations"}

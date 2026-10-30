@@ -62,6 +62,14 @@ elif command -v pip3 &> /dev/null; then
     pip3 install -r requirements.txt
 fi
 
+# Migrate legacy DRIVER roles to HELPER in SQLite database
+for db_path in "$REPO_DIR/backend/water_supply.db" "$REPO_DIR/water_supply.db"; do
+    if [ -f "$db_path" ]; then
+        echo "==> Updating staff roles in $db_path (DRIVER -> HELPER)..."
+        python3 -c "import sqlite3; conn = sqlite3.connect('$db_path'); conn.execute('UPDATE users SET role = \"HELPER\" WHERE role = \"DRIVER\" OR role = \"WATER_STAFF\"'); conn.commit(); conn.close()" 2>/dev/null || true
+    fi
+done
+
 # 3. Ensure Node.js & npm are installed
 if [ -f "$HOME/.nvm/nvm.sh" ]; then
     export NVM_DIR="$HOME/.nvm"

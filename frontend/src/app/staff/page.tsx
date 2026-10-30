@@ -61,7 +61,7 @@ export default function StaffPage() {
   const [newPassword, setNewPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [newPhone, setNewPhone] = useState("");
-  const [newRole, setNewRole] = useState("DRIVER");
+  const [newRole, setNewRole] = useState("HELPER");
   const [newAddress, setNewAddress] = useState("");
   const [newIdProofUrl, setNewIdProofUrl] = useState("");
   const [newDrivingLicense, setNewDrivingLicense] = useState("");
@@ -191,7 +191,7 @@ export default function StaffPage() {
     setNewPassword("");
     setShowPassword(false);
     setNewPhone("");
-    setNewRole("DRIVER");
+    setNewRole("HELPER");
     setNewAddress("");
     setNewIdProofUrl("");
     setNewDrivingLicense("");
@@ -209,7 +209,6 @@ export default function StaffPage() {
     const normalizedRole = (() => {
       const r = (s.role || "").toUpperCase();
       if (r === "ADMIN") return "ADMIN";
-      if (r === "DRIVER") return "DRIVER";
       if (r.includes("GLASS")) return "GLASS_DRIVER";
       return "HELPER";
     })();
@@ -301,10 +300,9 @@ export default function StaffPage() {
         if (roleFilter === "all") return true;
         const r = (s.role || "").toUpperCase();
         if (roleFilter === "ADMIN") return r === "ADMIN";
-        if (roleFilter === "DRIVER") return r === "DRIVER";
-        if (roleFilter === "HELPER") return r === "HELPER" || r === "CO_WORKER" || r === "WATER_COWORKER" || r === "WATER_STAFF";
+        if (roleFilter === "HELPER") return r !== "ADMIN" && !r.includes("GLASS");
         if (roleFilter === "GLASS_DRIVER") return r.includes("GLASS");
-        return r === roleFilter.toUpperCase();
+        return true;
       })();
 
       return matchesSearch && matchesRole;
@@ -313,10 +311,9 @@ export default function StaffPage() {
 
   const totalHeadcount = staff.length;
   const totalAdmins = staff.filter(s => s.role.toUpperCase() === "ADMIN").length;
-  const totalDrivers = staff.filter(s => s.role.toUpperCase() === "DRIVER").length;
   const totalCoworkers = staff.filter(s => {
     const r = s.role.toUpperCase();
-    return r === "HELPER" || r === "CO_WORKER" || r === "WATER_COWORKER" || r === "WATER_STAFF";
+    return r !== "ADMIN" && !r.includes("GLASS");
   }).length;
   const totalGlassCoworkers = staff.filter(s => s.role.toUpperCase().includes("GLASS")).length;
 
@@ -351,7 +348,7 @@ export default function StaffPage() {
         />
 
         {/* Top KPI Metrics Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-6 md:mb-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 md:mb-8">
           <StatCard 
             title="Total Team" 
             value={totalHeadcount} 
@@ -369,31 +366,21 @@ export default function StaffPage() {
             color="amber"
           />
           <StatCard 
-            title="Drivers" 
-            value={totalDrivers} 
-            trend="Water delivery routes"
-            icon={<Truck className="w-5 h-5 text-emerald-600" />}
-            badge="Drivers"
-            color="emerald"
-          />
-          <StatCard 
-            title="Co-Workers" 
+            title="Water Co-Workers" 
             value={totalCoworkers} 
-            trend="Water logistics helpers"
+            trend="Water delivery co-pilots"
             icon={<UserCheck className="w-5 h-5 text-cyan-600" />}
             badge="Water"
             color="cyan"
           />
-          <div className="col-span-2 lg:col-span-1">
-            <StatCard 
-              title="Glass Co-Workers" 
-              value={totalGlassCoworkers} 
-              trend="Glass intake & collections"
-              icon={<Recycle className="w-5 h-5 text-purple-600" />}
-              badge="Glass"
-              color="purple"
-            />
-          </div>
+          <StatCard 
+            title="Glass Co-Workers" 
+            value={totalGlassCoworkers} 
+            trend="Glass intake & collections"
+            icon={<Recycle className="w-5 h-5 text-purple-600" />}
+            badge="Glass"
+            color="purple"
+          />
         </div>
 
         {/* Search & Filter Toolbar */}
@@ -430,14 +417,6 @@ export default function StaffPage() {
                   }`}
                 >
                   Admin ({totalAdmins})
-                </button>
-                <button
-                  onClick={() => setRoleFilter("DRIVER")}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    roleFilter === "DRIVER" ? "bg-white shadow text-blue-600 font-black" : "text-text-muted hover:text-text"
-                  }`}
-                >
-                  Drivers ({totalDrivers})
                 </button>
                 <button
                   onClick={() => setRoleFilter("HELPER")}
@@ -550,7 +529,6 @@ export default function StaffPage() {
                   className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium appearance-none cursor-pointer"
                 >
                   <option value="ADMIN">Admin</option>
-                  <option value="DRIVER">Driver</option>
                   <option value="HELPER">Co-Worker (Water)</option>
                   <option value="GLASS_DRIVER">Glass Co-Worker</option>
                 </select>
