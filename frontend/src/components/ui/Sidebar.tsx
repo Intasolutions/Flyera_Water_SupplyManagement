@@ -100,6 +100,7 @@ export function Sidebar() {
     { name: "Inventory", href: "/inventory", icon: Package },
     { name: "Clients", href: "/clients", icon: Users },
     { name: "Staff", href: "/staff", icon: Users },
+    { name: "CA Reports", href: "/ca-reports", icon: FileText },
     { name: "Settings", href: "/settings", icon: Settings },
   ];
 
@@ -254,7 +255,9 @@ export function Sidebar() {
               <button
                 onClick={() => {
                   setActiveBusiness("Water");
-                  if (pathname && pathname.startsWith("/glass/driver")) {
+                  if (pathname && pathname.startsWith("/glass/reports")) {
+                    router.push("/ca-reports");
+                  } else if (pathname && pathname.startsWith("/glass/driver")) {
                     router.push("/driver");
                   } else {
                     router.push("/");
@@ -271,7 +274,9 @@ export function Sidebar() {
               <button
                 onClick={() => {
                   setActiveBusiness("Glass");
-                  if (pathname === "/driver") {
+                  if (pathname === "/ca-reports" || pathname === "/reports") {
+                    router.push("/glass/reports");
+                  } else if (pathname === "/driver") {
                     router.push("/glass/driver");
                   } else {
                     router.push("/glass");

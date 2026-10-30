@@ -1039,3 +1039,110 @@ export const getFinancialSummaryReport = (params?: {
   const q = params ? new URLSearchParams(Object.entries(params).filter(([_, v]) => Boolean(v)) as any).toString() : '';
   return fetcher<FinancialSummaryReport>(`/reports/financial-summary${q ? `?${q}` : ''}`);
 };
+
+
+export interface WaterCaReportData {
+  period: {
+    start_date: string;
+    end_date: string;
+    label: string;
+  };
+  fiscal_calendar: string;
+  generated_at: string;
+  summary: {
+    gross_sales_revenue: number;
+    cost_of_materials: number;
+    gross_profit: number;
+    fleet_expenses: number;
+    net_operating_profit: number;
+    gross_margin_percent: number;
+    net_margin_percent: number;
+    total_jars_delivered: number;
+    total_deliveries_count: number;
+    total_cash_collected: number;
+    total_upi_collected: number;
+    total_credit_outstanding: number;
+  };
+  pl_statement: {
+    water_jars_revenue: number;
+    accessories_revenue: number;
+    other_operating_revenue: number;
+    gross_sales_revenue: number;
+    cost_of_materials: number;
+    gross_profit: number;
+    gross_margin_percent: number;
+    operating_expenses: {
+      total_operating_expenses: number;
+      fuel_and_diesel: number;
+      highway_tolls: number;
+      vehicle_maintenance: number;
+      parking_and_allowances: number;
+      other_logistics: number;
+    };
+    net_operating_profit: number;
+    net_margin_percent: number;
+  };
+  sales_ledger: Array<{
+    id: string;
+    invoice_no: string;
+    date: string;
+    client_name: string;
+    phone: string;
+    route: string;
+    jars_delivered: number;
+    payment_method: string;
+    cash_amount: number;
+    upi_amount: number;
+    credit_amount: number;
+    total_amount: number;
+    driver_name: string;
+    vehicle: string;
+    status: string;
+  }>;
+  expenses_ledger: Array<{
+    id: string;
+    voucher_no: string;
+    date: string;
+    category: string;
+    amount: number;
+    vehicle: string;
+    reported_by: string;
+    payment_source: string;
+    description: string;
+  }>;
+  debtors_ledger: Array<{
+    client_id: string;
+    client_name: string;
+    phone: string;
+    address: string;
+    route: string;
+    outstanding_credit: number;
+    bottle_balance: number;
+  }>;
+  closing_inventory: Array<{
+    id: string;
+    category: string;
+    name: string;
+    full_stock: number;
+    empty_stock: number;
+    damaged_stock: number;
+    benchmark_rate: number;
+    valuation_amount: number;
+  }>;
+  inventory_summary: {
+    total_full_jars: number;
+    total_stock_valuation: number;
+  };
+  debtors_summary: {
+    total_debtors_count: number;
+    total_credit_receivables: number;
+  };
+}
+
+export const getWaterCaReport = (startDate?: string, endDate?: string) => {
+  const p = new URLSearchParams();
+  if (startDate) p.append('start_date', startDate);
+  if (endDate) p.append('end_date', endDate);
+  const q = p.toString();
+  return fetcher<WaterCaReportData>(`/reports/ca-financial-report${q ? `?${q}` : ''}`);
+};
