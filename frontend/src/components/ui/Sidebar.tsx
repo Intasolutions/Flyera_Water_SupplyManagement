@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   BarChart3,
@@ -29,6 +29,7 @@ import {
 import { useStore, AppRole, AppBusiness } from "@/lib/StoreContext";
 
 export function Sidebar() {
+  const router = useRouter();
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
@@ -249,12 +250,21 @@ export function Sidebar() {
           </div>
 
           {/* Business Switcher for Owner / Admin */}
-          {currentUserRole === "Owner" && (
+          {(currentUserRole === "Owner" || (currentUserRole as string) === "ADMIN") && (
             <div className="p-1 bg-slate-100/80 border border-slate-200/60 rounded-xl mb-2 flex gap-1">
               <button
-                onClick={() => setActiveBusiness("Water")}
-                className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${activeBusiness === "Water"
-                    ? "bg-white shadow-xs text-sky-600"
+                onClick={() => {
+                  setActiveBusiness("Water");
+                  if (pathname && pathname.startsWith("/glass/reports")) {
+                    router.push("/reports");
+                  } else if (pathname && pathname.startsWith("/glass/driver")) {
+                    router.push("/driver");
+                  } else {
+                    router.push("/");
+                  }
+                }}
+                className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${!isGlass
+                    ? "bg-white shadow-xs text-sky-600 font-bold"
                     : "text-slate-600 hover:text-slate-900"
                   }`}
               >
@@ -262,9 +272,18 @@ export function Sidebar() {
                 Water
               </button>
               <button
-                onClick={() => setActiveBusiness("Glass")}
-                className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${activeBusiness === "Glass"
-                    ? "bg-white shadow-xs text-emerald-600"
+                onClick={() => {
+                  setActiveBusiness("Glass");
+                  if (pathname === "/reports") {
+                    router.push("/glass/reports");
+                  } else if (pathname === "/driver") {
+                    router.push("/glass/driver");
+                  } else {
+                    router.push("/glass");
+                  }
+                }}
+                className={`flex-1 py-1.5 px-3 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${isGlass
+                    ? "bg-white shadow-xs text-emerald-600 font-bold"
                     : "text-slate-600 hover:text-slate-900"
                   }`}
               >
