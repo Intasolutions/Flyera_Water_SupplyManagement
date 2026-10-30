@@ -206,7 +206,14 @@ export default function StaffPage() {
     setNewPassword("");
     setShowPassword(false);
     setNewPhone(s.phone ? sanitizePhone(s.phone) : "");
-    setNewRole(s.role);
+    const normalizedRole = (() => {
+      const r = (s.role || "").toUpperCase();
+      if (r === "ADMIN") return "ADMIN";
+      if (r === "DRIVER") return "DRIVER";
+      if (r.includes("GLASS")) return "GLASS_DRIVER";
+      return "HELPER";
+    })();
+    setNewRole(normalizedRole);
     setNewAddress(s.address || "");
     setNewIdProofUrl(s.id_proof_url || "");
     setNewDrivingLicense(s.driving_license || "");
@@ -290,18 +297,28 @@ export default function StaffPage() {
 
       const matchesSearch = !rawQuery || nameMatch || usernameMatch || dlMatch || rawPhoneMatch || phoneDigitsMatch;
       
-      const matchesRole = 
-        roleFilter === "all" || s.role.toUpperCase() === roleFilter.toUpperCase();
+      const matchesRole = (() => {
+        if (roleFilter === "all") return true;
+        const r = (s.role || "").toUpperCase();
+        if (roleFilter === "ADMIN") return r === "ADMIN";
+        if (roleFilter === "DRIVER") return r === "DRIVER";
+        if (roleFilter === "HELPER") return r === "HELPER" || r === "CO_WORKER" || r === "WATER_COWORKER" || r === "WATER_STAFF";
+        if (roleFilter === "GLASS_DRIVER") return r.includes("GLASS");
+        return r === roleFilter.toUpperCase();
+      })();
 
       return matchesSearch && matchesRole;
     });
   }, [staff, searchQuery, roleFilter]);
 
   const totalHeadcount = staff.length;
-  const totalWaterStaff = staff.filter(s => s.role.toUpperCase() === "WATER_STAFF").length;
+  const totalAdmins = staff.filter(s => s.role.toUpperCase() === "ADMIN").length;
   const totalDrivers = staff.filter(s => s.role.toUpperCase() === "DRIVER").length;
-  const totalHelpers = staff.filter(s => s.role.toUpperCase() === "HELPER").length;
-  const totalGlass = staff.filter(s => s.role.toUpperCase().includes("GLASS")).length;
+  const totalCoworkers = staff.filter(s => {
+    const r = s.role.toUpperCase();
+    return r === "HELPER" || r === "CO_WORKER" || r === "WATER_COWORKER" || r === "WATER_STAFF";
+  }).length;
+  const totalGlassCoworkers = staff.filter(s => s.role.toUpperCase().includes("GLASS")).length;
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -344,36 +361,36 @@ export default function StaffPage() {
             color="blue"
           />
           <StatCard 
-            title="Water Staff" 
-            value={totalWaterStaff} 
-            trend="Desk & operations"
-            icon={<Users className="w-5 h-5 text-sky-600" />}
-            badge="Operations"
-            color="blue"
+            title="Admins" 
+            value={totalAdmins} 
+            trend="Full system access"
+            icon={<Shield className="w-5 h-5 text-amber-600" />}
+            badge="Admin"
+            color="amber"
           />
           <StatCard 
-            title="Water Drivers" 
+            title="Drivers" 
             value={totalDrivers} 
-            trend="Assigned to delivery routes"
+            trend="Water delivery routes"
             icon={<Truck className="w-5 h-5 text-emerald-600" />}
             badge="Drivers"
             color="emerald"
           />
           <StatCard 
-            title="Route Helpers" 
-            value={totalHelpers} 
-            trend="Assisting delivery crews"
+            title="Co-Workers" 
+            value={totalCoworkers} 
+            trend="Water logistics helpers"
             icon={<UserCheck className="w-5 h-5 text-cyan-600" />}
-            badge="Helpers"
+            badge="Water"
             color="cyan"
           />
           <div className="col-span-2 lg:col-span-1">
             <StatCard 
-              title="Glass Personnel" 
-              value={totalGlass} 
-              trend="Collections & godown"
+              title="Glass Co-Workers" 
+              value={totalGlassCoworkers} 
+              trend="Glass intake & collections"
               icon={<Recycle className="w-5 h-5 text-purple-600" />}
-              badge="Recycling"
+              badge="Glass"
               color="purple"
             />
           </div>
@@ -407,12 +424,12 @@ export default function StaffPage() {
                   All ({totalHeadcount})
                 </button>
                 <button
-                  onClick={() => setRoleFilter("WATER_STAFF")}
+                  onClick={() => setRoleFilter("ADMIN")}
                   className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    roleFilter === "WATER_STAFF" ? "bg-white shadow text-sky-600 font-black" : "text-text-muted hover:text-text"
+                    roleFilter === "ADMIN" ? "bg-white shadow text-amber-600 font-black" : "text-text-muted hover:text-text"
                   }`}
                 >
-                  Water Staff ({totalWaterStaff})
+                  Admin ({totalAdmins})
                 </button>
                 <button
                   onClick={() => setRoleFilter("DRIVER")}
@@ -428,7 +445,7 @@ export default function StaffPage() {
                     roleFilter === "HELPER" ? "bg-white shadow text-cyan-600 font-black" : "text-text-muted hover:text-text"
                   }`}
                 >
-                  Helpers ({totalHelpers})
+                  Co-Workers ({totalCoworkers})
                 </button>
                 <button
                   onClick={() => setRoleFilter("GLASS_DRIVER")}
@@ -436,15 +453,7 @@ export default function StaffPage() {
                     roleFilter === "GLASS_DRIVER" ? "bg-white shadow text-purple-600 font-black" : "text-text-muted hover:text-text"
                   }`}
                 >
-                  Glass ({totalGlass})
-                </button>
-                <button
-                  onClick={() => setRoleFilter("ADMIN")}
-                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    roleFilter === "ADMIN" ? "bg-white shadow text-amber-600 font-black" : "text-text-muted hover:text-text"
-                  }`}
-                >
-                  Admin
+                  Glass Co-Workers ({totalGlassCoworkers})
                 </button>
               </div>
 
@@ -540,12 +549,10 @@ export default function StaffPage() {
                   onChange={e => setNewRole(e.target.value)} 
                   className="w-full bg-surface border border-gray-200 rounded-xl px-4 py-3 outline-none text-text focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all font-medium appearance-none cursor-pointer"
                 >
-                  <option value="WATER_STAFF">Water Staff (Operations / Desk)</option>
-                  <option value="DRIVER">Delivery Driver (Water)</option>
-                  <option value="HELPER">Route Helper (Water)</option>
-                  <option value="GLASS_DRIVER">Collection Driver (Glass)</option>
-                  <option value="GLASS_STAFF">Godown Worker (Glass)</option>
-                  <option value="ADMIN">Administrator (Owner)</option>
+                  <option value="ADMIN">Admin</option>
+                  <option value="DRIVER">Driver</option>
+                  <option value="HELPER">Co-Worker (Water)</option>
+                  <option value="GLASS_DRIVER">Glass Co-Worker</option>
                 </select>
               </div>
             </div>
@@ -757,14 +764,22 @@ export default function StaffPage() {
         >
           {selectedStaff && (() => {
             const assignedVeh = vehicles.find(v => v.id === selectedStaff.assigned_vehicle_id);
-            const roleInfo = {
-              WATER_STAFF: { label: "Water Staff (Operations / Desk)", badge: "bg-sky-50 text-sky-700 border-sky-200" },
-              DRIVER: { label: "Water Delivery Driver", badge: "bg-blue-50 text-blue-700 border-blue-200" },
-              HELPER: { label: "Route Helper (Water Fleet)", badge: "bg-cyan-50 text-cyan-700 border-cyan-200" },
-              GLASS_DRIVER: { label: "Glass Collection Driver", badge: "bg-purple-50 text-purple-700 border-purple-200" },
-              GLASS_STAFF: { label: "Godown Worker (Glass)", badge: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-              ADMIN: { label: "System Administrator (Owner)", badge: "bg-amber-50 text-amber-700 border-amber-200" },
-            }[selectedStaff.role.toUpperCase()] || { label: selectedStaff.role, badge: "bg-gray-50 text-gray-700 border-gray-200" };
+            const roleInfo = (() => {
+              const r = (selectedStaff.role || "").toUpperCase();
+              if (r === "ADMIN") {
+                return { label: "Admin (Owner / Full Access)", badge: "bg-amber-50 text-amber-700 border-amber-200" };
+              }
+              if (r === "DRIVER") {
+                return { label: "Driver (Water Delivery)", badge: "bg-blue-50 text-blue-700 border-blue-200" };
+              }
+              if (r === "HELPER" || r === "CO_WORKER" || r === "WATER_COWORKER" || r === "WATER_STAFF") {
+                return { label: "Co-Worker (Water Logistics)", badge: "bg-cyan-50 text-cyan-700 border-cyan-200" };
+              }
+              if (r.includes("GLASS")) {
+                return { label: "Glass Co-Worker (Collections & Intake)", badge: "bg-purple-50 text-purple-700 border-purple-200" };
+              }
+              return { label: selectedStaff.role, badge: "bg-gray-50 text-gray-700 border-gray-200" };
+            })();
 
             const initials = selectedStaff.name
               .split(" ")
@@ -982,14 +997,22 @@ function StaffCard({
   onEdit: () => void; 
   onDelete: () => void; 
 }) {
-  const roleConfig = {
-    WATER_STAFF: { label: "Water Staff", bg: "bg-sky-50 text-sky-700 border-sky-100", icon: Users },
-    DRIVER: { label: "Water Driver", bg: "bg-blue-50 text-blue-700 border-blue-100", icon: Truck },
-    HELPER: { label: "Route Helper", bg: "bg-cyan-50 text-cyan-700 border-cyan-100", icon: UserCheck },
-    GLASS_DRIVER: { label: "Glass Driver", bg: "bg-purple-50 text-purple-700 border-purple-100", icon: Recycle },
-    GLASS_STAFF: { label: "Godown Worker", bg: "bg-emerald-50 text-emerald-700 border-emerald-100", icon: Recycle },
-    ADMIN: { label: "Administrator", bg: "bg-amber-50 text-amber-700 border-amber-100", icon: Shield }
-  }[staff.role.toUpperCase()] || { label: staff.role, bg: "bg-gray-50 text-gray-700 border-gray-100", icon: UserIcon };
+  const roleConfig = (() => {
+    const r = (staff.role || "").toUpperCase();
+    if (r === "ADMIN") {
+      return { label: "Admin", bg: "bg-amber-50 text-amber-700 border-amber-200", icon: Shield };
+    }
+    if (r === "DRIVER") {
+      return { label: "Driver", bg: "bg-blue-50 text-blue-700 border-blue-200", icon: Truck };
+    }
+    if (r === "HELPER" || r === "CO_WORKER" || r === "WATER_COWORKER" || r === "WATER_STAFF") {
+      return { label: "Co-Worker", bg: "bg-cyan-50 text-cyan-700 border-cyan-200", icon: UserCheck };
+    }
+    if (r.includes("GLASS")) {
+      return { label: "Glass Co-Worker", bg: "bg-purple-50 text-purple-700 border-purple-200", icon: Recycle };
+    }
+    return { label: staff.role, bg: "bg-gray-50 text-gray-700 border-gray-200", icon: UserIcon };
+  })();
 
   const RoleIconComponent = roleConfig.icon;
 

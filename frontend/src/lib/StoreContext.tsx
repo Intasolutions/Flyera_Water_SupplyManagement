@@ -186,18 +186,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if ((token || refreshToken) && window.location.pathname !== "/login") {
       setIsAuthenticated(true);
 
-      // Strict role-based URL lockdown for drivers
+      // Strict role-based URL lockdown for field personnel
       try {
         const rawUser = localStorage.getItem("flyera_user");
         if (rawUser) {
           const u = JSON.parse(rawUser);
-          const r = u.role?.toUpperCase();
+          const r = (u.role || "").toUpperCase();
           const p = window.location.pathname;
-          if ((r === "DRIVER" || r === "HELPER") && p !== "/driver") {
+          const isWaterField = r === "DRIVER" || r === "HELPER" || r === "CO_WORKER" || r === "WATER_COWORKER";
+          const isGlassField = r.includes("GLASS") && r !== "ADMIN";
+
+          if (isWaterField && p !== "/driver") {
             window.location.href = "/driver";
             return;
           }
-          if (r === "GLASS_DRIVER" && p !== "/glass/driver") {
+          if (isGlassField && p !== "/glass/driver") {
             window.location.href = "/glass/driver";
             return;
           }

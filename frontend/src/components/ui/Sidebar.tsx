@@ -90,7 +90,9 @@ export function Sidebar() {
     }
   }, []);
 
-  const isDriver = userRole === "DRIVER" || userRole === "HELPER" || userRole === "GLASS_DRIVER";
+  const isWaterField = userRole === "DRIVER" || userRole === "HELPER" || userRole === "CO_WORKER" || userRole === "WATER_COWORKER";
+  const isGlassField = (userRole.includes("GLASS") && userRole !== "ADMIN") || userRole === "GLASS_DRIVER";
+  const isDriver = isWaterField || isGlassField;
 
   const waterLinks = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -124,7 +126,7 @@ export function Sidebar() {
   ];
 
   const rawLinks = isDriver
-    ? (userRole === "GLASS_DRIVER" ? driverGlassLinks : driverWaterLinks)
+    ? (isGlassField ? driverGlassLinks : driverWaterLinks)
     : (isGlass ? glassLinks : waterLinks);
   const links = rawLinks.filter(link => {
     // Only Admin / Owner can see Settings
@@ -143,7 +145,7 @@ export function Sidebar() {
 
   // Quick bottom bar links for mobile phone navigation
   const mobileQuickLinks = isDriver ? (
-    userRole === "GLASS_DRIVER" ? [
+    isGlassField ? [
       { name: "Intake", href: "/glass/driver", icon: Truck },
     ] : [
       { name: "Co-Pilot", href: "/driver", icon: Truck },
@@ -364,10 +366,18 @@ export function Sidebar() {
               </div>
               <div className="truncate">
                 <p className="text-sm font-bold text-slate-800 truncate">
-                  {currentUserRole === "Owner" ? "Administrator" : currentUserRole === "WaterStaff" ? "Water Staff" : currentUserRole === "GlassStaff" ? "Glass Staff" : currentUserRole}
+                  {userRole === "ADMIN" || currentUserRole === "Owner"
+                    ? "Administrator"
+                    : userRole === "DRIVER"
+                    ? "Driver"
+                    : isWaterField
+                    ? "Co-Worker (Water)"
+                    : isGlassField
+                    ? "Glass Co-Worker"
+                    : "Staff Member"}
                 </p>
                 <span className="text-xs text-slate-500 font-medium block">
-                  {currentUserRole === "Owner" ? "Full Admin Access" : "Staff Operations"}
+                  {userRole === "ADMIN" || currentUserRole === "Owner" ? "Full Admin Access" : "Field Operations"}
                 </span>
               </div>
             </div>

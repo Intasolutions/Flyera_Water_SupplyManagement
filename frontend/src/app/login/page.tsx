@@ -126,20 +126,22 @@ export default function LoginPage() {
       } catch (e) {}
       
       let mappedRole: AppRole = "Owner";
-      if (user.role === "ADMIN") mappedRole = "Owner";
-      if (user.role === "DRIVER" || user.role === "HELPER") mappedRole = "WaterStaff";
-      if (user.role === "WATER_STAFF") mappedRole = "WaterStaff";
-      if (user.role === "GLASS_STAFF") mappedRole = "GlassStaff";
-      if (user.role === "GLASS_DRIVER") mappedRole = "GlassStaff";
+      const roleUpper = (user.role || "").toUpperCase();
+      if (roleUpper === "ADMIN") {
+        mappedRole = "Owner";
+      } else if (roleUpper.includes("GLASS")) {
+        mappedRole = "GlassStaff";
+      } else {
+        mappedRole = "WaterStaff";
+      }
 
       setCurrentUserRole(mappedRole);
       
-      if (user.role === "DRIVER" || user.role === "HELPER") {
+      // Role-based destination: Co-Worker (Water) & Driver -> /driver, Glass Co-Worker -> /glass/driver, Admin -> /
+      if (roleUpper === "DRIVER" || roleUpper === "HELPER" || roleUpper === "CO_WORKER" || roleUpper === "WATER_COWORKER") {
         router.push("/driver");
-      } else if (user.role === "GLASS_DRIVER") {
+      } else if (roleUpper.includes("GLASS")) {
         router.push("/glass/driver");
-      } else if (user.role === "GLASS_STAFF") {
-        router.push("/glass");
       } else {
         router.push("/");
       }
