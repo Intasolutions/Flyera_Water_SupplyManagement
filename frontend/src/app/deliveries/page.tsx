@@ -38,7 +38,10 @@ import {
   ArrowRight,
   ExternalLink,
   FileText,
-  Fuel
+  Fuel,
+  TrendingUp,
+  Wallet,
+  BarChart3
 } from "lucide-react";
 import QRCode from "qrcode";
 import {
@@ -969,6 +972,31 @@ export default function DeliveriesPage() {
                       ? Math.min(100, Math.round(deliveriesCount / routeClientsCount * 100))
                       : 0);
 
+                  // Calculate vehicle trip financials
+                  const aExpenses = allTripExpenses.filter(e => e.assignment_id === a.id);
+                  const totalExp = aExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
+                  let totalRev = 0;
+                  let totalCashAmt = 0;
+                  let totalUpiAmt = 0;
+                  (a as any).deliveries?.forEach((d: any) => {
+                    const paid = Number(d.paid_amount) || 0;
+                    const tot = Number(d.total_amount) || 0;
+                    const m = (d.payment_method || "").toLowerCase();
+                    if (m.includes("cash")) {
+                      const amt = paid > 0 ? paid : (d.status === "COMPLETED" ? tot : 0);
+                      totalCashAmt += amt;
+                      totalRev += amt;
+                    } else if (m.includes("upi")) {
+                      const amt = paid > 0 ? paid : (d.status === "COMPLETED" ? tot : 0);
+                      totalUpiAmt += amt;
+                      totalRev += amt;
+                    } else if (paid > 0) {
+                      totalRev += paid;
+                    }
+                  });
+                  const netProf = totalRev - totalExp;
+                  const profMargin = totalRev > 0 ? Math.round((netProf / totalRev) * 1000) / 10 : 0;
+
                   return (
                     <AssignmentCard
                       key={a.id}
@@ -983,6 +1011,12 @@ export default function DeliveriesPage() {
                       progress={progress}
                       date={a.date}
                       pettyCash={a.petty_cash || 0}
+                      totalRevenue={totalRev}
+                      totalExpenses={totalExp}
+                      netProfit={netProf}
+                      profitMargin={profMargin}
+                      totalCash={totalCashAmt}
+                      totalUpi={totalUpiAmt}
                       onEdit={() => handleOpenEdit(a)}
                       onAssign={() => setDispatchConfirmOpen(a)}
                       onTrack={() => setTrackOpen(a.id)}
@@ -1860,98 +1894,130 @@ export default function DeliveriesPage() {
         <Modal
           isOpen={!!reconOpen}
           onClose={() => setReconOpen(null)}
-          title="End of Day Reconciliation"
+          title="Vehicle Financial Report & Reconciliation"
           subtitle={(() => {
             const assignmentObj = realAssignments.find(a => a.id === reconOpen);
-            const vPlate = realVehicles.find(v => v.id === assignmentObj?.vehicle_id)?.plate_number;
-            return `Reconcile returns, empties & cash for ${vPlate || "Vehicle"}`;
+            const vPlate = realVehicles.find(v => v.id === assignmentObj?.vehicle_id)?.plate_number || "Vehicle";
+            const dName = realStaff.find(s => s.id === assignmentObj?.driver_id)?.name || "Driver";
+            const rName = realRoutes.find(r => r.id === assignmentObj?.route_id)?.name || "Route";
+            const dDate = assignmentObj?.date ? new Date(assignmentObj.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "";
+            return (
+              <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500 mt-1">
+                <span className="font-black text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">{vPlate}</span>
+                <span>&bull;</span>
+                <span className="text-slate-700 font-bold">{dName}</span>
+                <span>&bull;</span>
+                <span className="text-slate-600">{rName}</span>
+                {dDate && (
+                  <>
+                    <span>&bull;</span>
+                    <span className="text-slate-500">{dDate}</span>
+                  </>
+                )}
+              </div>
+            );
           })()}
-          width="lg"
+          width="4xl"
           actions={(() => {
             const assignmentObj = realAssignments.find(a => a.id === reconOpen);
             const isAlreadyCompleted = assignmentObj?.status === "COMPLETED";
 
-            if (isAlreadyCompleted) {
-              return (
-                <div className="flex gap-3 w-full">
-                  <Button
-                    variant="secondary"
-                    className="flex-1"
-                    onClick={() => setReconOpen(null)}
-                  >
-                    Close Window
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 border-amber-300 text-amber-800 hover:bg-amber-50"
-                    icon={<RotateCcw className="w-4 h-4 text-amber-600" />}
-                    onClick={async () => {
-                      const isConfirmed = await confirm({
-                        title: "Reopen Route",
-                        message: "Are you sure you want to undo this closure and reopen the route? This will restore the shift to Active and adjust returned inventory back to the van.",
-                        confirmText: "Reopen Route",
-                        cancelText: "Cancel"
-                      });
-                      if (isConfirmed && assignmentObj) {
-                        try {
-                          await reopenAssignment(assignmentObj.id);
-                          const refreshed = await getAssignments();
-                          setRealAssignments(refreshed);
-                          toast.success("Route reopened successfully! Status restored to Active.");
-                          setReconOpen(null);
-                        } catch (e: any) {
-                          console.error("Failed to reopen assignment", e);
-                          toast.error(e.message || "Failed to reopen route.");
-                        }
-                      }
-                    }}
-                  >
-                    Undo Closure &amp; Reopen
-                  </Button>
-                </div>
-              );
-            }
-
             return (
-              <Button
-                variant="primary"
-                onClick={async () => {
-                  if (assignmentObj) {
-                    try {
-                      const returned_stock = assignmentObj.allocations.map(alloc => {
-                        const invId = alloc.inventory_type_id;
-                        let total_delivered = 0;
-                        let total_empty = 0;
-                        (assignmentObj as any).deliveries?.forEach((d: any) => {
-                          d.items?.forEach((item: any) => {
-                            if (item.inventory_type_id === invId) {
-                              total_delivered += item.delivered_full || 0;
-                              total_empty += item.collected_empty || 0;
-                            }
-                          });
+              <div className="flex flex-wrap items-center justify-between gap-3 w-full">
+                <Button
+                  variant="outline"
+                  className="border-slate-300 text-slate-700 hover:bg-slate-50 font-bold"
+                  icon={<Printer className="w-4 h-4 text-slate-600" />}
+                  onClick={() => window.print()}
+                >
+                  Print Vehicle Statement
+                </Button>
+
+                {isAlreadyCompleted ? (
+                  <div className="flex gap-2.5">
+                    <Button
+                      variant="secondary"
+                      onClick={() => setReconOpen(null)}
+                    >
+                      Close Window
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="border-amber-300 text-amber-800 hover:bg-amber-50 font-black"
+                      icon={<RotateCcw className="w-4 h-4 text-amber-600" />}
+                      onClick={async () => {
+                        const isConfirmed = await confirm({
+                          title: "Reopen Route",
+                          message: "Are you sure you want to undo this closure and reopen the route? This will restore the shift to Active and adjust returned inventory back to the van.",
+                          confirmText: "Reopen Route",
+                          cancelText: "Cancel"
                         });
-                        return {
-                          inventory_type_id: invId,
-                          allocated_count: alloc.allocated_count,
-                          returned_full: Math.max(0, alloc.allocated_count - total_delivered),
-                          returned_empty: total_empty
-                        };
-                      });
-                      await apiCompleteAssignment(assignmentObj.id, returned_stock);
-                      const refreshed = await getAssignments();
-                      setRealAssignments(refreshed);
-                      toast.success("Route reconciled and closed!");
-                    } catch (e) {
-                      console.error("Failed to complete assignment", e);
-                      toast.error("Failed to close route.");
-                    }
-                  }
-                  setReconOpen(null);
-                }}
-                fullWidth
-              >
-                Confirm &amp; Return Stock to Warehouse
-              </Button>
+                        if (isConfirmed && assignmentObj) {
+                          try {
+                            await reopenAssignment(assignmentObj.id);
+                            const refreshed = await getAssignments();
+                            setRealAssignments(refreshed);
+                            toast.success("Route reopened successfully! Status restored to Active.");
+                            setReconOpen(null);
+                          } catch (e: any) {
+                            console.error("Failed to reopen assignment", e);
+                            toast.error(e.message || "Failed to reopen route.");
+                          }
+                        }
+                      }}
+                    >
+                      Undo Closure &amp; Reopen
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2.5">
+                    <Button
+                      variant="secondary"
+                      onClick={() => setReconOpen(null)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onClick={async () => {
+                        if (assignmentObj) {
+                          try {
+                            const returned_stock = assignmentObj.allocations.map(alloc => {
+                              const invId = alloc.inventory_type_id;
+                              let total_delivered = 0;
+                              let total_empty = 0;
+                              (assignmentObj as any).deliveries?.forEach((d: any) => {
+                                d.items?.forEach((item: any) => {
+                                  if (item.inventory_type_id === invId) {
+                                    total_delivered += item.delivered_full || 0;
+                                    total_empty += item.collected_empty || 0;
+                                  }
+                                });
+                              });
+                              return {
+                                inventory_type_id: invId,
+                                allocated_count: alloc.allocated_count,
+                                returned_full: Math.max(0, alloc.allocated_count - total_delivered),
+                                returned_empty: total_empty
+                              };
+                            });
+                            await apiCompleteAssignment(assignmentObj.id, returned_stock);
+                            const refreshed = await getAssignments();
+                            setRealAssignments(refreshed);
+                            toast.success("Route reconciled and closed!");
+                          } catch (e) {
+                            console.error("Failed to complete assignment", e);
+                            toast.error("Failed to close route.");
+                          }
+                        }
+                        setReconOpen(null);
+                      }}
+                    >
+                      Confirm &amp; Return Stock to Warehouse
+                    </Button>
+                  </div>
+                )}
+              </div>
             );
           })()}
         >
@@ -1960,11 +2026,16 @@ export default function DeliveriesPage() {
               const assignmentObj = realAssignments.find(a => a.id === reconOpen);
               if (!assignmentObj) return null;
 
+              const deliveries = (assignmentObj as any).deliveries || [];
+              const totalStopsCount = deliveries.length;
+              const completedDeliveries = deliveries.filter((d: any) => d.status === "COMPLETED" || Number(d.paid_amount) > 0);
+              const completedStopsCount = completedDeliveries.length;
+
               const stats = assignmentObj.allocations.map(alloc => {
                 const inv = inventoryTypes.find(i => i.id === alloc.inventory_type_id);
                 let total_delivered = 0;
                 let total_empty = 0;
-                (assignmentObj as any).deliveries?.forEach((d: any) => {
+                deliveries.forEach((d: any) => {
                   d.items?.forEach((item: any) => {
                     if (item.inventory_type_id === alloc.inventory_type_id) {
                       total_delivered += item.delivered_full || 0;
@@ -1981,176 +2052,289 @@ export default function DeliveriesPage() {
                 };
               });
 
+              let totalRevenue = 0;
               let totalCash = 0;
               let totalUpi = 0;
               let totalPendingSlip = 0;
-              (assignmentObj as any).deliveries?.forEach((d: any) => {
+              let totalBottlesDelivered = 0;
+
+              deliveries.forEach((d: any) => {
                 const paid = Number(d.paid_amount) || 0;
                 const total = Number(d.total_amount) || 0;
                 const method = (d.payment_method || "").toLowerCase();
                 const isSlipOrCredit = method.includes("slip") || method.includes("pay later") || method.includes("credit") || d.status === "PENDING_PAYMENT" || d.status === "CREDITED" || d.status === "PARTIAL_PAID";
 
                 if (method.includes("cash")) {
-                  totalCash += paid > 0 ? paid : (d.status === "COMPLETED" ? total : 0);
+                  const amt = paid > 0 ? paid : (d.status === "COMPLETED" ? total : 0);
+                  totalCash += amt;
+                  totalRevenue += amt;
                 } else if (method.includes("upi")) {
-                  totalUpi += paid > 0 ? paid : (d.status === "COMPLETED" ? total : 0);
+                  const amt = paid > 0 ? paid : (d.status === "COMPLETED" ? total : 0);
+                  totalUpi += amt;
+                  totalRevenue += amt;
+                } else if (paid > 0) {
+                  totalRevenue += paid;
                 }
 
                 if (isSlipOrCredit) {
-                  // Any uncollected portion remains pending slip
                   const unpaidPortion = Math.max(0, total - paid);
                   totalPendingSlip += unpaidPortion;
                 }
+
+                d.items?.forEach((item: any) => {
+                  totalBottlesDelivered += item.delivered_full || 0;
+                });
               });
 
+              const startingPettyCash = Number(assignmentObj.petty_cash) || 0;
+              const reconTotalExpenses = reconExpenses.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+              const inhandCashSpent = reconExpenses.reduce((s, e) => s + (e.paid_from_inhand ? (Number(e.inhand_amount ?? e.amount) || 0) : 0), 0);
+              const personalSpent = Math.max(0, reconTotalExpenses - inhandCashSpent);
+              const remainingPettyCash = Math.max(0, startingPettyCash - inhandCashSpent);
+              const netCashFromDriver = Math.max(0, (totalCash + remainingPettyCash) - personalSpent);
+              const netShiftProfit = totalRevenue - reconTotalExpenses;
+              const profitMarginPct = totalRevenue > 0 ? Math.round((netShiftProfit / totalRevenue) * 1000) / 10 : 0;
+
               return (
-                <div className="space-y-5">
-                  {stats.map((stat, idx) => (
-                    <div key={idx} className="bg-slate-50/80 rounded-2xl p-5 border border-slate-200/80 shadow-xs">
-                      <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-200/70">
-                        <span className="font-black text-slate-800 text-sm">Dispatched: {stat.name}</span>
-                        <span className="font-black text-primary text-base">{stat.allocated} Loaded</span>
+                <div className="space-y-6">
+                  {/* 1. EXECUTIVE FINANCIAL KPI CARDS FOR THIS VEHICLE */}
+                  <div>
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        <BarChart3 className="w-4 h-4 text-emerald-600" />
+                        Vehicle Trip Financials &amp; Performance
+                      </span>
+                      <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full border ${
+                        netShiftProfit >= 0
+                          ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                          : "bg-rose-50 text-rose-800 border-rose-200"
+                      }`}>
+                        {profitMarginPct}% Net Operating Margin
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                      {/* Card 1: Deliveries Revenue */}
+                      <div className="p-4 rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50/70 to-white shadow-xs space-y-2.5">
+                        <div className="flex justify-between items-start">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1.5">
+                            <IndianRupee className="w-4 h-4 text-emerald-600" />
+                            Deliveries Revenue
+                          </span>
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            Gross Inflow
+                          </span>
+                        </div>
+                        <div>
+                          <div className="text-2xl sm:text-3xl font-black text-emerald-950 tracking-tight">
+                            ₹{totalRevenue.toLocaleString()}
+                          </div>
+                          <span className="text-[11px] font-semibold text-emerald-700 block mt-0.5">
+                            {completedStopsCount} of {totalStopsCount} stops &bull; {totalBottlesDelivered} jars/bottles
+                          </span>
+                        </div>
+                        <div className="pt-2 border-t border-emerald-200/60 grid grid-cols-2 gap-2 text-[11px]">
+                          <div className="bg-white/80 p-1.5 rounded-lg border border-emerald-200/60">
+                            <span className="text-slate-500 text-[10px] block font-bold">Physical Cash:</span>
+                            <strong className="text-emerald-900 font-black">₹{totalCash.toLocaleString()}</strong>
+                          </div>
+                          <div className="bg-white/80 p-1.5 rounded-lg border border-emerald-200/60">
+                            <span className="text-slate-500 text-[10px] block font-bold">Direct UPI QR:</span>
+                            <strong className="text-sky-900 font-black">₹{totalUpi.toLocaleString()}</strong>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-3">
-                        <div className="bg-white p-3 rounded-xl border border-slate-100 text-center">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 block">Delivered Full</span>
-                          <span className="font-black text-slate-800 text-lg">{stat.delivered}</span>
+                      {/* Card 2: Total Trip Expenses */}
+                      <div className="p-4 rounded-2xl border border-amber-200/90 bg-gradient-to-br from-amber-50/70 to-white shadow-xs space-y-2.5">
+                        <div className="flex justify-between items-start">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                            <Fuel className="w-4 h-4 text-amber-600" />
+                            Total Trip Expenses
+                          </span>
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                            On-Road Cost
+                          </span>
                         </div>
-                        <div className="bg-white p-3 rounded-xl border border-slate-100 text-center">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 block">Empty Cullet</span>
-                          <span className="font-black text-slate-800 text-lg">{stat.empty}</span>
+                        <div>
+                          <div className="text-2xl sm:text-3xl font-black text-amber-950 tracking-tight">
+                            ₹{reconTotalExpenses.toLocaleString()}
+                          </div>
+                          <span className="text-[11px] font-semibold text-amber-700 block mt-0.5">
+                            Fuel, Tolls, Repairs, Parking &amp; Crew
+                          </span>
                         </div>
-                        <div className="bg-white p-3 rounded-xl border border-slate-100 text-center">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 block">Unsold Return</span>
-                          <span className="font-black text-slate-800 text-lg">{stat.returned}</span>
+                        <div className="pt-2 border-t border-amber-200/60 grid grid-cols-2 gap-2 text-[11px]">
+                          <div className="bg-white/80 p-1.5 rounded-lg border border-amber-200/60">
+                            <span className="text-slate-500 text-[10px] block font-bold">From In-Hand Cash:</span>
+                            <strong className="text-amber-900 font-black">₹{inhandCashSpent.toLocaleString()}</strong>
+                          </div>
+                          <div className="bg-white/80 p-1.5 rounded-lg border border-amber-200/60">
+                            <span className="text-slate-500 text-[10px] block font-bold">Driver Reimbursable:</span>
+                            <strong className="text-rose-900 font-black">₹{personalSpent.toLocaleString()}</strong>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="p-4 bg-emerald-50/80 rounded-2xl border border-emerald-200/80 shadow-xs">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">Cash Handover</span>
-                      <span className="text-2xl font-black text-emerald-950">₹{totalCash.toLocaleString()}</span>
-                      <span className="text-[10px] text-emerald-600 font-bold block mt-0.5">Physical cash from driver</span>
-                    </div>
+                      {/* Card 3: Net Operating Profit */}
+                      <div className="p-4 rounded-2xl border border-teal-200/90 bg-gradient-to-br from-teal-50/70 to-white shadow-xs space-y-2.5">
+                        <div className="flex justify-between items-start">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-teal-900 flex items-center gap-1.5">
+                            <TrendingUp className="w-4 h-4 text-teal-600" />
+                            Net Operating Profit
+                          </span>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                            netShiftProfit >= 0
+                              ? "bg-teal-100 text-teal-800 border-teal-300"
+                              : "bg-rose-100 text-rose-800 border-rose-300"
+                          }`}>
+                            {profitMarginPct}% Margin
+                          </span>
+                        </div>
+                        <div>
+                          <div className={`text-2xl sm:text-3xl font-black tracking-tight ${
+                            netShiftProfit >= 0 ? "text-teal-950" : "text-rose-700"
+                          }`}>
+                            ₹{netShiftProfit.toLocaleString()}
+                          </div>
+                          <span className="text-[11px] font-semibold text-teal-700 block mt-0.5">
+                            {netShiftProfit >= 0 ? "Positive Net Yield" : "Operating Loss Detected"}
+                          </span>
+                        </div>
+                        <div className="pt-2 border-t border-teal-200/60 flex justify-between items-center text-[11px] text-slate-700">
+                          <span>Operating Formula:</span>
+                          <span className="font-bold text-teal-900">Revenue &minus; Total Expenses</span>
+                        </div>
+                      </div>
 
-                    <div className="p-4 bg-sky-50/80 rounded-2xl border border-sky-200/80 shadow-xs">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-sky-800 block">Direct UPI QR</span>
-                      <span className="text-2xl font-black text-sky-950">₹{totalUpi.toLocaleString()}</span>
-                      <span className="text-[10px] text-sky-600 font-bold block mt-0.5">Direct to bank &amp; verified slip transfers</span>
-                    </div>
-
-                    <div className="p-4 bg-amber-50/80 rounded-2xl border border-amber-200/80 shadow-xs">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 block">Pending Slip QR</span>
-                      <span className="text-2xl font-black text-amber-950">₹{totalPendingSlip.toLocaleString()}</span>
-                      <span className="text-[10px] text-amber-600 font-bold block mt-0.5">Remaining uncollected slip credit</span>
+                      {/* Card 4: In-Hand Cash Audit */}
+                      <div className="p-4 rounded-2xl border border-indigo-200/90 bg-gradient-to-br from-indigo-50/70 to-white shadow-xs space-y-2.5">
+                        <div className="flex justify-between items-start">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-indigo-900 flex items-center gap-1.5">
+                            <Wallet className="w-4 h-4 text-indigo-600" />
+                            In-Hand Cash Audit
+                          </span>
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-300">
+                            Shift Petty Cash
+                          </span>
+                        </div>
+                        <div>
+                          <div className="text-2xl sm:text-3xl font-black text-indigo-950 tracking-tight">
+                            ₹{remainingPettyCash.toLocaleString()}
+                          </div>
+                          <span className="text-[11px] font-semibold text-indigo-700 block mt-0.5">
+                            Unspent In-Hand Cash to be returned
+                          </span>
+                        </div>
+                        <div className="pt-2 border-t border-indigo-200/60 grid grid-cols-2 gap-2 text-[11px]">
+                          <div className="bg-white/80 p-1.5 rounded-lg border border-indigo-200/60">
+                            <span className="text-slate-500 text-[10px] block font-bold">Given in Morning:</span>
+                            <strong className="text-indigo-900 font-black">₹{startingPettyCash.toLocaleString()}</strong>
+                          </div>
+                          <div className="bg-white/80 p-1.5 rounded-lg border border-indigo-200/60">
+                            <span className="text-slate-500 text-[10px] block font-bold">Spent on Road:</span>
+                            <strong className="text-amber-900 font-black">₹{inhandCashSpent.toLocaleString()}</strong>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Trip Expenses & Petty Cash Deduction */}
-                  {(() => {
-                    const startingPettyCash = assignmentObj.petty_cash || 0;
-                    const reconTotalExpenses = reconExpenses.reduce((s, e) => s + (e.amount || 0), 0);
-                    const inhandCashSpent = reconExpenses.reduce((s, e) => s + (e.paid_from_inhand ? (e.inhand_amount ?? e.amount) : 0), 0);
-                    const personalSpent = Math.max(0, reconTotalExpenses - inhandCashSpent);
-                    const remainingPettyCash = Math.max(0, startingPettyCash - inhandCashSpent);
-                    const netCashFromDriver = Math.max(0, (totalCash + remainingPettyCash) - personalSpent);
-                    const netShiftProfit = (totalCash + totalUpi) - reconTotalExpenses;
+                  {/* 2. CASH HANDOVER & SETTLEMENT STRIP */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="p-4 bg-emerald-50/90 rounded-2xl border border-emerald-200 shadow-xs">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">Net Cash from Driver</span>
+                      <span className="text-2xl font-black text-emerald-950">₹{netCashFromDriver.toLocaleString()}</span>
+                      <span className="text-[11px] text-emerald-700 font-semibold block mt-1">
+                        (Customer Cash ₹{totalCash} + Returned Petty Cash ₹{remainingPettyCash}{personalSpent > 0 ? ` &minus; Reimbursed ₹${personalSpent}` : ""})
+                      </span>
+                    </div>
 
-                    return (
-                      <div className="space-y-3 pt-1">
-                        {/* Petty Cash & Expenses summary grid */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                          <div className="bg-emerald-50/90 border border-emerald-200/90 p-3 rounded-xl">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">Morning In-Hand Cash</span>
-                            <span className="text-lg font-black text-emerald-950">₹{startingPettyCash.toLocaleString()}</span>
-                            <span className="text-[10px] text-emerald-600 font-semibold block">Petty cash given to driver</span>
-                          </div>
-                          <div className="bg-amber-50/90 border border-amber-200/90 p-3 rounded-xl">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 block">Cash Used by Driver</span>
-                            <span className="text-lg font-black text-amber-950">− ₹{inhandCashSpent.toLocaleString()}</span>
-                            <span className="text-[10px] text-amber-600 font-semibold block">From petty cash for trips</span>
-                          </div>
-                          <div className="bg-teal-50/90 border border-teal-200/90 p-3 rounded-xl">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-teal-800 block">Petty Cash to Return</span>
-                            <span className="text-lg font-black text-teal-950">₹{remainingPettyCash.toLocaleString()}</span>
-                            <span className="text-[10px] text-teal-600 font-semibold block">Unspent in-hand cash</span>
-                          </div>
-                        </div>
+                    <div className="p-4 bg-sky-50/90 rounded-2xl border border-sky-200 shadow-xs">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-sky-800 block">Direct UPI QR</span>
+                      <span className="text-2xl font-black text-sky-950">₹{totalUpi.toLocaleString()}</span>
+                      <span className="text-[11px] text-sky-700 font-semibold block mt-1">Direct to bank &amp; verified digital transfers</span>
+                    </div>
 
-                        <div className="p-4 bg-amber-50/80 rounded-2xl border border-amber-200/80 shadow-xs space-y-2">
-                          <div className="flex justify-between items-center pb-2 border-b border-amber-200/60">
-                            <span className="text-xs font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
-                              <Fuel className="w-4 h-4 text-amber-600" />
-                              Trip Expenses Logged ({reconExpenses.length})
-                            </span>
-                            <span className="text-base font-black text-amber-950">
-                              {reconTotalExpenses > 0 ? `Total: ₹${reconTotalExpenses.toLocaleString()}` : "₹0"}
-                            </span>
-                          </div>
+                    <div className="p-4 bg-amber-50/90 rounded-2xl border border-amber-200 shadow-xs">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 block">Pending Slip Credit</span>
+                      <span className="text-2xl font-black text-amber-950">₹{totalPendingSlip.toLocaleString()}</span>
+                      <span className="text-[11px] text-amber-700 font-semibold block mt-1">Remaining uncollected doorstep balance</span>
+                    </div>
+                  </div>
 
-                          {reconExpenses.length > 0 ? (
-                            <div className="space-y-1.5 text-xs">
-                              {reconExpenses.map(exp => (
-                                <div key={exp.id} className="flex justify-between items-center text-slate-700 bg-white/70 p-2 rounded-lg border border-amber-100">
-                                  <div>
-                                    <span className="font-bold text-slate-800">
-                                      <strong className="text-amber-900 uppercase font-black mr-1">{exp.category}</strong>
-                                      {exp.description ? `• ${exp.description}` : ""}
-                                    </span>
-                                    <div className="text-[10px] text-slate-500">
-                                      {exp.paid_from_inhand ? (
-                                        <span className="text-emerald-700 font-bold">₹{exp.inhand_amount ?? exp.amount} from In-Hand Cash</span>
-                                      ) : (
-                                        <span className="text-amber-700 font-bold">Personal Out-of-pocket</span>
-                                      )}
-                                      {(exp.inhand_amount ?? 0) < exp.amount && exp.paid_from_inhand && (
-                                        <span className="text-amber-700 font-medium ml-1">&bull; ₹{exp.amount - (exp.inhand_amount ?? 0)} personal</span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <span className="font-black text-slate-900 text-sm">₹{exp.amount}</span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-xs text-slate-500 font-medium">No on-road travel expenses logged by crew.</p>
-                          )}
-                        </div>
+                  {/* 3. LOGGED TRIP EXPENSES */}
+                  <div className="p-4 bg-amber-50/80 rounded-2xl border border-amber-200/80 shadow-xs space-y-2.5">
+                    <div className="flex justify-between items-center pb-2 border-b border-amber-200/60">
+                      <span className="text-xs font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                        <Fuel className="w-4 h-4 text-amber-600" />
+                        Trip Expenses Logged ({reconExpenses.length})
+                      </span>
+                      <span className="text-sm font-black text-amber-950">
+                        {reconTotalExpenses > 0 ? `Total: ₹${reconTotalExpenses.toLocaleString()}` : "₹0"}
+                      </span>
+                    </div>
 
-                        {/* Net Shift Reconciliation Summary */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 flex items-center justify-between text-xs font-bold text-slate-700 shadow-2xs">
+                    {reconExpenses.length > 0 ? (
+                      <div className="space-y-1.5 text-xs">
+                        {reconExpenses.map(exp => (
+                          <div key={exp.id} className="flex justify-between items-center text-slate-700 bg-white/80 p-2.5 rounded-xl border border-amber-100">
                             <div>
-                              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">
-                                Net Cash from Driver
+                              <span className="font-bold text-slate-800">
+                                <strong className="text-amber-900 uppercase font-black mr-1.5">{exp.category}</strong>
+                                {exp.description ? `• ${exp.description}` : ""}
                               </span>
-                              <span className="text-slate-500 text-[11px] font-medium">
-                                (Customer Cash ₹{totalCash} + Returned Petty Cash ₹{remainingPettyCash}{personalSpent > 0 ? ` − Reimbursed ₹${personalSpent}` : ""})
-                              </span>
+                              <div className="text-[10px] text-slate-500 mt-0.5">
+                                {exp.paid_from_inhand ? (
+                                  <span className="text-emerald-700 font-bold">₹{exp.inhand_amount ?? exp.amount} from In-Hand Cash</span>
+                                ) : (
+                                  <span className="text-amber-700 font-bold">Personal Out-of-pocket</span>
+                                )}
+                                {(exp.inhand_amount ?? 0) < exp.amount && exp.paid_from_inhand && (
+                                  <span className="text-amber-700 font-medium ml-1">&bull; ₹{exp.amount - (exp.inhand_amount ?? 0)} personal</span>
+                                )}
+                              </div>
                             </div>
-                            <span className="text-xl font-black text-emerald-950">
-                              ₹{netCashFromDriver.toLocaleString()}
-                            </span>
+                            <span className="font-black text-slate-900 text-sm">₹{exp.amount}</span>
                           </div>
-
-                          <div className="p-3.5 bg-sky-50 rounded-2xl border border-sky-200 flex items-center justify-between text-xs font-bold text-slate-700 shadow-2xs">
-                            <div>
-                              <span className="text-[10px] font-black uppercase tracking-wider text-sky-800 block">
-                                Net Shift Profit
-                              </span>
-                              <span className="text-slate-500 text-[11px] font-medium">(Gross Collections − All Expenses)</span>
-                            </div>
-                            <span className="text-xl font-black text-sky-950">
-                              ₹{netShiftProfit.toLocaleString()}
-                            </span>
-                          </div>
-                        </div>
+                        ))}
                       </div>
-                    );
-                  })()}
+                    ) : (
+                      <p className="text-xs text-slate-500 font-medium">No on-road travel expenses logged by crew for this vehicle assignment.</p>
+                    )}
+                  </div>
+
+                  {/* 4. CARGO & BOTTLE AUDIT */}
+                  <div className="space-y-3">
+                    <div className="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5 text-slate-400" />
+                      Dispatched Cargo &amp; Bottle Audit
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {stats.map((stat, idx) => (
+                        <div key={idx} className="bg-slate-50/80 rounded-2xl p-4 border border-slate-200/80 shadow-xs">
+                          <div className="flex justify-between items-center mb-3 pb-2 border-b border-slate-200/70">
+                            <span className="font-black text-slate-800 text-sm">Dispatched: {stat.name}</span>
+                            <span className="font-black text-primary text-sm">{stat.allocated} Loaded</span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="bg-white p-2.5 rounded-xl border border-slate-100 text-center">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 block">Delivered Full</span>
+                              <span className="font-black text-slate-800 text-base">{stat.delivered}</span>
+                            </div>
+                            <div className="bg-white p-2.5 rounded-xl border border-slate-100 text-center">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 block">Empty Cullet</span>
+                              <span className="font-black text-slate-800 text-base">{stat.empty}</span>
+                            </div>
+                            <div className="bg-white p-2.5 rounded-xl border border-slate-100 text-center">
+                              <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 block">Unsold Return</span>
+                              <span className="font-black text-slate-800 text-base">{stat.returned}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               );
             })()}
@@ -2538,6 +2722,10 @@ function AssignmentCard({
   status,
   progress,
   date,
+  totalRevenue = 0,
+  totalExpenses = 0,
+  netProfit = 0,
+  profitMargin = 0,
   onEdit,
   onAssign,
   onTrack,
@@ -2592,6 +2780,15 @@ function AssignmentCard({
           </div>
 
           <div className="flex items-center gap-1">
+            {onRecon && (
+              <button
+                onClick={onRecon}
+                className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"
+                title="View Vehicle Financial Report & P&L"
+              >
+                <BarChart3 className="w-4 h-4" />
+              </button>
+            )}
             {onEdit && (
               <button
                 onClick={onEdit}
@@ -2689,14 +2886,36 @@ function AssignmentCard({
           </div>
         )}
 
+        {/* Vehicle Financial Snapshot */}
+        {(totalRevenue > 0 || totalExpenses > 0 || isCompleted) && (
+          <div className="mb-4 p-2.5 rounded-xl bg-slate-50/90 border border-slate-200/70 shadow-2xs space-y-1">
+            <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-wider">
+              <span className="text-slate-500">Vehicle P&amp;L</span>
+              <span className={netProfit >= 0 ? "text-emerald-700 font-black" : "text-rose-600 font-black"}>
+                {netProfit >= 0 ? "+" : ""}₹{netProfit.toLocaleString()} ({profitMargin}% margin)
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 text-xs">
+              <div className="bg-white px-2 py-1 rounded-lg border border-slate-100 flex items-center justify-between">
+                <span className="text-slate-500 text-[10px] font-bold">Inflow:</span>
+                <strong className="text-emerald-950 font-black text-xs">₹{totalRevenue.toLocaleString()}</strong>
+              </div>
+              <div className="bg-white px-2 py-1 rounded-lg border border-slate-100 flex items-center justify-between">
+                <span className="text-slate-500 text-[10px] font-bold">Expenses:</span>
+                <strong className="text-amber-950 font-black text-xs">₹{totalExpenses.toLocaleString()}</strong>
+              </div>
+            </div>
+          </div>
+        )}
+
         {isPending ? (
           <Button variant="primary" fullWidth onClick={onAssign} icon={<Zap className="w-4 h-4" />}>
             Dispatch Route
           </Button>
         ) : isCompleted ? (
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-[1.4]" onClick={onRecon} icon={<CheckCircle2 className="w-4 h-4 text-emerald-500" />}>
-              Reconciliation
+            <Button variant="outline" className="flex-[1.4]" onClick={onRecon} icon={<BarChart3 className="w-4 h-4 text-emerald-600" />}>
+              Vehicle Report &amp; P&amp;L
             </Button>
             {onReopen && (
               <Button
@@ -2714,8 +2933,8 @@ function AssignmentCard({
             <Button variant="secondary" className="flex-1" onClick={onTrack} icon={<Navigation className="w-4 h-4" />}>
               Track Live
             </Button>
-            <Button variant="outline" className="flex-1" onClick={onRecon}>
-              Close Route
+            <Button variant="outline" className="flex-1" onClick={onRecon} icon={<BarChart3 className="w-4 h-4 text-sky-600" />}>
+              Report &amp; Close
             </Button>
           </div>
         )}
