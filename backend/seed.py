@@ -4,6 +4,11 @@ from app import models
 from app.schemas import UserCreate, ClientCreate, VehicleCreate, InventoryTypeCreate
 from app.crud import create_user, create_client, create_vehicle, create_inventory_type
 
+from app.core.config import IS_PRODUCTION
+
+if IS_PRODUCTION:
+    raise SystemExit("Demo seed scripts do not run in production.")
+
 def seed_database():
     # Ensure tables are created
     Base.metadata.create_all(bind=engine)

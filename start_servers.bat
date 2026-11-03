@@ -5,7 +5,7 @@ echo    FLYERA - Water & Glass Logistics Management Suite
 echo ========================================================
 echo.
 echo [1/2] Starting FastAPI Backend on port 8000...
-start "Flyera Backend (Port 8000)" cmd /k "cd /d %~dp0backend && .\venv\Scripts\python.exe -m uvicorn main:app --port 8000 --host 127.0.0.1 --reload"
+start "Flyera Backend (Port 8000)" cmd /k "cd /d %~dp0backend && .\venv\Scripts\python.exe -m uvicorn main:app --port 8000 --host 127.0.0.1 --timeout-keep-alive 75 --reload"
 
 echo [2/2] Starting Next.js Frontend on port 3000...
 start "Flyera Frontend (Port 3000)" cmd /k "cd /d %~dp0frontend && npm run dev"

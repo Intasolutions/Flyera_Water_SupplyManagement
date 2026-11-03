@@ -2,30 +2,29 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { 
-  Droplet, 
-  Lock, 
-  User, 
-  Recycle, 
-  ArrowRight, 
-  ShieldCheck, 
-  Sparkles, 
-  Eye, 
-  EyeOff, 
-  Download, 
-  Smartphone, 
-  X, 
-  Share, 
-  PlusSquare 
+import {
+  Droplet,
+  Lock,
+  User,
+  Recycle,
+  ArrowRight,
+  ShieldCheck,
+  Eye,
+  EyeOff,
+  Download,
+  Smartphone,
+  X,
+  Share,
+  PlusSquare
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { login, getCurrentUser } from "@/lib/api";
-import { useStore, AppRole } from "@/lib/StoreContext";
+import { useStore, roleToAppRole } from "@/lib/StoreContext";
 
 export default function LoginPage() {
   const router = useRouter();
   const { setCurrentUserRole } = useStore();
-  
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -86,7 +85,7 @@ export default function LoginPage() {
       if (authRes.refresh_token) {
         localStorage.setItem("refresh_token", authRes.refresh_token);
       }
-      
+
       // 1. Try directly from login payload
       let user: any = authRes.user;
 
@@ -108,7 +107,7 @@ export default function LoginPage() {
             user = {
               id: decoded.sub,
               name: decoded.name || username,
-              role: decoded.role || "ADMIN",
+              role: decoded.role,
               username: username,
             };
           }
@@ -124,16 +123,9 @@ export default function LoginPage() {
       try {
         localStorage.setItem("flyera_user", JSON.stringify(user));
       } catch (e) {}
-      
-      let mappedRole: AppRole = "Owner";
-      if (user.role === "ADMIN") mappedRole = "Owner";
-      if (user.role === "DRIVER" || user.role === "HELPER") mappedRole = "WaterStaff";
-      if (user.role === "WATER_STAFF") mappedRole = "WaterStaff";
-      if (user.role === "GLASS_STAFF") mappedRole = "GlassStaff";
-      if (user.role === "GLASS_DRIVER") mappedRole = "GlassStaff";
 
-      setCurrentUserRole(mappedRole);
-      
+      setCurrentUserRole(roleToAppRole(user.role));
+
       if (user.role === "DRIVER" || user.role === "HELPER") {
         router.push("/driver");
       } else if (user.role === "GLASS_DRIVER") {
@@ -316,7 +308,7 @@ export default function LoginPage() {
             <div>
               <h3 className="text-lg font-black text-slate-900">Install Flyera App</h3>
               <p className="text-xs font-semibold text-slate-500 mt-1">
-                Install Flyera on your device home screen for fast full-screen access and offline support.
+                Install Flyera on your device home screen for fast full-screen access. An internet connection is needed to save work.
               </p>
             </div>
 

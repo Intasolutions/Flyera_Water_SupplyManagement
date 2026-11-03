@@ -3,26 +3,24 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Sidebar } from "@/components/ui/Sidebar";
-import { useStore } from "@/lib/StoreContext";
+import { toast } from "react-hot-toast";
+import { localDateStr } from "@/lib/dates";
 import { 
   getGlassStats, 
   GlassStats, 
   GlassCollection, 
   GlassVendorPickup 
 } from "@/lib/api";
-import { 
-  Recycle, 
-  Factory, 
-  IndianRupee, 
-  Truck, 
-  Calendar, 
-  RefreshCw, 
-  TrendingUp, 
-  ArrowUpRight, 
-  CheckCircle2, 
-  Clock, 
-  Layers, 
-  PlusCircle, 
+import {
+  Recycle,
+  Factory,
+  IndianRupee,
+  Truck,
+  Calendar,
+  RefreshCw,
+  TrendingUp,
+  ArrowUpRight,
+  Layers,
   Warehouse,
   ChevronRight,
   MapPin,
@@ -33,17 +31,30 @@ import {
   Wallet
 } from "lucide-react";
 
+const EMPTY_STATS: GlassStats = {
+  totalCollectedTons: 0,
+  totalPaid: 0,
+  unseparatedTons: 0,
+  whiteTons: 0,
+  mixedTons: 0,
+  totalPickupTons: 0,
+  totalPickupRevenue: 0,
+  inTransitTons: 0,
+  inTransitCount: 0,
+  recentPickups: [],
+  recentCollections: [],
+};
+
 export default function GlassDashboardPage() {
-  const store = useStore();
-  
+
   // Date filter state - default to past 30 days up to today
   const [startDate, setStartDate] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 30);
-    return d.toISOString().split("T")[0];
+    return localDateStr(d);
   });
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
-  
+  const [endDate, setEndDate] = useState(() => localDateStr());
+
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
@@ -52,73 +63,21 @@ export default function GlassDashboardPage() {
   // Dynamic state from backend
   const [stats, setStats] = useState<GlassStats | null>(null);
 
-  // Fallback calculation from StoreContext if backend is unreachable
-  const computeFallbackStats = useCallback((): GlassStats => {
-    const collections = store.glassCollections || [];
-    const pickups = store.glassVendorPickups || [];
-    const inventory = store.glassInventory || [];
-
-    const totalCollectedTons = collections.reduce((acc, c: any) => acc + (c.tonsCollected || c.tons_collected || 0), 0);
-    const totalPaid = collections.reduce((acc, c: any) => acc + (c.paymentAmount || c.payment_amount || 0), 0);
-    
-    const unseparatedTons = collections
-      .filter((c: any) => c.status === "dropped_at_godown")
-      .reduce((acc, c: any) => acc + (c.tonsCollected || c.tons_collected || 0), 0);
-
-    const inTransit = collections.filter((c: any) => c.status === "collected");
-    const inTransitTons = inTransit.reduce((acc, c: any) => acc + (c.tonsCollected || c.tons_collected || 0), 0);
-
-    const whiteTons = inventory.find(i => i.type === "white")?.tons || 0;
-    const mixedTons = inventory.find(i => i.type === "mixed")?.tons || 0;
-
-    const totalPickupTons = pickups.reduce((acc, p: any) => acc + (p.tons || 0), 0);
-    const totalPickupRevenue = pickups.reduce((acc, p: any) => acc + ((p.tons || 0) * (p.price_per_ton || p.pricePerTon || 0)), 0);
-    const netProfit = totalPickupRevenue - totalPaid;
-    const profitMarginPercent = totalPickupRevenue > 0 ? Math.round((netProfit / totalPickupRevenue) * 100) : 0;
-
-    return {
-      totalCollectedTons,
-      totalPaid,
-      unseparatedTons,
-      whiteTons,
-      mixedTons,
-      totalPickupTons,
-      totalPickupRevenue,
-      todayRevenue: 0,
-      todayExpenses: 0,
-      todayCulletCost: 0,
-      todayTripExpenses: 0,
-      todayProfit: 0,
-      periodRevenue: totalPickupRevenue,
-      periodExpenses: totalPaid,
-      netProfit,
-      profitMarginPercent,
-      inTransitTons,
-      inTransitCount: inTransit.length,
-      recentPickups: pickups.slice(0, 6) as any,
-      recentCollections: collections.slice(0, 8) as any
-    };
-  }, [store.glassCollections, store.glassVendorPickups, store.glassInventory]);
-
   // Fetch dynamic stats from backend
   const fetchStats = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) setIsRefreshing(true);
     try {
       const data = await getGlassStats(startDate, endDate);
-      if (data) {
-        setStats(data);
-      } else {
-        setStats(computeFallbackStats());
-      }
+      setStats(data);
       setLastRefreshed(new Date());
-    } catch (err) {
-      console.warn("Backend glass stats fetch failed, using local store data:", err);
-      setStats(computeFallbackStats());
+    } catch (err: any) {
+      console.warn("Glass stats fetch failed:", err);
+      toast.error(err?.message || "Could not load glass figures.");
     } finally {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [startDate, endDate, computeFallbackStats]);
+  }, [startDate, endDate]);
 
   useEffect(() => {
     fetchStats();
@@ -128,7 +87,7 @@ export default function GlassDashboardPage() {
   const handlePreset = (preset: "today" | "week" | "month" | "all") => {
     setActivePreset(preset);
     const now = new Date();
-    const todayStr = now.toISOString().split("T")[0];
+    const todayStr = localDateStr(now);
     setEndDate(todayStr);
 
     if (preset === "today") {
@@ -136,17 +95,17 @@ export default function GlassDashboardPage() {
     } else if (preset === "week") {
       const d = new Date();
       d.setDate(d.getDate() - 7);
-      setStartDate(d.toISOString().split("T")[0]);
+      setStartDate(localDateStr(d));
     } else if (preset === "month") {
       const d = new Date();
       d.setDate(d.getDate() - 30);
-      setStartDate(d.toISOString().split("T")[0]);
+      setStartDate(localDateStr(d));
     } else if (preset === "all") {
       setStartDate("2020-01-01");
     }
   };
 
-  const currentStats = stats || computeFallbackStats();
+  const currentStats = stats || EMPTY_STATS;
 
   // Inventory distribution calculation
   const totalGodownStock = (currentStats.whiteTons || 0) + (currentStats.mixedTons || 0) + (currentStats.unseparatedTons || 0);
@@ -157,7 +116,7 @@ export default function GlassDashboardPage() {
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      
+
       <main className="flex-1 min-w-0 p-4 sm:p-6 md:p-8 lg:p-10 pt-20 md:pt-8 pb-24 md:pb-12 transition-all max-w-7xl">
         {/* Header with Title and Dynamic Date Controls */}
         <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-4">
@@ -528,7 +487,7 @@ export default function GlassDashboardPage() {
 
         {/* Main Content Area: Recent Pickups & Recent Collections */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          
+
           {/* Vendor Pickups Card */}
           <div className="glass-panel rounded-3xl p-6 border border-black/5 shadow-sm flex flex-col">
             <div className="flex justify-between items-center mb-6">
@@ -587,7 +546,7 @@ export default function GlassDashboardPage() {
                           </p>
                         </div>
                       </div>
-                      
+
                       <div className="text-right">
                         <p className="font-black text-text text-base">{pickupTons} T</p>
                         {price > 0 ? (

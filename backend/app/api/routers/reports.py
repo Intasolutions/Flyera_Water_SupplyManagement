@@ -1,11 +1,11 @@
 """Reports Router — Financial performance, total expenses, profit, and vehicle-by-vehicle reports."""
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy import func
-from typing import Optional, List, Dict, Any
-from datetime import datetime, time
+from sqlalchemy import or_
+from typing import Optional, List, Dict
 
-from app import models, schemas
+from app import models
+from app.core.timeutils import local_range
 from app.database import get_db
 from app.api import deps
 
@@ -19,26 +19,14 @@ def get_financial_summary(
     end_date: Optional[str] = Query(None, description="End date in YYYY-MM-DD"),
     vehicle_id: Optional[str] = Query(None, description="Filter by specific vehicle ID"),
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(deps.get_current_active_user),
+    current_user: models.User = Depends(deps.require_roles(deps.WATER_OFFICE)),
 ):
     """
-    Returns high-level financial KPIs (Total Deliveries Revenue, Total Expenses, Net Profit, Profit Margin)
-    and detailed vehicle-by-vehicle performance breakdown.
-    Restricted to non-driver staff (Admin, Water Staff, Superuser, Owner).
+    Returns water-business KPIs (Total Deliveries Revenue, Total Expenses, Net Profit, Profit Margin)
+    and detailed vehicle-by-vehicle performance breakdown. Glass has its own report.
+    Restricted to non-driver staff (Admin, Water Staff, Owner).
     """
-    # Parse date filters if provided
-    dt_start = None
-    dt_end = None
-    if start_date:
-        try:
-            dt_start = datetime.strptime(start_date, "%Y-%m-%d")
-        except ValueError:
-            pass
-    if end_date:
-        try:
-            dt_end = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
-        except ValueError:
-            pass
+    dt_start, dt_end = local_range(start_date, end_date)
 
     # 1. Fetch Vehicles
     veh_query = db.query(models.Vehicle)
@@ -54,7 +42,7 @@ def get_financial_summary(
         joinedload(models.Assignment.route),
         selectinload(models.Assignment.deliveries).selectinload(models.Delivery.items),
         selectinload(models.Assignment.expenses),
-    )
+    ).filter(or_(models.Assignment.business_type == "WATER", models.Assignment.business_type.is_(None)))
     if dt_start:
         assign_query = assign_query.filter(models.Assignment.date >= dt_start)
     if dt_end:
@@ -75,6 +63,7 @@ def get_financial_summary(
     overall_cash = 0.0
     overall_upi = 0.0
     overall_credit = 0.0
+    overall_upi_unverified = 0.0
     overall_expenses = 0.0
     overall_inhand_spent = 0.0
     overall_personal_spent = 0.0
@@ -106,6 +95,7 @@ def get_financial_summary(
         v_cash = 0.0
         v_upi = 0.0
         v_credit = 0.0
+        v_upi_unverified = 0.0
         v_expenses = 0.0
         v_inhand_spent = 0.0
         v_personal_spent = 0.0
@@ -137,15 +127,22 @@ def get_financial_summary(
                 v_revenue += rev
                 overall_revenue += rev
 
-                if "upi" in pm:
-                    v_upi += paid if paid > 0 else rev
-                    overall_upi += paid if paid > 0 else rev
-                elif "credit" in pm or "slip" in pm or d.status in ["PENDING_PAYMENT", "CREDITED"]:
-                    v_credit += rev
-                    overall_credit += rev
+                if d.status == "PENDING_VERIFICATION":
+                    # UPI claimed at the door. It only counts as collected once the office has checked it.
+                    v_upi_unverified += rev
+                    overall_upi_unverified += rev
                 else:
-                    v_cash += paid if paid > 0 else rev
-                    overall_cash += paid if paid > 0 else rev
+                    # Older records stored no paid amount on a completed sale.
+                    collected = paid if paid > 0 else (rev if d.status == "COMPLETED" else 0.0)
+                    if "upi" in pm:
+                        v_upi += collected
+                        overall_upi += collected
+                    else:
+                        v_cash += collected
+                        overall_cash += collected
+                    unpaid = max(0.0, rev - collected)
+                    v_credit += unpaid
+                    overall_credit += unpaid
 
                 for item in d.items:
                     v_bottles += item.delivered_full or 0
@@ -197,6 +194,7 @@ def get_financial_summary(
             "cash_collected": round(v_cash, 2),
             "upi_collected": round(v_upi, 2),
             "credit_sales": round(v_credit, 2),
+            "upi_unverified": round(v_upi_unverified, 2),
             "total_expenses": round(v_expenses, 2),
             "inhand_cash_spent": round(v_inhand_spent, 2),
             "personal_expenses": round(v_personal_spent, 2),
@@ -235,6 +233,7 @@ def get_financial_summary(
             "total_cash_collected": round(overall_cash, 2),
             "total_upi_collected": round(overall_upi, 2),
             "total_credit_sales": round(overall_credit, 2),
+            "total_upi_unverified": round(overall_upi_unverified, 2),
             "total_deliveries_count": sum(len(a.deliveries) for a in assignments),
             "total_bottles_delivered": overall_bottles,
             "total_trips": overall_trips,

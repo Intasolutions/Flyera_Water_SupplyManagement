@@ -6,25 +6,22 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { 
-  Map, 
-  Search, 
-  Filter, 
-  Plus, 
-  MapPin, 
-  Users, 
-  Edit2, 
-  Trash2, 
-  RefreshCw, 
-  Compass, 
-  Layers, 
+import {
+  Map,
+  Search,
+  Plus,
+  MapPin,
+  Users,
+  Edit2,
+  Trash2,
+  RefreshCw,
+  Compass,
+  Layers,
   X,
-  ExternalLink,
   UserPlus,
   Phone,
   Check,
-  CheckCircle2,
-  AlertCircle
+  CheckCircle2
 } from "lucide-react";
 import { 
   getRoutes, 

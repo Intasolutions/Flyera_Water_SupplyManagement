@@ -172,7 +172,7 @@ class Delivery(Base):
     total_amount = Column(Float, default=0)
     paid_amount = Column(Float, default=0.0)
     payment_method = Column(String, nullable=True)
-    status = Column(String, default="COMPLETED", index=True) # "COMPLETED", "PARTIAL_PAID", "PENDING_PAYMENT", "CREDITED", "SKIPPED"
+    status = Column(String, default="COMPLETED", index=True) # "COMPLETED", "PARTIAL_PAID", "PENDING_PAYMENT", "PENDING_VERIFICATION", "CREDITED", "SKIPPED"
     upi_reference = Column(String, nullable=True, index=True)
     verified_at = Column(DateTime, nullable=True)
     verified_by = Column(String, nullable=True)
@@ -259,8 +259,9 @@ class GlassSeparation(Base):
     tons_separated = Column(Float, nullable=False)
     white_tons = Column(Float, nullable=False)
     mixed_tons = Column(Float, nullable=False)
+    wastage_tons = Column(Float, default=0.0)
     date = Column(DateTime, default=datetime.utcnow)
-    
+
     staff = relationship("User", foreign_keys=[staff_id])
     collection = relationship("GlassCollection")
 
@@ -306,10 +307,10 @@ class TripExpense(Base):
 # --- Bottle Credit Ledger ---
 
 class BottleCreditLedger(Base):
-    """Per-customer bottle credit/debit ledger.
+    """Per-customer jar ledger. The sum of quantity is how many jars the customer is holding.
 
-    quantity > 0  → we owe the customer bottles (e.g. advance booking, partial delivery)
-    quantity < 0  → customer owes us bottles (delivered but not paid/acknowledged)
+    quantity > 0  → the customer took more jars than they returned
+    quantity < 0  → the customer returned jars, or we owe them jars when the balance is negative
     """
     __tablename__ = "bottle_credit_ledger"
 
@@ -317,11 +318,43 @@ class BottleCreditLedger(Base):
     client_id = Column(String, ForeignKey("clients.id"), nullable=False)
     assignment_id = Column(String, ForeignKey("assignments.id"), nullable=True)
     inventory_type_id = Column(String, ForeignKey("inventory_types.id"), nullable=False)
-    quantity = Column(Integer, nullable=False)  # +ve = owed to customer, -ve = customer owes
+    quantity = Column(Integer, nullable=False)  # +ve = jars gone to the customer, -ve = jars back from the customer
     notes = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     client = relationship("Client", back_populates="bottle_credits")
     assignment = relationship("Assignment")
     inventory_type = relationship("InventoryType")
+
+
+# --- Payment Audit Trail ---
+
+class PaymentAuditLog(Base):
+    """Permanent record of payment verifications, dues corrections and merchant UPI changes."""
+    __tablename__ = "payment_audit_logs"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    delivery_id = Column(String, ForeignKey("deliveries.id", ondelete="SET NULL"), nullable=True)
+    action = Column(String, nullable=False)
+    amount = Column(Float, nullable=False, default=0.0)
+    payment_mode = Column(String, nullable=True)
+    upi_reference = Column(String, nullable=True, index=True)
+    verified_by = Column(String, nullable=True)
+    ip_address = Column(String, nullable=True)
+    notes = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# --- Login Sessions ---
+
+class RefreshToken(Base):
+    """One record per issued refresh token, so a rotated or signed-out token stops working."""
+    __tablename__ = "refresh_tokens"
+
+    jti = Column(String, primary_key=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    rotated_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 

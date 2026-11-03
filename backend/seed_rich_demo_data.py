@@ -4,6 +4,11 @@ from app.database import SessionLocal, engine, Base
 from app import models
 from app.core.security import get_password_hash
 
+from app.core.config import IS_PRODUCTION
+
+if IS_PRODUCTION:
+    raise SystemExit("Demo seed scripts do not run in production.")
+
 def seed_rich_data():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()

@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Sidebar } from "@/components/ui/Sidebar";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { useStore } from "@/lib/StoreContext";
+import { localDateStr } from "@/lib/dates";
 import {
   Truck,
   MapPin,
@@ -21,23 +21,17 @@ import {
   Trash2,
   User as UserIcon,
   Search,
-  Filter,
   Package,
   IndianRupee,
   Clock,
-  Sparkles,
-  ChevronRight,
   RefreshCw,
   RotateCcw,
   Edit3,
   QrCode,
-  Receipt,
   Check,
   ShieldCheck,
   Printer,
   ArrowRight,
-  ExternalLink,
-  FileText,
   Fuel
 } from "lucide-react";
 import QRCode from "qrcode";
@@ -91,8 +85,10 @@ const getAssignmentDateStr = (dateVal: string | Date | undefined | null): string
   return `${year}-${month}-${day}`;
 };
 
+// Routes this recent always load. Choosing an earlier start date loads back to that date.
+const RECENT_ROUTE_DAYS = 90;
+
 export default function DeliveriesPage() {
-  const { completeDelivery } = useStore();
   const [modalOpen, setModalOpen] = useState(false);
   const [trackOpen, setTrackOpen] = useState<string | null>(null);
   const [reconOpen, setReconOpen] = useState<string | null>(null);
@@ -109,7 +105,7 @@ export default function DeliveriesPage() {
     if (isConfirmed) {
       try {
         await reopenAssignment(assignmentId);
-        const refreshed = await getAssignments();
+        const refreshed = await loadAssignments();
         setRealAssignments(refreshed);
         toast.success("Route reopened successfully! Status restored to Active.");
       } catch (e: any) {
@@ -125,6 +121,14 @@ export default function DeliveriesPage() {
   const [startDate, setStartDate] = useState(() => getAssignmentDateStr(new Date()));
   const [endDate, setEndDate] = useState(() => getAssignmentDateStr(new Date()));
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const startDateRef = useRef(startDate);
+  const loadAssignments = useCallback(() => {
+    const recent = new Date();
+    recent.setDate(recent.getDate() - RECENT_ROUTE_DAYS);
+    const recentStr = localDateStr(recent);
+    return getAssignments(startDateRef.current < recentStr ? startDateRef.current : recentStr);
+  }, []);
 
   // Real data from backend
   const [realStaff, setRealStaff] = useState<User[]>([]);
@@ -203,6 +207,11 @@ export default function DeliveriesPage() {
   };
 
   useEffect(() => {
+    startDateRef.current = startDate;
+    loadAssignments().then(setRealAssignments).catch(() => {});
+  }, [startDate, loadAssignments]);
+
+  useEffect(() => {
     fetchRealData();
 
     // Smart background poll every 20 seconds only when tab is active and visible
@@ -213,7 +222,7 @@ export default function DeliveriesPage() {
       isPolling = true;
       try {
         const [aData, dData, eData] = await Promise.all([
-          getAssignments().catch(() => null),
+          loadAssignments().catch(() => null),
           getPendingDoorstepDeliveries(true).catch(() => null),
           getAllExpenses().catch(() => null)
         ]);
@@ -238,7 +247,7 @@ export default function DeliveriesPage() {
         getRoutes(),
         getClients(),
         getVehicles(),
-        getAssignments(),
+        loadAssignments(),
         getInventoryTypes(),
         getPendingDoorstepDeliveries(true).catch(() => []),
         getSettings().catch(() => ({})),
@@ -273,7 +282,10 @@ export default function DeliveriesPage() {
 
     // Generate scannable dynamic UPI QR for this delivery
     const note = encodeURIComponent(`Bill-${d.id.slice(0, 6)} - ${client?.name || "Client"}`);
-    const upiId = systemSettings.upi_id || "flyera@okhdfcbank";
+    // No QR for a missing UPI ID, or one that failed its integrity check.
+    const upiId = systemSettings.upi_verified === false ? "" : systemSettings.upi_id;
+    setModalQrUrl("");
+    if (!upiId) return;
     const company = encodeURIComponent(systemSettings.company_name || "Flyera Logistics");
     const upiUri = `upi://pay?pa=${upiId}&pn=${company}&am=${(defaultAmt || d.total_amount).toFixed(2)}&tn=${note}&cu=INR`;
 
@@ -368,9 +380,9 @@ export default function DeliveriesPage() {
         hour12: true
       }),
       companyName: systemSettings.company_name || "Flyera - Water & Glass Logistics",
-      gstin: systemSettings.gstin || "GSTIN-27AAACH7409R1ZZ",
-      hotline: systemSettings.dispatch_hotline || "+91 98765 43210",
-      address: systemSettings.central_address || "Plot 42, Hinjewadi Industrial Zone Phase 2, Pune",
+      gstin: systemSettings.gstin || "",
+      hotline: systemSettings.dispatch_hotline || "",
+      address: systemSettings.central_address || "",
       vehiclePlate: vehicle?.plate_number || "Van Delivery",
       routeName: route?.name || "Route Run",
       driverName: driver?.name || "Driver",
@@ -384,7 +396,7 @@ export default function DeliveriesPage() {
       netDueAmount: prevCredit,
       paymentMethod: d.payment_method || "Pay Later (Slip QR)",
       paymentStatus: d.status === "COMPLETED" ? "PAID" : "PENDING",
-      upiId: systemSettings.upi_id || "flyera@okhdfcbank"
+      upiId: systemSettings.upi_verified === false ? "" : (systemSettings.upi_id || "")
     });
     setReceiptModalOpen(true);
   };
@@ -482,7 +494,7 @@ export default function DeliveriesPage() {
         allocations,
       });
       setEditAssignment(null);
-      const refreshed = await getAssignments();
+      const refreshed = await loadAssignments();
       setRealAssignments(refreshed);
       toast.success("Delivery route updated successfully!");
     } catch (e: any) {
@@ -525,11 +537,11 @@ export default function DeliveriesPage() {
       setAssignPettyCash("");
       setAssignStock({});
       // Instant refresh
-      const refreshed = await getAssignments();
+      const refreshed = await loadAssignments();
       setRealAssignments(refreshed);
       toast.success("Assignment created successfully!");
-    } catch (e) {
-      toast.error("Failed to create assignment.");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to create assignment.");
     }
   };
 
@@ -543,7 +555,7 @@ export default function DeliveriesPage() {
     if (isConfirmed) {
       try {
         await apiDeleteAssignment(assignmentId);
-        const refreshed = await getAssignments();
+        const refreshed = await loadAssignments();
         setRealAssignments(refreshed);
         toast.success("Assignment deleted.");
       } catch (e: any) {
@@ -1289,7 +1301,7 @@ export default function DeliveriesPage() {
                   className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all appearance-none cursor-pointer"
                 >
                   <option value="" disabled>Choose Driver</option>
-                  {realStaff.filter(s => s.role.toUpperCase() === "DRIVER").map(d => {
+                  {realStaff.filter(s => s.role.toUpperCase() === "DRIVER" && s.is_active !== false).map(d => {
                     const isAssigned = realAssignments.some(a => (a.driver_id === d.id || a.helper_id === d.id) && a.status !== "COMPLETED");
                     return (
                       <option key={d.id} value={d.id} disabled={isAssigned}>
@@ -1310,7 +1322,7 @@ export default function DeliveriesPage() {
                   className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all appearance-none cursor-pointer"
                 >
                   <option value="">No Helper Assigned</option>
-                  {realStaff.filter(s => s.role.toUpperCase() === "HELPER").map(d => {
+                  {realStaff.filter(s => s.role.toUpperCase() === "HELPER" && s.is_active !== false).map(d => {
                     const isAssigned = realAssignments.some(a => (a.driver_id === d.id || a.helper_id === d.id) && a.status !== "COMPLETED");
                     return (
                       <option key={d.id} value={d.id} disabled={isAssigned}>
@@ -1504,7 +1516,7 @@ export default function DeliveriesPage() {
                   className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all appearance-none cursor-pointer"
                 >
                   <option value="" disabled>Choose Driver</option>
-                  {realStaff.filter(s => s.role.toUpperCase() === "DRIVER").map(d => {
+                  {realStaff.filter(s => s.role.toUpperCase() === "DRIVER" && s.is_active !== false).map(d => {
                     const isAssigned = realAssignments.some(
                       a => a.id !== editAssignment?.id && (a.driver_id === d.id || a.helper_id === d.id) && a.status !== "COMPLETED"
                     );
@@ -1527,7 +1539,7 @@ export default function DeliveriesPage() {
                   className="w-full border border-slate-200 rounded-xl p-3 bg-white text-slate-800 font-semibold outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all appearance-none cursor-pointer"
                 >
                   <option value="">No Helper Assigned</option>
-                  {realStaff.filter(s => s.role.toUpperCase() === "HELPER").map(d => {
+                  {realStaff.filter(s => s.role.toUpperCase() === "HELPER" && s.is_active !== false).map(d => {
                     const isAssigned = realAssignments.some(
                       a => a.id !== editAssignment?.id && (a.driver_id === d.id || a.helper_id === d.id) && a.status !== "COMPLETED"
                     );
@@ -1895,7 +1907,7 @@ export default function DeliveriesPage() {
                       if (isConfirmed && assignmentObj) {
                         try {
                           await reopenAssignment(assignmentObj.id);
-                          const refreshed = await getAssignments();
+                          const refreshed = await loadAssignments();
                           setRealAssignments(refreshed);
                           toast.success("Route reopened successfully! Status restored to Active.");
                           setReconOpen(null);
@@ -1938,7 +1950,7 @@ export default function DeliveriesPage() {
                         };
                       });
                       await apiCompleteAssignment(assignmentObj.id, returned_stock);
-                      const refreshed = await getAssignments();
+                      const refreshed = await loadAssignments();
                       setRealAssignments(refreshed);
                       toast.success("Route reconciled and closed!");
                     } catch (e) {
@@ -1996,7 +2008,7 @@ export default function DeliveriesPage() {
                   totalUpi += paid > 0 ? paid : (d.status === "COMPLETED" ? total : 0);
                 }
 
-                if (isSlipOrCredit) {
+                if (isSlipOrCredit || d.status === "PENDING_VERIFICATION") {
                   // Any uncollected portion remains pending slip
                   const unpaidPortion = Math.max(0, total - paid);
                   totalPendingSlip += unpaidPortion;
@@ -2043,9 +2055,9 @@ export default function DeliveriesPage() {
                     </div>
 
                     <div className="p-4 bg-amber-50/80 rounded-2xl border border-amber-200/80 shadow-xs">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 block">Pending Slip QR</span>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 block">Awaiting Payment</span>
                       <span className="text-2xl font-black text-amber-950">₹{totalPendingSlip.toLocaleString()}</span>
-                      <span className="text-[10px] text-amber-600 font-bold block mt-0.5">Remaining uncollected slip credit</span>
+                      <span className="text-[10px] text-amber-600 font-bold block mt-0.5">Slips, credit, and UPI not yet verified</span>
                     </div>
                   </div>
 
@@ -2175,7 +2187,7 @@ export default function DeliveriesPage() {
                   if (dispatchConfirmOpen) {
                     try {
                       await updateAssignment(dispatchConfirmOpen.id, { status: "ACTIVE" });
-                      const refreshed = await getAssignments();
+                      const refreshed = await loadAssignments();
                       setRealAssignments(refreshed);
                       toast.success("Route dispatched to driver app!");
                     } catch (e) {
@@ -2391,7 +2403,7 @@ export default function DeliveriesPage() {
                         Slip Payment QR Code
                       </span>
                       <span className="text-[10px] font-bold text-slate-500 font-mono">
-                        {systemSettings.upi_id || "flyera@okhdfcbank"}
+                        {systemSettings.upi_id || "Not set"}
                       </span>
                     </div>
 
@@ -2401,7 +2413,7 @@ export default function DeliveriesPage() {
                       </div>
                     ) : (
                       <div className="w-40 h-40 flex items-center justify-center bg-slate-50 rounded-xl mx-auto text-xs text-slate-400">
-                        Generating QR...
+                        {systemSettings.upi_id && systemSettings.upi_verified !== false ? "Generating QR..." : "Check the UPI ID in Settings"}
                       </div>
                     )}
 

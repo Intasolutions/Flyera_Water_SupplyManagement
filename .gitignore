@@ -44,6 +44,7 @@ backend/.env.local
 # Python & FastAPI (Backend)
 # =========================
 __pycache__/
+.pytest_cache/
 *.py[cod]
 *$py.class
 *.so

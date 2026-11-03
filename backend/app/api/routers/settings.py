@@ -1,11 +1,8 @@
 import hmac
 import hashlib
 import re
-import uuid
-from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import text
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
 
@@ -53,9 +50,7 @@ class SecureUpiUpdateRequest(BaseModel):
     admin_password: str = Field(..., min_length=4)
 
 
-@router.get("", include_in_schema=False)
-@router.get("/")
-def get_settings(db: Session = Depends(get_db)) -> Dict[str, Any]:
+def _read_settings(db: Session) -> Dict[str, Any]:
     records = db.query(models.SystemSetting).all()
     result = dict(DEFAULT_SETTINGS)
     for r in records:
@@ -63,7 +58,7 @@ def get_settings(db: Session = Depends(get_db)) -> Dict[str, Any]:
 
     # Cryptographic integrity check: detect any offline database tampering
     raw_upi = (result.get("upi_id") or "").strip()
-    stored_hmac = result.get("upi_id_hmac")
+    stored_hmac = result.pop("upi_id_hmac", None)
 
     if raw_upi:
         is_authentic = verify_upi_integrity(raw_upi, stored_hmac)
@@ -76,6 +71,15 @@ def get_settings(db: Session = Depends(get_db)) -> Dict[str, Any]:
         result["upi_verified"] = True
 
     return result
+
+
+@router.get("", include_in_schema=False)
+@router.get("/")
+def get_settings(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(deps.get_current_active_user)
+) -> Dict[str, Any]:
+    return _read_settings(db)
 
 
 @router.post("/secure-upi")
@@ -118,25 +122,19 @@ def update_secure_upi(
             setting.value = v
         else:
             db.add(models.SystemSetting(key=k, value=v))
-            
-    # 5. Record in immutable payment audit logs
-    try:
-        db.execute(text("""
-            INSERT INTO payment_audit_logs (id, delivery_id, action, amount, payment_mode, upi_reference, verified_by, notes, created_at)
-            VALUES (:id, NULL, :action, 0.0, 'UPI_CONFIG', :upi_reference, :verified_by, :notes, :created_at)
-        """), {
-            "id": str(uuid.uuid4()),
-            "action": "UPDATE_MERCHANT_UPI",
-            "upi_reference": clean_upi,
-            "verified_by": f"{current_user.name} ({current_user.username})",
-            "notes": f"Merchant UPI ID updated with HMAC seal: {new_hmac[:12]}...",
-            "created_at": datetime.utcnow()
-        })
-    except Exception as log_err:
-        print("Audit log note:", log_err)
+
+    # 5. Record in the payment audit log
+    db.add(models.PaymentAuditLog(
+        action="UPDATE_MERCHANT_UPI",
+        amount=0.0,
+        payment_mode="UPI_CONFIG",
+        upi_reference=clean_upi,
+        verified_by=f"{current_user.name} ({current_user.username})",
+        notes=f"Merchant UPI ID updated with HMAC seal: {new_hmac[:12]}...",
+    ))
 
     db.commit()
-    return get_settings(db)
+    return _read_settings(db)
 
 
 @router.post("", include_in_schema=False)
@@ -157,7 +155,7 @@ def update_settings(
         else:
             db.add(models.SystemSetting(key=k, value=val_str))
     db.commit()
-    return get_settings(db)
+    return _read_settings(db)
 
 
 @router.get("/signed-upi-qr")
@@ -172,9 +170,14 @@ def get_signed_upi_qr(
     Server-side generation of authenticated UPI Payment URI.
     Validates the HMAC cryptographic seal before building payment intent string.
     """
-    settings = get_settings(db)
-    raw_upi = settings.get("upi_id") or "flyera@okhdfcbank"
-    
+    settings = _read_settings(db)
+    raw_upi = settings.get("upi_id")
+    if not raw_upi:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No merchant UPI ID is set. Add one in Admin Settings."
+        )
+
     if not settings.get("upi_verified", True):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -184,10 +187,10 @@ def get_signed_upi_qr(
     company_name = settings.get("company_name") or "Flyera Water Supply"
     safe_company = re.sub(r'[^a-zA-Z0-9\s]', '', company_name).strip().replace(" ", "%20")
     safe_note = re.sub(r'[^a-zA-Z0-9\s\-#]', '', note or "Payment").strip().replace(" ", "%20")
-    
+
     # UPI standard deep link
     upi_uri = f"upi://pay?pa={raw_upi}&pn={safe_company}&am={amount:.2f}&tn={safe_note}&cu=INR"
-    
+
     return {
         "upi_uri": upi_uri,
         "upi_id": raw_upi,

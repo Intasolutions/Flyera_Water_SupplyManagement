@@ -1,17 +1,49 @@
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import Response
-import io
-import csv
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List, Optional
-from datetime import datetime, time, timedelta
+from typing import Dict, List, Optional
+from datetime import datetime
 
 from app import schemas, models
+from app.core.timeutils import local_day_bounds, local_range, local_today, parse_day, to_local, utc_iso, utcnow
 from app.database import get_db
 from app.api import deps
 
-router = APIRouter()
+# Every glass route needs a glass role. Office-only routes add glass_office on top.
+router = APIRouter(dependencies=[Depends(deps.require_roles(deps.GLASS_ALL))])
+
+glass_office = deps.require_roles(deps.GLASS_OFFICE)
+glass_user = deps.require_roles(deps.GLASS_ALL)
+
+# Rounding margin when comparing tons.
+TONS_TOLERANCE = 0.0001
+
+
+def _is_glass_driver(user: models.User) -> bool:
+    return user.role in deps.GLASS_FIELD
+
+
+def _ledger_date(value: Optional[datetime]) -> str:
+    return to_local(value).strftime("%Y-%m-%d") if value else ""
+
+
+def _monthly_numbers(rows) -> Dict[str, str]:
+    """Numbers each record within its month by date, across all records, so a number never depends on the report's date range."""
+    counters: Dict[str, int] = {}
+    numbers: Dict[str, str] = {}
+    for row_id, row_date in rows:
+        month = to_local(row_date).strftime("%Y%m") if row_date else "000000"
+        counters[month] = counters.get(month, 0) + 1
+        numbers[row_id] = f"{month}-{str(counters[month]).zfill(3)}"
+    return numbers
+
+
+def _add_unseparated_tons(db: Session, tons: float) -> None:
+    inventory = db.query(models.GlassInventory).filter(models.GlassInventory.type == "unseparated").first()
+    if not inventory:
+        inventory = models.GlassInventory(type="unseparated", tons=0.0)
+        db.add(inventory)
+    inventory.tons = max(0.0, (inventory.tons or 0.0) + tons)
 
 def ensure_initial_data(db: Session):
     """Ensures inventory types exist with 0.0 tons initialized if missing."""
@@ -23,21 +55,9 @@ def ensure_initial_data(db: Session):
             db.commit()
 
 
-@router.post("/reset-data")
-def reset_glass_data(db: Session = Depends(get_db)):
-    """Utility endpoint to wipe test/mock glass data and reset inventory to 0.0."""
-    db.query(models.GlassCollection).delete()
-    db.query(models.GlassVendorPickup).delete()
-    db.query(models.GlassSeparation).delete()
-    for inv in db.query(models.GlassInventory).all():
-        inv.tons = 0.0
-    db.commit()
-    return {"status": "success", "message": "All glass data reset to 0.0"}
-
-
 # --- Dashboard Stats with Daily Profit ---
 
-@router.get("/stats")
+@router.get("/stats", dependencies=[Depends(glass_office)])
 def get_glass_dashboard_stats(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -46,16 +66,8 @@ def get_glass_dashboard_stats(
     ensure_initial_data(db)
 
     # Date range parsing
-    filter_by_date = False
-    start_dt = None
-    end_dt = None
-    if start_date and end_date:
-        try:
-            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-            end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
-            filter_by_date = True
-        except ValueError:
-            pass
+    start_dt, end_dt = local_range(start_date, end_date)
+    filter_by_date = bool(start_dt and end_dt)
 
     # Query Collections in date filter
     coll_query = db.query(models.GlassCollection)
@@ -68,7 +80,7 @@ def get_glass_dashboard_stats(
 
     total_collected_tons = sum(c.tons_collected for c in collections)
     total_paid = sum(c.payment_amount for c in collections)
-    
+
     # Ready to separate (status == dropped_at_godown)
     godown_collections = db.query(models.GlassCollection).filter(
         models.GlassCollection.status == "dropped_at_godown"
@@ -113,8 +125,7 @@ def get_glass_dashboard_stats(
     profit_margin = round((period_profit / total_pickup_revenue * 100), 1) if total_pickup_revenue > 0 else 0.0
 
     # TODAY Specific Financial Metrics
-    today_start = datetime.combine(datetime.utcnow().date(), time.min)
-    today_end = datetime.combine(datetime.utcnow().date(), time.max)
+    today_start, today_end = local_day_bounds(local_today())
 
     today_pickups = db.query(models.GlassVendorPickup).filter(
         models.GlassVendorPickup.date >= today_start,
@@ -159,7 +170,7 @@ def get_glass_dashboard_stats(
             "tons": p.tons,
             "pricePerTon": p.price_per_ton,
             "price_per_ton": p.price_per_ton,
-            "date": p.date.isoformat() if p.date else datetime.utcnow().isoformat()
+            "date": utc_iso(p.date or utcnow())
         }
         for p in recent_pickups_models
     ]
@@ -189,7 +200,7 @@ def get_glass_dashboard_stats(
             "paymentAmount": c.payment_amount,
             "payment_amount": c.payment_amount,
             "status": c.status,
-            "date": c.date.isoformat() if c.date else datetime.utcnow().isoformat()
+            "date": utc_iso(c.date or utcnow())
         }
         for c in recent_colls_models
     ]
@@ -207,7 +218,7 @@ def get_glass_dashboard_stats(
         "today_profit": round(today_profit, 2),
         "todayCollectedTons": round(today_collected_tons, 2),
         "today_collected_tons": round(today_collected_tons, 2),
-        
+
         "periodRevenue": round(total_pickup_revenue, 2),
         "period_revenue": round(total_pickup_revenue, 2),
         "periodExpenses": round(period_expenses, 2),
@@ -269,13 +280,13 @@ def get_glass_properties(
             (models.GlassProperty.phone.like(s))
         )
     props = q.order_by(models.GlassProperty.name.asc()).all()
-    
+
     result = []
     for p in props:
         total_tons = db.query(func.coalesce(func.sum(models.GlassCollection.tons_collected), 0.0)).filter(
             models.GlassCollection.property_id == p.id
         ).scalar() or 0.0
-        
+
         result.append({
             "id": p.id,
             "name": p.name,
@@ -297,7 +308,7 @@ def get_glass_properties(
             "isActive": p.is_active,
             "total_tons_collected": round(total_tons, 2),
             "totalTonsCollected": round(total_tons, 2),
-            "created_at": p.created_at.isoformat() if p.created_at else None
+            "created_at": utc_iso(p.created_at)
         })
     return result
 
@@ -329,7 +340,7 @@ def get_glass_property(property_id: str, db: Session = Depends(get_db)):
     resp.total_tons_collected = round(total_tons, 2)
     return resp
 
-@router.put("/properties/{property_id}", response_model=schemas.GlassPropertyResponse)
+@router.put("/properties/{property_id}", response_model=schemas.GlassPropertyResponse, dependencies=[Depends(glass_office)])
 def update_glass_property(
     property_id: str,
     prop_in: schemas.GlassPropertyUpdate,
@@ -338,26 +349,26 @@ def update_glass_property(
     p = db.query(models.GlassProperty).filter(models.GlassProperty.id == property_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Glass property not found")
-    
+
     update_data = prop_in.model_dump(exclude_unset=True)
     for field, val in update_data.items():
         setattr(p, field, val)
-    
+
     p.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(p)
-    
+
     resp = schemas.GlassPropertyResponse.model_validate(p)
     if p.route:
         resp.route_name = p.route.name
     return resp
 
-@router.delete("/properties/{property_id}")
+@router.delete("/properties/{property_id}", dependencies=[Depends(glass_office)])
 def delete_glass_property(property_id: str, db: Session = Depends(get_db)):
     p = db.query(models.GlassProperty).filter(models.GlassProperty.id == property_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Glass property not found")
-    
+
     # Detach any collections from this property without deleting the collection history
     db.query(models.GlassCollection).filter(models.GlassCollection.property_id == property_id).update({"property_id": None})
     db.delete(p)
@@ -367,7 +378,7 @@ def delete_glass_property(property_id: str, db: Session = Depends(get_db)):
 
 # --- Glass Routes Endpoints ---
 
-@router.get("/routes")
+@router.get("/routes", dependencies=[Depends(glass_office)])
 def get_glass_routes(db: Session = Depends(get_db)):
     routes = db.query(models.Route).filter(models.Route.business_type == "GLASS").order_by(models.Route.name.asc()).all()
     res = []
@@ -381,11 +392,11 @@ def get_glass_routes(db: Session = Depends(get_db)):
             "businessType": r.business_type,
             "properties_count": prop_count,
             "propertiesCount": prop_count,
-            "created_at": r.created_at.isoformat() if r.created_at else None
+            "created_at": utc_iso(r.created_at)
         })
     return res
 
-@router.post("/routes", response_model=schemas.RouteResponse)
+@router.post("/routes", response_model=schemas.RouteResponse, dependencies=[Depends(glass_office)])
 def create_glass_route(
     route_in: schemas.RouteCreate,
     db: Session = Depends(get_db)
@@ -400,7 +411,7 @@ def create_glass_route(
     db.refresh(db_r)
     return db_r
 
-@router.put("/routes/{route_id}", response_model=schemas.RouteResponse)
+@router.put("/routes/{route_id}", response_model=schemas.RouteResponse, dependencies=[Depends(glass_office)])
 def update_glass_route(
     route_id: str,
     route_in: schemas.RouteUpdate,
@@ -418,18 +429,20 @@ def update_glass_route(
     db.refresh(r)
     return r
 
-@router.delete("/routes/{route_id}")
+@router.delete("/routes/{route_id}", dependencies=[Depends(glass_office)])
 def delete_glass_route(route_id: str, db: Session = Depends(get_db)):
     r = db.query(models.Route).filter(models.Route.id == route_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="Route not found")
+    if db.query(models.Assignment.id).filter(models.Assignment.route_id == route_id).first():
+        raise HTTPException(status_code=400, detail="This route has collection runs, so it cannot be deleted without losing history.")
     # Unassign properties from this route
     db.query(models.GlassProperty).filter(models.GlassProperty.route_id == route_id).update({"route_id": None})
     db.delete(r)
     db.commit()
     return {"message": "Glass route deleted successfully"}
 
-@router.post("/routes/{route_id}/assign-properties")
+@router.post("/routes/{route_id}/assign-properties", dependencies=[Depends(glass_office)])
 def assign_properties_to_glass_route(
     route_id: str,
     payload: dict,
@@ -453,17 +466,18 @@ def assign_properties_to_glass_route(
 def get_glass_assignments(
     status: Optional[str] = None,
     date: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(glass_user),
 ):
     q = db.query(models.Assignment).filter(models.Assignment.business_type == "GLASS")
+    if _is_glass_driver(current_user):
+        q = q.filter((models.Assignment.driver_id == current_user.id) | (models.Assignment.helper_id == current_user.id))
     if status and status != "ALL":
         q = q.filter(models.Assignment.status == status)
-    if date:
-        try:
-            d = datetime.strptime(date[:10], "%Y-%m-%d")
-            q = q.filter(models.Assignment.date >= d, models.Assignment.date < d + timedelta(days=1))
-        except Exception:
-            pass
+    day = parse_day(date)
+    if day:
+        day_start, day_end = local_day_bounds(day)
+        q = q.filter(models.Assignment.date >= day_start, models.Assignment.date <= day_end)
 
     from sqlalchemy import case
     status_order = case(
@@ -479,13 +493,13 @@ def get_glass_assignments(
         colls = db.query(models.GlassCollection).filter(models.GlassCollection.assignment_id == a.id).all()
         total_tons = sum(c.tons_collected for c in colls)
         total_paid_run = sum(c.payment_amount for c in colls)
-        
+
         expenses = db.query(models.TripExpense).filter(models.TripExpense.assignment_id == a.id).all()
         total_exp = sum(e.amount for e in expenses)
 
         res.append({
             "id": a.id,
-            "date": a.date.isoformat() if a.date else None,
+            "date": utc_iso(a.date),
             "vehicle_id": a.vehicle_id,
             "vehicleId": a.vehicle_id,
             "vehicle_plate": a.vehicle.plate_number if a.vehicle else "Vehicle",
@@ -517,11 +531,11 @@ def get_glass_assignments(
             "stopsCompleted": len(colls),
             "total_expense": round(total_exp, 2),
             "totalExpense": round(total_exp, 2),
-            "created_at": a.created_at.isoformat() if a.created_at else None
+            "created_at": utc_iso(a.created_at)
         })
     return res
 
-@router.post("/assignments")
+@router.post("/assignments", dependencies=[Depends(glass_office)])
 def create_glass_assignment(
     assignment_in: schemas.AssignmentCreate,
     db: Session = Depends(get_db)
@@ -529,7 +543,7 @@ def create_glass_assignment(
     v = db.query(models.Vehicle).filter(models.Vehicle.id == assignment_in.vehicle_id).first()
     if not v:
         raise HTTPException(status_code=404, detail="Vehicle not found")
-    
+
     db_a = models.Assignment(
         date=assignment_in.date,
         vehicle_id=assignment_in.vehicle_id,
@@ -545,7 +559,7 @@ def create_glass_assignment(
     db.refresh(db_a)
     return db_a
 
-@router.put("/assignments/{assignment_id}")
+@router.put("/assignments/{assignment_id}", dependencies=[Depends(glass_office)])
 def update_glass_assignment(
     assignment_id: str,
     assignment_in: schemas.AssignmentUpdate,
@@ -554,7 +568,7 @@ def update_glass_assignment(
     a = db.query(models.Assignment).filter(models.Assignment.id == assignment_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Assignment not found")
-    
+
     if assignment_in.vehicle_id:
         a.vehicle_id = assignment_in.vehicle_id
     if assignment_in.driver_id:
@@ -578,12 +592,14 @@ def update_glass_assignment(
 @router.post("/assignments/{assignment_id}/complete")
 def complete_glass_assignment(
     assignment_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(glass_user),
 ):
     """End of Run Drop-off: Automatically marks all active collections from this run as dropped_at_godown and credits unseparated inventory."""
-    a = db.query(models.Assignment).filter(models.Assignment.id == assignment_id).first()
+    a = db.query(models.Assignment).filter(models.Assignment.id == assignment_id, models.Assignment.business_type == "GLASS").first()
     if not a:
         raise HTTPException(status_code=404, detail="Assignment not found")
+    deps.ensure_assignment_access(current_user, a)
 
     if a.status == "COMPLETED":
         return {"id": a.id, "status": a.status, "message": "Assignment already completed"}
@@ -599,11 +615,7 @@ def complete_glass_assignment(
         c.status = "dropped_at_godown"
 
     # Credit to Unseparated Godown inventory
-    unsep = db.query(models.GlassInventory).filter(models.GlassInventory.type == "unseparated").first()
-    if not unsep:
-        unsep = models.GlassInventory(type="unseparated", tons=0.0)
-        db.add(unsep)
-    unsep.tons += total_tons_dropped
+    _add_unseparated_tons(db, total_tons_dropped)
 
     a.status = "COMPLETED"
     a.updated_at = datetime.utcnow()
@@ -620,11 +632,13 @@ def complete_glass_assignment(
 @router.put("/assignments/{assignment_id}/reopen")
 def reopen_glass_assignment(
     assignment_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(glass_user),
 ):
-    a = db.query(models.Assignment).filter(models.Assignment.id == assignment_id).first()
+    a = db.query(models.Assignment).filter(models.Assignment.id == assignment_id, models.Assignment.business_type == "GLASS").first()
     if not a:
         raise HTTPException(status_code=404, detail="Assignment not found")
+    deps.ensure_assignment_access(current_user, a)
     if a.status != "COMPLETED":
         return a
 
@@ -638,9 +652,7 @@ def reopen_glass_assignment(
     for c in colls:
         c.status = "collected"
 
-    unsep = db.query(models.GlassInventory).filter(models.GlassInventory.type == "unseparated").first()
-    if unsep:
-        unsep.tons = max(0.0, unsep.tons - total_tons)
+    _add_unseparated_tons(db, -total_tons)
 
     a.status = "ACTIVE"
     a.updated_at = datetime.utcnow()
@@ -648,7 +660,7 @@ def reopen_glass_assignment(
     db.refresh(a)
     return a
 
-@router.delete("/assignments/{assignment_id}")
+@router.delete("/assignments/{assignment_id}", dependencies=[Depends(glass_office)])
 def delete_glass_assignment(
     assignment_id: str,
     db: Session = Depends(get_db)
@@ -656,11 +668,13 @@ def delete_glass_assignment(
     a = db.query(models.Assignment).filter(models.Assignment.id == assignment_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Assignment not found")
-    
-    # Detach collections from this assignment
-    for c in list(a.glass_collections):
-        c.assignment_id = None
-        
+
+    if a.glass_collections or a.expenses:
+        raise HTTPException(
+            status_code=400,
+            detail="This run has collection or expense records, so it cannot be deleted without losing history.",
+        )
+
     db.delete(a)
     db.commit()
     return {"message": "Glass assignment deleted successfully"}
@@ -672,11 +686,22 @@ def delete_glass_assignment(
 def log_collection(
     collection: schemas.GlassCollectionCreate,
     db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(deps.get_optional_current_user)
+    current_user: models.User = Depends(glass_user),
 ):
     ensure_initial_data(db)
     coll_data = collection.model_dump()
-    
+
+    if coll_data.get("assignment_id"):
+        run = db.query(models.Assignment).filter(
+            models.Assignment.id == coll_data["assignment_id"],
+            models.Assignment.business_type == "GLASS",
+        ).first()
+        if not run:
+            raise HTTPException(status_code=404, detail="Collection run not found")
+        deps.ensure_assignment_access(current_user, run)
+        if run.status == "COMPLETED":
+            raise HTTPException(status_code=400, detail="This collection run has already ended.")
+
     # If property_id is provided, pull info from property if blank
     if coll_data.get("property_id"):
         prop = db.query(models.GlassProperty).filter(models.GlassProperty.id == coll_data["property_id"]).first()
@@ -692,13 +717,9 @@ def log_collection(
             if coll_data.get("longitude") is None and prop.longitude:
                 coll_data["longitude"] = prop.longitude
 
-    # Assign driver_id if missing
-    if not coll_data.get("driver_id"):
-        if current_user:
-            coll_data["driver_id"] = current_user.id
-        else:
-            first_user = db.query(models.User).first()
-            coll_data["driver_id"] = first_user.id if first_user else None
+    # Drivers always log as themselves. Office staff may record on a driver's behalf.
+    if _is_glass_driver(current_user) or not coll_data.get("driver_id"):
+        coll_data["driver_id"] = current_user.id
 
     # Remove driver_name if present in dict since it's not a column
     driver_name = coll_data.pop("driver_name", None)
@@ -707,7 +728,7 @@ def log_collection(
     db.add(db_collection)
     db.commit()
     db.refresh(db_collection)
-    
+
     # Attach driver_name for response
     driver = db.query(models.User).filter(models.User.id == db_collection.driver_id).first() if db_collection.driver_id else None
     response = schemas.GlassCollectionResponse.model_validate(db_collection)
@@ -720,25 +741,24 @@ def get_collections(
     assignment_id: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(glass_user),
 ):
     ensure_initial_data(db)
     query = db.query(models.GlassCollection)
+    if _is_glass_driver(current_user):
+        query = query.filter(models.GlassCollection.driver_id == current_user.id)
     if status:
         query = query.filter(models.GlassCollection.status == status)
     if assignment_id:
         query = query.filter(models.GlassCollection.assignment_id == assignment_id)
-    if start_date and end_date:
-        try:
-            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-            end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
-            query = query.filter(
-                models.GlassCollection.date >= start_dt,
-                models.GlassCollection.date <= end_dt
-            )
-        except ValueError:
-            pass
-            
+    start_dt, end_dt = local_range(start_date, end_date)
+    if start_dt and end_dt:
+        query = query.filter(
+            models.GlassCollection.date >= start_dt,
+            models.GlassCollection.date <= end_dt
+        )
+
     colls = query.order_by(models.GlassCollection.date.desc()).all()
     result = []
     for c in colls:
@@ -763,32 +783,30 @@ def get_collections(
             "paymentAmount": c.payment_amount,
             "payment_amount": c.payment_amount,
             "status": c.status,
-            "date": c.date.isoformat() if c.date else datetime.utcnow().isoformat()
+            "date": utc_iso(c.date or utcnow())
         })
     return result
 
 @router.post("/dropoff/{collection_id}")
 def dropoff_collection(
     collection_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(glass_user),
 ):
     ensure_initial_data(db)
     db_collection = db.query(models.GlassCollection).filter(models.GlassCollection.id == collection_id).first()
     if not db_collection:
         raise HTTPException(status_code=404, detail="Collection not found")
-        
-    db_collection.status = "dropped_at_godown"
-    
-    # Increase unseparated inventory
-    unseparated_inv = db.query(models.GlassInventory).filter(models.GlassInventory.type == "unseparated").first()
-    if not unseparated_inv:
-        unseparated_inv = models.GlassInventory(type="unseparated", tons=0.0)
-        db.add(unseparated_inv)
-        
-    unseparated_inv.tons += db_collection.tons_collected
-    db.commit()
-    db.refresh(db_collection)
-    
+    if _is_glass_driver(current_user) and db_collection.driver_id != current_user.id:
+        raise HTTPException(status_code=403, detail="This collection is not yours.")
+
+    # Repeating a drop-off changes nothing, so the tons are only ever counted once.
+    if db_collection.status == "collected":
+        db_collection.status = "dropped_at_godown"
+        _add_unseparated_tons(db, db_collection.tons_collected)
+        db.commit()
+        db.refresh(db_collection)
+
     driver = db.query(models.User).filter(models.User.id == db_collection.driver_id).first() if db_collection.driver_id else None
     return {
         "id": db_collection.id,
@@ -804,33 +822,31 @@ def dropoff_collection(
         "paymentAmount": db_collection.payment_amount,
         "payment_amount": db_collection.payment_amount,
         "status": db_collection.status,
-        "date": db_collection.date.isoformat() if db_collection.date else datetime.utcnow().isoformat()
+        "date": utc_iso(db_collection.date or utcnow())
     }
 
 @router.post("/dropoff-all")
 def dropoff_all_collections(
     req: Optional[schemas.GlassDropoffAllRequest] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(glass_user),
 ):
     ensure_initial_data(db)
     query = db.query(models.GlassCollection).filter(models.GlassCollection.status == "collected")
-    if req and req.driver_id:
+    if _is_glass_driver(current_user):
+        query = query.filter(models.GlassCollection.driver_id == current_user.id)
+    elif req and req.driver_id:
         query = query.filter(models.GlassCollection.driver_id == req.driver_id)
-        
+
     active_colls = query.all()
     total_dropped_tons = sum(c.tons_collected for c in active_colls)
-    
+
     for c in active_colls:
         c.status = "dropped_at_godown"
-        
-    unseparated_inv = db.query(models.GlassInventory).filter(models.GlassInventory.type == "unseparated").first()
-    if not unseparated_inv:
-        unseparated_inv = models.GlassInventory(type="unseparated", tons=0.0)
-        db.add(unseparated_inv)
-        
-    unseparated_inv.tons += total_dropped_tons
+
+    _add_unseparated_tons(db, total_dropped_tons)
     db.commit()
-    
+
     return {
         "message": f"Successfully dropped {len(active_colls)} collections at godown",
         "count": len(active_colls),
@@ -840,46 +856,59 @@ def dropoff_all_collections(
 
 # --- Segregation ---
 
-@router.post("/separate", response_model=schemas.GlassSeparationResponse)
+@router.post("/separate", response_model=schemas.GlassSeparationResponse, dependencies=[Depends(glass_office)])
 def separate_glass(
     separation: schemas.GlassSeparationCreate,
     db: Session = Depends(get_db),
-    current_user: Optional[models.User] = Depends(deps.get_optional_current_user)
+    current_user: models.User = Depends(glass_office),
 ):
     ensure_initial_data(db)
     sep_data = separation.model_dump()
-    
-    if not sep_data.get("staff_id"):
-        if current_user:
-            sep_data["staff_id"] = current_user.id
-        else:
-            first_user = db.query(models.User).first()
-            sep_data["staff_id"] = first_user.id if first_user else None
+    sep_data["staff_id"] = current_user.id
+
+    sorted_tons = separation.white_tons + separation.mixed_tons
+    unseparated_inv = db.query(models.GlassInventory).filter(models.GlassInventory.type == "unseparated").first()
+
+    # A vehicle drop is sorted once. Anything not sorted into white or mixed is recorded as wastage.
+    db_collection = None
+    source_tons = separation.tons_separated
+    if separation.collection_id:
+        db_collection = db.query(models.GlassCollection).filter(models.GlassCollection.id == separation.collection_id).first()
+        if not db_collection:
+            raise HTTPException(status_code=404, detail="Collection not found")
+        if db_collection.status != "dropped_at_godown":
+            raise HTTPException(status_code=400, detail="Only glass waiting at the godown can be sorted, and only once.")
+        source_tons = db_collection.tons_collected
+    elif source_tons > (unseparated_inv.tons if unseparated_inv else 0.0) + TONS_TOLERANCE:
+        raise HTTPException(status_code=400, detail="That is more glass than is waiting at the godown.")
+
+    if sorted_tons <= 0 or sorted_tons > source_tons + TONS_TOLERANCE:
+        raise HTTPException(status_code=400, detail=f"White and mixed must add up to no more than {round(source_tons, 2)} tons.")
+
+    sep_data["tons_separated"] = source_tons
+    sep_data["wastage_tons"] = round(max(0.0, source_tons - sorted_tons), 4)
 
     # Deduct unseparated inventory
-    unseparated_inv = db.query(models.GlassInventory).filter(models.GlassInventory.type == "unseparated").first()
     if unseparated_inv:
-        unseparated_inv.tons = max(0.0, unseparated_inv.tons - separation.tons_separated)
-        
+        unseparated_inv.tons = max(0.0, unseparated_inv.tons - source_tons)
+
     # Add to white and mixed
     white_inv = db.query(models.GlassInventory).filter(models.GlassInventory.type == "white").first()
     if not white_inv:
         white_inv = models.GlassInventory(type="white", tons=0.0)
         db.add(white_inv)
     white_inv.tons += separation.white_tons
-    
+
     mixed_inv = db.query(models.GlassInventory).filter(models.GlassInventory.type == "mixed").first()
     if not mixed_inv:
         mixed_inv = models.GlassInventory(type="mixed", tons=0.0)
         db.add(mixed_inv)
     mixed_inv.tons += separation.mixed_tons
-    
+
     # Mark tied collection as separated if given
-    if separation.collection_id:
-        db_collection = db.query(models.GlassCollection).filter(models.GlassCollection.id == separation.collection_id).first()
-        if db_collection:
-            db_collection.status = "separated"
-            
+    if db_collection:
+        db_collection.status = "separated"
+
     db_separation = models.GlassSeparation(**sep_data)
     db.add(db_separation)
     db.commit()
@@ -889,7 +918,7 @@ def separate_glass(
 
 # --- Vendor Pickups ---
 
-@router.post("/vendor-pickup", response_model=schemas.GlassVendorPickupResponse)
+@router.post("/vendor-pickup", response_model=schemas.GlassVendorPickupResponse, dependencies=[Depends(glass_office)])
 def vendor_pickup(
     pickup: schemas.GlassVendorPickupCreate,
     db: Session = Depends(get_db)
@@ -900,28 +929,28 @@ def vendor_pickup(
     if not inv or inv.tons < pickup.tons:
         available = inv.tons if inv else 0.0
         raise HTTPException(status_code=400, detail=f"Not enough {pickup.type} glass in inventory (Available: {available} T)")
-        
+
     # Record pickup
     db_pickup = models.GlassVendorPickup(**pickup.model_dump())
     db.add(db_pickup)
-    
+
     # Deduct stock
     inv.tons = max(0.0, inv.tons - pickup.tons)
-    
+
     db.commit()
     db.refresh(db_pickup)
     return db_pickup
 
-@router.get("/vendor-pickups")
+@router.get("/vendor-pickups", dependencies=[Depends(glass_office)])
 def get_vendor_pickups(
-    limit: int = 50,
+    limit: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
     ensure_initial_data(db)
     pickups = db.query(models.GlassVendorPickup).order_by(
         models.GlassVendorPickup.date.desc()
     ).limit(limit).all()
-    
+
     return [
         {
             "id": p.id,
@@ -931,12 +960,12 @@ def get_vendor_pickups(
             "tons": p.tons,
             "pricePerTon": p.price_per_ton,
             "price_per_ton": p.price_per_ton,
-            "date": p.date.isoformat() if p.date else datetime.utcnow().isoformat()
+            "date": utc_iso(p.date or utcnow())
         }
         for p in pickups
     ]
 
-@router.get("/inventory")
+@router.get("/inventory", dependencies=[Depends(glass_office)])
 def get_glass_inventory(
     db: Session = Depends(get_db)
 ):
@@ -947,7 +976,7 @@ def get_glass_inventory(
             "id": i.id,
             "type": i.type,
             "tons": i.tons,
-            "updated_at": i.updated_at.isoformat() if i.updated_at else datetime.utcnow().isoformat()
+            "updated_at": utc_iso(i.updated_at or utcnow())
         }
         for i in inv_list
     ]
@@ -955,7 +984,7 @@ def get_glass_inventory(
 
 # --- CA Accountant Financial Reports & Audit Ledgers ---
 
-@router.get("/reports")
+@router.get("/reports", dependencies=[Depends(glass_office)])
 def get_glass_ca_financial_report(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -963,20 +992,26 @@ def get_glass_ca_financial_report(
 ):
     """Generates formal CA-compliant financial statements (P&L, Sales Register, Purchases Register, Expenses, Closing Stock)."""
     ensure_initial_data(db)
-    now = datetime.utcnow()
+    now = to_local(utcnow())
     current_year = now.year
 
-    if start_date and end_date:
-        try:
-            start_dt = datetime.strptime(start_date[:10], "%Y-%m-%d")
-            end_dt = datetime.strptime(end_date[:10], "%Y-%m-%d").replace(hour=23, minute=59, second=59)
-        except ValueError:
-            start_dt = datetime(current_year, 1, 1, 0, 0, 0)
-            end_dt = datetime(current_year, 12, 31, 23, 59, 59)
-    else:
-        # Default to Current Calendar Year (Jan 1 to Dec 31)
-        start_dt = datetime(current_year, 1, 1, 0, 0, 0)
-        end_dt = datetime(current_year, 12, 31, 23, 59, 59)
+    # Default to Current Calendar Year (Jan 1 to Dec 31)
+    start_dt, end_dt = local_range(start_date, end_date)
+    if not (start_dt and end_dt):
+        start_dt = local_day_bounds(datetime(current_year, 1, 1).date())[0]
+        end_dt = local_day_bounds(datetime(current_year, 12, 31).date())[1]
+
+    company = db.query(models.SystemSetting).filter(models.SystemSetting.key == "company_name").first()
+    company_name = (company.value if company else "") or "Flyera Traders"
+
+    sale_numbers = _monthly_numbers(
+        db.query(models.GlassVendorPickup.id, models.GlassVendorPickup.date)
+        .order_by(models.GlassVendorPickup.date.asc(), models.GlassVendorPickup.id.asc()).all()
+    )
+    purchase_numbers = _monthly_numbers(
+        db.query(models.GlassCollection.id, models.GlassCollection.date)
+        .order_by(models.GlassCollection.date.asc(), models.GlassCollection.id.asc()).all()
+    )
 
     # 1. Sales Register (Recycling Mills Sales)
     pickups = db.query(models.GlassVendorPickup).filter(
@@ -990,8 +1025,8 @@ def get_glass_ca_financial_report(
     mixed_sales_tons = 0.0
     mixed_sales_rev = 0.0
 
-    for idx, p in enumerate(pickups):
-        rate = p.price_per_ton if p.price_per_ton and p.price_per_ton > 0 else (5500.0 if p.type == "white" else 3800.0)
+    for p in pickups:
+        rate = p.price_per_ton or 0.0
         bill_amt = round(p.tons * rate, 2)
         if p.type == "white":
             white_sales_tons += p.tons
@@ -1002,8 +1037,8 @@ def get_glass_ca_financial_report(
 
         sales_ledger.append({
             "id": p.id,
-            "invoice_no": f"FL-SLS-{p.date.strftime('%Y%m')}-{str(idx + 1).zfill(3)}" if p.date else f"FL-SLS-{str(idx + 1).zfill(3)}",
-            "date": p.date.strftime("%Y-%m-%d") if p.date else "",
+            "invoice_no": f"FL-SLS-{sale_numbers.get(p.id, '')}",
+            "date": _ledger_date(p.date),
             "vendor_name": p.vendor_name,
             "type": "Flint White Glass" if p.type == "white" else "Mixed Container Glass",
             "tons": round(p.tons, 2),
@@ -1024,7 +1059,7 @@ def get_glass_ca_financial_report(
     total_cullet_cost = 0.0
     total_collected_tons = 0.0
 
-    for idx, c in enumerate(colls):
+    for c in colls:
         total_cullet_cost += (c.payment_amount or 0.0)
         total_collected_tons += c.tons_collected
 
@@ -1033,8 +1068,8 @@ def get_glass_ca_financial_report(
 
         purchases_ledger.append({
             "id": c.id,
-            "voucher_no": f"FL-PUR-{c.date.strftime('%Y%m')}-{str(idx + 1).zfill(3)}" if c.date else f"FL-PUR-{str(idx + 1).zfill(3)}",
-            "date": c.date.strftime("%Y-%m-%d") if c.date else "",
+            "voucher_no": f"FL-PUR-{purchase_numbers.get(c.id, '')}",
+            "date": _ledger_date(c.date),
             "property_name": c.property,
             "category": category,
             "location": c.location or "",
@@ -1065,7 +1100,7 @@ def get_glass_ca_financial_report(
     maint_exp = 0.0
     other_exp = 0.0
 
-    for idx, e in enumerate(expenses):
+    for e in expenses:
         amt = round(e.amount, 2)
         cat = (e.category or "OTHER").upper()
         if cat == "FUEL":
@@ -1083,8 +1118,9 @@ def get_glass_ca_financial_report(
 
         expenses_ledger.append({
             "id": e.id,
-            "voucher_no": f"FL-EXP-{e.created_at.strftime('%Y%m')}-{str(idx + 1).zfill(3)}" if e.created_at else f"FL-EXP-{str(idx + 1).zfill(3)}",
-            "date": e.created_at.strftime("%Y-%m-%d") if e.created_at else "",
+            # Expenses can be deleted, so the number comes from the record itself and never shifts.
+            "voucher_no": f"FL-EXP-{e.id[:8].upper()}",
+            "date": _ledger_date(e.created_at),
             "category": cat,
             "amount": amt,
             "vehicle": v_plate,
@@ -1103,11 +1139,13 @@ def get_glass_ca_financial_report(
     # 5. Closing Stock Inventory Valuation
     inv_white = db.query(models.GlassInventory).filter(models.GlassInventory.type == "white").first()
     inv_mixed = db.query(models.GlassInventory).filter(models.GlassInventory.type == "mixed").first()
-    inv_unsep = db.query(models.GlassInventory).filter(models.GlassInventory.type == "unseparated").first()
 
     w_tons = inv_white.tons if inv_white else 0.0
     m_tons = inv_mixed.tons if inv_mixed else 0.0
-    u_tons = inv_unsep.tons if inv_unsep else 0.0
+    # Same source as the dashboard: drops still waiting at the godown.
+    u_tons = sum(
+        c.tons_collected for c in db.query(models.GlassCollection).filter(models.GlassCollection.status == "dropped_at_godown").all()
+    )
 
     # Benchmark average market rates per ton for valuation
     avg_white_rate = round(white_sales_rev / white_sales_tons, 2) if white_sales_tons > 0 else 5500.0
@@ -1142,7 +1180,7 @@ def get_glass_ca_financial_report(
     total_stock_valuation = round(sum(i["valuation_amount"] for i in closing_inventory), 2)
 
     return {
-        "company_name": "Flyera Traders",
+        "company_name": company_name,
         "division": "Glass Logistics & Circular Cullet Recycling Division",
         "fiscal_calendar": "Calendar Year (January 1 - December 31)",
         "generated_at": now.strftime("%d-%b-%Y %I:%M %p"),

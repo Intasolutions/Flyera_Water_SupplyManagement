@@ -2,22 +2,16 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import QRCode from "qrcode";
-import { 
-  Printer, 
-  CheckCircle2, 
-  Share2, 
-  ArrowRight, 
-  QrCode, 
-  Download, 
-  Sparkles, 
-  X, 
-  Edit2, 
-  Check, 
-  Smartphone, 
-  FileText,
+import {
+  Printer,
+  CheckCircle2,
+  Share2,
+  ArrowRight,
+  QrCode,
+  Sparkles,
+  X,
   Clock
 } from "lucide-react";
-import { toast } from "react-hot-toast";
 
 export interface ReceiptItem {
   name: string;
@@ -70,12 +64,16 @@ export function ThermalReceiptModal({
 }: ThermalReceiptModalProps) {
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const receiptRef = useRef<HTMLDivElement>(null);
-  const activeUpiId = data.upiId || "flyera@okhdfcbank";
+  const activeUpiId = data.upiId;
   const isPayLater = data.paymentStatus === "PENDING" || (data.paymentMethod || "").toLowerCase().includes("pay later") || (data.paymentMethod || "").toLowerCase().includes("slip");
   const payableAmount = (isPayLater && data.netDueAmount && data.netDueAmount > 0) ? data.netDueAmount : data.totalAmount;
 
   // Generate dynamic NPCI UPI URI and QR code strictly using Admin configured UPI ID
   useEffect(() => {
+    if (!activeUpiId) {
+      setQrDataUrl("");
+      return;
+    }
     const note = encodeURIComponent(`${data.receiptNo} - ${data.clientName}`);
     const company = encodeURIComponent(data.companyName || "Flyera Logistics");
     const upiUri = `upi://pay?pa=${activeUpiId}&pn=${company}&am=${payableAmount.toFixed(2)}&tn=${note}&cu=INR`;
@@ -123,11 +121,11 @@ export function ThermalReceiptModal({
       `*PAYMENT STATUS: PENDING (PAY VIA SLIP QR)*`,
       `--------------------------------`,
       `Your water bottles have been dropped off!`,
-      `Please scan the QR code on your printed slip or pay via UPI:`,
-      `UPI ID: *${activeUpiId}*`,
+      activeUpiId ? `Please scan the QR code on your printed slip or pay via UPI:` : "",
+      activeUpiId ? `UPI ID: *${activeUpiId}*` : "",
       `Amount: *₹${payableAmount}*`,
       `--------------------------------`,
-      `Helpline: ${data.hotline}`,
+      data.hotline ? `Helpline: ${data.hotline}` : "",
       `_Powered by IN-TA Solution PVT LTD_`
     ].filter(Boolean).join("\n") : [
       `*WATER DELIVERY INVOICE & RECEIPT*`,
@@ -145,7 +143,7 @@ export function ThermalReceiptModal({
       `*PAYMENT STATUS: PAID (${data.paymentMethod.toUpperCase()})*`,
       `--------------------------------`,
       `Thank you for choosing Flyera!`,
-      `Helpline: ${data.hotline}`,
+      data.hotline ? `Helpline: ${data.hotline}` : "",
       `_Powered by IN-TA Solution PVT LTD_`
     ].filter(Boolean).join("\n");
 
@@ -190,7 +188,7 @@ export function ThermalReceiptModal({
       {/* Main Dialog Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-sm animate-in fade-in duration-200">
         <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[92vh]">
-          
+
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/60">
             <div className="flex items-center gap-2">
@@ -216,7 +214,7 @@ export function ThermalReceiptModal({
 
           {/* Modal Body */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
-            
+
             {/* MODE 1: Dynamic UPI Collect Screen */}
             {mode === "qr_collect" && (
               <div className="space-y-4 text-center">
@@ -242,7 +240,7 @@ export function ThermalReceiptModal({
                     />
                   ) : (
                     <div className="w-52 h-52 flex items-center justify-center bg-slate-50 rounded-lg text-xs text-slate-400">
-                      Generating dynamic QR...
+                      {activeUpiId ? "Generating dynamic QR..." : "No UPI ID available"}
                     </div>
                   )}
                   <p className="text-[11px] font-bold text-slate-500 mt-2 flex items-center justify-center gap-1">
@@ -289,7 +287,7 @@ export function ThermalReceiptModal({
             {/* MODE 2: Clean Celebratory / Slip Ready Screen */}
             {mode === "success_receipt" && (
               <div className="space-y-5 text-center">
-                
+
                 {/* Celebratory Animated Checkmark or Clock Aura */}
                 <div className="py-2 flex flex-col items-center justify-center">
                   <div className="relative mb-3">
@@ -439,12 +437,16 @@ export function ThermalReceiptModal({
         <div style={{ textAlign: "center", fontWeight: "bold", fontSize: "13px" }}>
           {data.companyName}
         </div>
-        <div style={{ textAlign: "center", fontSize: "10px" }}>
-          {data.address}
-        </div>
-        <div style={{ textAlign: "center", fontSize: "10px" }}>
-          Hotline: {data.hotline} | GST: {data.gstin}
-        </div>
+        {data.address && (
+          <div style={{ textAlign: "center", fontSize: "10px" }}>
+            {data.address}
+          </div>
+        )}
+        {(data.hotline || data.gstin) && (
+          <div style={{ textAlign: "center", fontSize: "10px" }}>
+            {[data.hotline && `Hotline: ${data.hotline}`, data.gstin && `GST: ${data.gstin}`].filter(Boolean).join(" | ")}
+          </div>
+        )}
         <div>--------------------------------</div>
         <div>RECEIPT NO : {data.receiptNo}</div>
         <div>DATE       : {data.date}</div>
@@ -499,7 +501,7 @@ export function ThermalReceiptModal({
         </div>
         <div>{isPayLater ? "PAYMENT STATUS  : PENDING (SCAN SLIP QR)" : `PAYMENT METHOD   : ${data.paymentMethod.toUpperCase()}`}</div>
         <div>--------------------------------</div>
-        
+
         {/* Dynamic UPI QR printed on the thermal slip */}
         {qrDataUrl && (
           <div style={{ textAlign: "center", margin: "4px 0" }}>
@@ -514,9 +516,9 @@ export function ThermalReceiptModal({
             </div>
           </div>
         )}
-        
+
         <div>--------------------------------</div>
-        {isPayLater && (
+        {isPayLater && activeUpiId && (
           <div style={{ textAlign: "center", fontSize: "9px", fontWeight: "bold", margin: "2px 0" }}>
             * PLEASE SCAN QR TO PAY UPON RETURNING *
           </div>
@@ -524,9 +526,11 @@ export function ThermalReceiptModal({
         <div style={{ textAlign: "center", fontSize: "10px" }}>
           Thank you for trusting Flyera!
         </div>
-        <div style={{ textAlign: "center", fontSize: "9px" }}>
-          For refills call: {data.hotline}
-        </div>
+        {data.hotline && (
+          <div style={{ textAlign: "center", fontSize: "9px" }}>
+            For refills call: {data.hotline}
+          </div>
+        )}
         <div style={{ textAlign: "center", fontSize: "8.5px", marginTop: "3px" }}>
           Powered by IN-TA Solution PVT LTD
         </div>

@@ -2,29 +2,24 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { 
-  Droplet, 
-  Recycle, 
-  ShieldAlert, 
-  User, 
-  Lock, 
-  Phone, 
-  Building2, 
-  Wallet, 
-  CheckCircle2, 
-  ArrowRight, 
-  KeyRound, 
-  Eye, 
-  EyeOff, 
+import {
+  Droplet,
+  Recycle,
+  ShieldAlert,
+  User,
+  Building2,
+  CheckCircle2,
+  ArrowRight,
+  Eye,
+  EyeOff,
   Trash2,
   RefreshCw,
-  Sparkles,
   AlertCircle,
   Check
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { getSetupStatus, resetAndCreateSuperuser, SetupStatus } from "@/lib/api";
-import { sanitizePhone, isValidPhone } from "@/lib/validation";
+import { sanitizePhone } from "@/lib/validation";
 import { toast } from "react-hot-toast";
 
 export default function SetupPage() {
@@ -35,7 +30,7 @@ export default function SetupPage() {
   const [loadingStatus, setLoadingStatus] = useState(true);
 
   // Form states - completely clean by default (no hardcoded prefilled dummy data)
-  const [masterKey, setMasterKey] = useState("FLYERA_PROD_RESET_2026");
+  const [masterKey, setMasterKey] = useState("");
   const [showMasterKey, setShowMasterKey] = useState(false);
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
@@ -72,8 +67,8 @@ export default function SetupPage() {
   const handleResetAndInitialize = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!password || password.length < 4) {
-      toast.error("Password must be at least 4 characters.");
+    if (!password || password.length < 8) {
+      toast.error("Password must be at least 8 characters.");
       return;
     }
 
@@ -230,32 +225,11 @@ export default function SetupPage() {
               {loadingStatus ? (
                 <p className="text-xs font-bold text-slate-400 py-2">Inspecting database tables...</p>
               ) : status ? (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <span className="text-[10px] font-black uppercase text-slate-400 block">Staff / Users</span>
-                    <span className="text-base font-black text-slate-800 mt-0.5 block">
-                      {status.total_users} Records
-                    </span>
-                  </div>
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <span className="text-[10px] font-black uppercase text-slate-400 block">Clients</span>
-                    <span className="text-base font-black text-slate-800 mt-0.5 block">
-                      {status.total_clients} Records
-                    </span>
-                  </div>
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <span className="text-[10px] font-black uppercase text-slate-400 block">Fleet Vehicles</span>
-                    <span className="text-base font-black text-slate-800 mt-0.5 block">
-                      {status.total_vehicles} Records
-                    </span>
-                  </div>
-                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <span className="text-[10px] font-black uppercase text-slate-400 block">Deliveries</span>
-                    <span className="text-base font-black text-slate-800 mt-0.5 block">
-                      {status.total_deliveries} Records
-                    </span>
-                  </div>
-                </div>
+                <p className="text-xs font-bold text-slate-600 pt-1">
+                  {status.is_clean
+                    ? "This database is empty, so this is a first-time setup."
+                    : "This database already has users and records. Continuing deletes all of them."}
+                </p>
               ) : (
                 <p className="text-xs font-bold text-slate-400">Database connected.</p>
               )}
@@ -369,12 +343,14 @@ export default function SetupPage() {
 
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">
-                      Master Authorization Key *
+                      Master Authorization Key {status?.master_key_required !== false && "*"}
                     </label>
                     <div className="relative">
                       <input
                         type={showMasterKey ? "text" : "password"}
-                        required
+                        required={status?.master_key_required !== false}
+                        autoComplete="off"
+                        placeholder={status?.master_key_required === false ? "Not needed for a first-time setup" : "SETUP_MASTER_KEY from the server settings"}
                         value={masterKey}
                         onChange={e => setMasterKey(e.target.value)}
                         className="w-full pl-3.5 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-slate-800 text-xs sm:text-sm font-mono font-bold focus:border-primary focus:bg-white transition-all"

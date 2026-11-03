@@ -6,13 +6,12 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { 
-  Truck, 
-  Plus, 
-  Search, 
-  Filter, 
-  CheckCircle2, 
-  AlertCircle, 
+import {
+  Truck,
+  Plus,
+  Search,
+  CheckCircle2,
+  AlertCircle,
   RefreshCw,
   Edit2,
   Trash2,

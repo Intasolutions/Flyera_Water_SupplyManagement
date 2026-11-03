@@ -6,18 +6,17 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { 
-  Package, 
-  Plus, 
-  Search, 
-  RefreshCw, 
-  IndianRupee, 
-  Layers, 
-  AlertTriangle, 
-  Edit2, 
-  Trash2, 
-  Sliders,
-  CheckCircle2
+import {
+  Package,
+  Plus,
+  Search,
+  RefreshCw,
+  IndianRupee,
+  Layers,
+  AlertTriangle,
+  Edit2,
+  Trash2,
+  Sliders
 } from "lucide-react";
 import { getInventoryTypes, createInventoryType, updateInventoryType, deleteInventoryType, adjustInventoryStock, InventoryType } from "@/lib/api";
 import { toast } from "react-hot-toast";

@@ -14,23 +14,19 @@ import {
   Award,
   MapPin,
   Plus,
-  Route as RouteIcon,
   Sparkles,
   RefreshCw,
   Edit2,
   Trash2,
-  UserCheck,
   Navigation,
   ExternalLink,
   CheckCircle2,
   Upload,
   HelpCircle,
-  Link2,
   AlertCircle,
   Check,
   IndianRupee,
   Lock,
-  CreditCard,
   Package,
   History,
   List,
@@ -55,7 +51,7 @@ import {
   adjustBottleCredit,
   BottleCreditEntry
 } from "@/lib/api";
-import { sanitizePhone, isValidPhone, formatPhoneDisplay } from "@/lib/validation";
+import { sanitizePhone } from "@/lib/validation";
 import { toast } from "react-hot-toast";
 import { useConfirm } from "@/lib/useConfirm";
 
@@ -1021,7 +1017,7 @@ export default function ClientsPage() {
                 <Sparkles className="w-5 h-5 text-purple-600 shrink-0" />
                 <div>
                   <p className="text-sm font-bold text-text">Customer Loyalty Points</p>
-                  <p className="text-xs text-text-muted">Earn redeemable rewards per bottle returned</p>
+                  <p className="text-xs text-text-muted">Earn points for every jar delivered</p>
                 </div>
               </div>
               <input

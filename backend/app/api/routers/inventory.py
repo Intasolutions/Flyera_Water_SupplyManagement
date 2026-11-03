@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 from app import crud, schemas, models
 from app.database import get_db
@@ -21,9 +21,9 @@ def create_inventory_type(
 @router.get("/", response_model=List[schemas.InventoryTypeResponse])
 def read_inventory_types(
     skip: int = 0,
-    limit: int = 100,
+    limit: Optional[int] = None,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(deps.get_current_active_user)
+    current_user: models.User = Depends(deps.require_roles(deps.WATER_ALL))
 ):
     return crud.get_inventory_types(db, skip=skip, limit=limit)
 
@@ -48,12 +48,13 @@ def delete_inventory_type(
     db_inv_type = crud.get_inventory_type(db, inv_type_id=inv_type_id)
     if db_inv_type is None:
         raise HTTPException(status_code=404, detail="Inventory Type not found")
-    try:
-        crud.delete_inventory_type(db=db, inv_type_id=inv_type_id)
-        return {"message": "Inventory Type deleted successfully"}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to delete inventory type: {str(e)}")
+    if crud.inventory_type_has_history(db, inv_type_id):
+        raise HTTPException(
+            status_code=400,
+            detail="This product has been loaded or sold, so it cannot be deleted without losing sales history.",
+        )
+    crud.delete_inventory_type(db, db_inv_type)
+    return {"message": "Inventory Type deleted successfully"}
 
 @router.post("/{inv_type_id}/stock", response_model=schemas.InventoryTypeResponse)
 @router.post("/{inv_type_id}/stock/", response_model=schemas.InventoryTypeResponse, include_in_schema=False)
@@ -63,7 +64,11 @@ def adjust_inventory_stock(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.require_roles(["ADMIN", "WATER_STAFF", "Owner"]))
 ):
-    db_inv_type = crud.adjust_inventory_stock(db=db, inv_type_id=inv_type_id, stock_adj=stock_adj)
+    try:
+        db_inv_type = crud.adjust_inventory_stock(db=db, inv_type_id=inv_type_id, stock_adj=stock_adj)
+    except crud.InsufficientStockError as error:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(error))
     if db_inv_type is None:
         raise HTTPException(status_code=404, detail="Inventory Type not found")
     return db_inv_type

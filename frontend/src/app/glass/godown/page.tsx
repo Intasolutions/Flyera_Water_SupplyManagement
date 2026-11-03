@@ -1,28 +1,26 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Sidebar } from "@/components/ui/Sidebar";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Button } from "@/components/ui/Button";
-import { useStore } from "@/lib/StoreContext";
 import {
   Factory,
   ArrowDownToLine,
-  Info,
   Truck,
   Sparkles,
   Layers,
-  CheckCircle2,
   Scale,
   RefreshCw,
   AlertTriangle
 } from "lucide-react";
-import { separateGlassStock, getGlassCollections, getGlassInventoryList } from "@/lib/api";
+import { separateGlassStock, getGlassCollections, getGlassInventoryList, GlassCollection, GlassInventory } from "@/lib/api";
 import { toast } from "react-hot-toast";
 
 export default function GlassGodownPage() {
-  const { glassInventory, glassCollections, separateGlass, addGlassCollection } = useStore();
+  const [pendingCollections, setPendingCollections] = useState<GlassCollection[]>([]);
+  const [glassInventory, setGlassInventory] = useState<GlassInventory[]>([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
   const [whiteTons, setWhiteTons] = useState("");
   const [mixedTons, setMixedTons] = useState("");
@@ -36,36 +34,19 @@ export default function GlassGodownPage() {
   const fetchLatestDrops = async () => {
     try {
       setLoading(true);
-      const apiColls = await getGlassCollections("dropped_at_godown");
-      if (apiColls && apiColls.length > 0) {
-        apiColls.forEach((ac: any) => {
-          if (!glassCollections.some(c => c.id === ac.id)) {
-            addGlassCollection({
-              id: ac.id,
-              driverId: ac.driver_id || ac.driverId || "",
-              driverName: ac.driver_name || ac.driverName || "Driver",
-              vehicle: ac.vehicle || "",
-              property: ac.property || "",
-              location: ac.location,
-              phone: ac.phone,
-              tonsCollected: ac.tons_collected ?? ac.tonsCollected ?? 0,
-              paymentAmount: ac.payment_amount ?? ac.paymentAmount ?? 0,
-              status: ac.status || "dropped_at_godown",
-              date: ac.date || new Date().toISOString()
-            });
-          }
-        });
-      }
-    } catch (err) {
+      const [collections, inventory] = await Promise.all([
+        getGlassCollections("dropped_at_godown"),
+        getGlassInventoryList()
+      ]);
+      setPendingCollections(collections);
+      setGlassInventory(inventory);
+    } catch (err: any) {
       console.error("Failed to load dropped collections:", err);
+      toast.error(err?.message || "Could not load godown data.");
     } finally {
       setLoading(false);
     }
   };
-
-  const pendingCollections = useMemo(() => {
-    return glassCollections.filter(c => c.status === "dropped_at_godown");
-  }, [glassCollections]);
 
   const selectedCollection = pendingCollections.find(c => c.id === selectedCollectionId);
 
@@ -98,8 +79,6 @@ export default function GlassGodownPage() {
       return;
     }
 
-    separateGlass(selectedCollection.id, white, mixed, "s4");
-
     try {
       await separateGlassStock({
         collection_id: selectedCollection.id,
@@ -108,13 +87,14 @@ export default function GlassGodownPage() {
         mixed_tons: mixed
       });
       toast.success("Glass segregation recorded successfully!");
-    } catch (err) {
+      setWhiteTons("");
+      setMixedTons("");
+      setSelectedCollectionId(null);
+      await fetchLatestDrops();
+    } catch (err: any) {
       console.warn("Backend separation error:", err);
+      setError(err?.message || "This sorting did not save. Please try again.");
     }
-
-    setWhiteTons("");
-    setMixedTons("");
-    setSelectedCollectionId(null);
   };
 
   return (
@@ -301,7 +281,7 @@ export default function GlassGodownPage() {
                   <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 flex justify-between items-center text-xs">
                     <span className="text-slate-500 font-bold">Total Segregated Output:</span>
                     <span
-                      className={`text-base font-black ${(parseFloat(whiteTons) || 0) + (parseFloat(mixedTons) || 0) > selectedCollection.tonsCollected
+                      className={`text-base font-black ${(parseFloat(whiteTons) || 0) + (parseFloat(mixedTons) || 0) > (selectedCollection.tonsCollected ?? 0)
                           ? "text-rose-600"
                           : "text-slate-800"
                         }`}

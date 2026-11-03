@@ -1,47 +1,32 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
-import { useStore, GlassCollection } from "@/lib/StoreContext";
-import { 
-  Recycle, 
-  CheckCircle, 
-  IndianRupee, 
-  UserPlus, 
-  Users, 
-  Truck, 
-  Sparkles, 
-  MapPin, 
-  ArrowRight,
-  Crosshair,
+import { useState, useEffect, useMemo } from "react";
+import {
+  Recycle,
+  MapPin,
   RefreshCw,
-  ExternalLink,
   CheckCircle2,
   Phone,
   Navigation,
   LogOut,
   Building2,
-  Clock,
-  ChevronRight,
   Check,
   AlertTriangle,
-  Map,
   Plus
 } from "lucide-react";
-import { 
-  getCurrentUser, 
-  getVehicles, 
-  User, 
-  Vehicle,
+import {
+  getCurrentUser,
+  User,
   createGlassCollection,
-  dropoffGlassCollection,
-  dropoffAllGlass,
   getGlassCollections,
   getGlassAssignments,
   completeGlassAssignment,
   GlassAssignment,
   getGlassProperties,
   GlassProperty,
-  createGlassProperty
+  createGlassProperty,
+  GlassCollection,
+  signOut
 } from "@/lib/api";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -49,9 +34,9 @@ import { toast } from "react-hot-toast";
 import { useConfirm } from "@/lib/useConfirm";
 
 export default function GlassDriverPage() {
-  const { glassCollections, addGlassCollection, dropGlassAtGodown } = useStore();
+  const [glassCollections, setGlassCollections] = useState<GlassCollection[]>([]);
   const confirm = useConfirm();
-  
+
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeAssignment, setActiveAssignment] = useState<GlassAssignment | null>(null);
   const [routeProperties, setRouteProperties] = useState<GlassProperty[]>([]);
@@ -115,36 +100,13 @@ export default function GlassDriverPage() {
         setCurrentUser(user);
       }
 
-      // Sync local collections store
-      if (collsData && collsData.length > 0) {
-        collsData.forEach((ac: any) => {
-          if (!glassCollections.some(c => c.id === ac.id)) {
-            addGlassCollection({
-              id: ac.id,
-              driverId: ac.driver_id || ac.driverId || "",
-              driverName: ac.driver_name || ac.driverName || "Driver",
-              vehicle: ac.vehicle || "",
-              property: ac.property || "",
-              property_id: ac.property_id || ac.propertyId,
-              assignment_id: ac.assignment_id || ac.assignmentId,
-              location: ac.location,
-              latitude: ac.latitude,
-              longitude: ac.longitude,
-              phone: ac.phone,
-              tonsCollected: ac.tons_collected ?? ac.tonsCollected ?? 0,
-              paymentAmount: ac.payment_amount ?? ac.paymentAmount ?? 0,
-              status: ac.status || "collected",
-              date: ac.date || new Date().toISOString()
-            });
-          }
-        });
-      }
+      setGlassCollections(collsData || []);
 
-      // Find active assignment for this driver (or any active run for admin/demo)
+      // Find this driver's active run. Administrators can preview any active run.
       let activeRun = assignmentsData.find(
         (a: GlassAssignment) => a.driver_id === user?.id || (a as any).driverId === user?.id
       );
-      if (!activeRun && (user?.role === "ADMIN" || !activeRun)) {
+      if (!activeRun && (user?.role === "ADMIN" || user?.role === "Owner")) {
         activeRun = assignmentsData[0] || null;
       }
 
@@ -207,26 +169,7 @@ export default function GlassDriverPage() {
         status: "collected" as const
       };
 
-      const res = await createGlassCollection(payload);
-
-      // Add to store
-      addGlassCollection({
-        id: res.id || Date.now().toString(),
-        driverId: currentUser?.id || "",
-        driverName: currentUser?.name || "Driver",
-        vehicle: vehicleDesc,
-        property: selectedProperty.name,
-        property_id: selectedProperty.id,
-        assignment_id: activeAssignment?.id,
-        location: selectedProperty.address,
-        latitude: gpsLocation?.lat || selectedProperty.latitude,
-        longitude: gpsLocation?.lng || selectedProperty.longitude,
-        phone: selectedProperty.phone,
-        tonsCollected: t,
-        paymentAmount: pay,
-        status: "collected",
-        date: new Date().toISOString()
-      });
+      await createGlassCollection(payload);
 
       toast.success(`Collected ${t.toFixed(1)} Tons from ${selectedProperty.name}!`);
       setCollectionModalOpen(false);
@@ -323,10 +266,7 @@ export default function GlassDriverPage() {
 
   const handleSignOut = () => {
     if (window.confirm("Are you sure you want to sign out of the Driver app?")) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-      localStorage.removeItem("flyera_user");
-      window.location.href = "/login";
+      signOut();
     }
   };
 

@@ -10,25 +10,24 @@ import {
   getVehicles, 
   Vehicle 
 } from "@/lib/api";
-import { 
-  IndianRupee, 
-  Fuel, 
-  TrendingUp, 
-  Truck, 
-  Calendar, 
-  Search, 
-  Printer, 
-  RefreshCw, 
-  ArrowUpRight, 
-  ArrowDownRight, 
+import { localDateStr } from "@/lib/dates";
+import {
+  IndianRupee,
+  Fuel,
+  TrendingUp,
+  Truck,
+  Calendar,
+  Search,
+  Printer,
+  RefreshCw,
+  ArrowUpRight,
+  ArrowDownRight,
   Receipt,
   Wallet,
   Wrench,
   Coffee,
   Navigation,
-  CircleParking,
-  SlidersHorizontal,
-  ChevronDown
+  CircleParking
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -51,7 +50,7 @@ export default function ReportsPage() {
   // Format dates for presets
   const getDateRange = (preset: DateRangePreset): { start?: string; end?: string } => {
     const today = new Date();
-    const formatDate = (d: Date) => d.toISOString().split("T")[0];
+    const formatDate = (d: Date) => localDateStr(d);
 
     if (preset === "today") {
       const s = formatDate(today);
@@ -157,6 +156,7 @@ export default function ReportsPage() {
     total_cash_collected: 0,
     total_upi_collected: 0,
     total_credit_sales: 0,
+    total_upi_unverified: 0,
     total_deliveries_count: 0,
     total_bottles_delivered: 0,
     total_trips: 0,
@@ -191,7 +191,7 @@ export default function ReportsPage() {
       {/* Main Content Area */}
       <main className="flex-1 min-w-0 p-4 sm:p-6 md:p-8 lg:p-10 pt-20 md:pt-8 pb-24 md:pb-12 transition-all relative max-w-7xl mx-auto">
         <div className="space-y-6 print:p-0 print:space-y-4">
-          
+
           {/* Header with Print and Refresh */}
           <PageHeader
             title="Financial Reports & Fleet Profitability"
@@ -347,6 +347,11 @@ export default function ReportsPage() {
                   <strong className="text-sky-900 font-black">₹{summary.total_upi_collected.toLocaleString()}</strong>
                 </div>
               </div>
+              {summary.total_upi_unverified > 0 && (
+                <p className="pt-1.5 text-[11px] font-bold text-amber-800">
+                  ₹{summary.total_upi_unverified.toLocaleString()} UPI still waiting for the office to verify
+                </p>
+              )}
             </div>
 
             {/* Card 2: Total Trip Expenses */}
@@ -601,6 +606,7 @@ export default function ReportsPage() {
                             </span>
                             <span className="text-[10px] text-slate-500 font-medium block">
                               Cash ₹{veh.cash_collected} &bull; UPI ₹{veh.upi_collected}
+                              {veh.upi_unverified > 0 && <> &bull; Unverified ₹{veh.upi_unverified}</>}
                             </span>
                           </td>
 

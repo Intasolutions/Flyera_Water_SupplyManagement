@@ -4,25 +4,22 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { Sidebar } from "@/components/ui/Sidebar";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { 
-  Building2, 
-  MapPin, 
-  Phone, 
-  Plus, 
-  Search, 
-  Filter, 
-  Edit2, 
-  Trash2, 
-  RefreshCw, 
-  ExternalLink, 
-  Crosshair, 
-  CheckCircle2, 
-  Recycle, 
-  Map, 
-  Calendar,
-  Sparkles,
-  User,
-  Compass
+import {
+  Building2,
+  MapPin,
+  Phone,
+  Plus,
+  Search,
+  Filter,
+  Edit2,
+  Trash2,
+  RefreshCw,
+  ExternalLink,
+  Crosshair,
+  CheckCircle2,
+  Recycle,
+  Map,
+  User
 } from "lucide-react";
 import { 
   getGlassProperties, 

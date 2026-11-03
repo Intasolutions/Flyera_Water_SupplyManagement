@@ -6,16 +6,13 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { 
-  Users, 
-  Search, 
-  Filter, 
-  Phone, 
-  Plus, 
-  UserCheck, 
-  ShieldAlert, 
-  Truck, 
-  UserPlus, 
+import {
+  Users,
+  Search,
+  Phone,
+  Plus,
+  UserCheck,
+  Truck,
   User as UserIcon,
   RefreshCw,
   Edit2,
@@ -34,8 +31,8 @@ import {
   ExternalLink,
   FileText
 } from "lucide-react";
-import { getUsers, createUser, updateUser, deleteUser, getVehicles, User, Vehicle } from "@/lib/api";
-import { sanitizePhone, isValidPhone, isValidDrivingLicense, formatPhoneDisplay } from "@/lib/validation";
+import { getUsers, createUser, updateUser, deleteUser, getVehicles, uploadIdProof, openProtectedFile, User, Vehicle } from "@/lib/api";
+import { sanitizePhone, isValidDrivingLicense, formatPhoneDisplay } from "@/lib/validation";
 import { toast } from "react-hot-toast";
 import { useConfirm } from "@/lib/useConfirm";
 
@@ -48,11 +45,11 @@ export default function StaffPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  
+
   // View Modal State
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<User | null>(null);
-  
+
   const confirm = useConfirm();
 
   // Form states
@@ -65,6 +62,7 @@ export default function StaffPage() {
   const [newAddress, setNewAddress] = useState("");
   const [newIdProofUrl, setNewIdProofUrl] = useState("");
   const [newDrivingLicense, setNewDrivingLicense] = useState("");
+  const [newIsActive, setNewIsActive] = useState(true);
   const [phoneTouched, setPhoneTouched] = useState(false);
   const [dlTouched, setDlTouched] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -141,6 +139,11 @@ export default function StaffPage() {
       return;
     }
 
+    if (newPassword && newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+
     const cleanPhone = sanitizePhone(newPhone);
     if (!cleanPhone || cleanPhone.length !== 10) {
       toast.error("Please enter a valid 10-digit mobile number");
@@ -162,8 +165,10 @@ export default function StaffPage() {
         id_proof_url: newIdProofUrl || null,
         driving_license: newDrivingLicense.trim() ? newDrivingLicense.trim().replace(/\s+/g, '') : null,
       };
-      
+
       if (editId) {
+        payload.is_active = newIsActive;
+        if (newPassword) payload.password = newPassword;
         await updateUser(editId, payload);
         toast.success("Staff profile updated!");
       } else {
@@ -171,7 +176,7 @@ export default function StaffPage() {
         await createUser(payload);
         toast.success("New staff member registered!");
       }
-      
+
       await fetchStaff();
       setModalOpen(false);
       resetForm();
@@ -195,6 +200,7 @@ export default function StaffPage() {
     setNewAddress("");
     setNewIdProofUrl("");
     setNewDrivingLicense("");
+    setNewIsActive(true);
     setPhoneTouched(false);
     setDlTouched(false);
   };
@@ -210,6 +216,7 @@ export default function StaffPage() {
     setNewAddress(s.address || "");
     setNewIdProofUrl(s.id_proof_url || "");
     setNewDrivingLicense(s.driving_license || "");
+    setNewIsActive(s.is_active !== false);
     setPhoneTouched(false);
     setDlTouched(false);
     setModalOpen(true);
@@ -228,17 +235,17 @@ export default function StaffPage() {
   const handleDeleteStaff = async (id: string, name: string) => {
     const isConfirmed = await confirm({
       title: "Remove Staff Member",
-      message: `Are you sure you want to remove "${name}" from the roster? This action cannot be undone.`,
+      message: `Remove "${name}" from the roster? Anyone with work history is deactivated instead, so their records are kept.`,
       confirmText: "Delete",
       cancelText: "Cancel"
     });
-    
+
     if (isConfirmed) {
       try {
-        await deleteUser(id);
+        const result = await deleteUser(id);
         setSearchQuery("");
         await fetchStaff();
-        toast.success("Staff member removed.");
+        toast.success(result.message || "Staff member removed.");
       } catch (error: any) {
         console.error("Failed to delete staff:", error);
         toast.error(error.message || "Failed to delete staff member");
@@ -249,23 +256,16 @@ export default function StaffPage() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
-    
+
     setUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    
+
     try {
-      const res = await fetch("/api/users/upload-id", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) throw new Error("Upload failed");
-      const data = await res.json();
+      const data = await uploadIdProof(file);
       setNewIdProofUrl(data.url);
       toast.success("ID proof uploaded!");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error("Failed to upload ID proof.");
+      toast.error(err?.message || "Failed to upload ID proof.");
     } finally {
       setUploading(false);
     }
@@ -289,7 +289,7 @@ export default function StaffPage() {
       );
 
       const matchesSearch = !rawQuery || nameMatch || usernameMatch || dlMatch || rawPhoneMatch || phoneDigitsMatch;
-      
+
       const matchesRole = 
         roleFilter === "all" || s.role.toUpperCase() === roleFilter.toUpperCase();
 
@@ -306,7 +306,7 @@ export default function StaffPage() {
   return (
     <div className="flex min-h-screen bg-background">
       <Sidebar />
-      
+
       <main className="flex-1 min-w-0 p-4 sm:p-6 md:p-8 lg:p-10 pt-20 md:pt-8 pb-24 md:pb-12 transition-all max-w-7xl">
         <PageHeader 
           title="Staff & Personnel" 
@@ -588,6 +588,17 @@ export default function StaffPage() {
                     )}
                   </button>
                 </div>
+                {editId && (
+                  <label className="flex items-center gap-2 mt-2 text-xs font-semibold text-text-muted cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newIsActive}
+                      onChange={e => setNewIsActive(e.target.checked)}
+                      className="w-4 h-4 accent-sky-600"
+                    />
+                    <span>Account active (can sign in)</span>
+                  </label>
+                )}
               </div>
             </div>
 
@@ -609,7 +620,7 @@ export default function StaffPage() {
                     {newPhone.length}/10 digits
                   </span>
                 </div>
-                
+
                 <div className="relative flex items-center">
                   <div className="absolute left-3.5 flex items-center gap-1.5 text-xs font-bold text-slate-500 select-none border-r border-slate-200 pr-2.5 z-10 pointer-events-none">
                     <span>+91</span>
@@ -937,15 +948,14 @@ export default function StaffPage() {
                           </span>
                         </div>
                       </div>
-                      <a
-                        href={selectedStaff.id_proof_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => openProtectedFile(selectedStaff.id_proof_url!).catch((err: Error) => toast.error(err.message))}
                         className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:underline px-3 py-1.5 rounded-xl bg-primary/5 hover:bg-primary/10 transition-colors"
                       >
                         <span>View Document</span>
                         <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
+                      </button>
                     </div>
                   )}
 
@@ -1015,6 +1025,11 @@ function StaffCard({
               <p className="text-xs text-text-muted font-medium mt-0.5">
                 @{staff.username || "no-login"}
               </p>
+              {staff.is_active === false && (
+                <span className="inline-block mt-1 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-100">
+                  Deactivated
+                </span>
+              )}
             </div>
           </div>
 

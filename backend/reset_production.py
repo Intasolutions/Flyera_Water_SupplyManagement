@@ -11,9 +11,10 @@ Usage:
 
 import sys
 import getpass
-from app.database import SessionLocal, Base, engine
-from app import models
+from app.database import SessionLocal, engine
+from app import crud, models
 from app.core import security
+from app.schema_sync import sync_schema
 
 def reset_and_create_superuser():
     print("=" * 65)
@@ -44,9 +45,9 @@ def reset_and_create_superuser():
 
     phone = input("Superuser Phone (optional, e.g. 9876543210): ").strip() or None
 
-    password = getpass.getpass("Superuser Password (min 4 chars): ").strip()
-    while len(password) < 4:
-        password = getpass.getpass("Password too short. Enter at least 4 characters: ").strip()
+    password = getpass.getpass("Superuser Password (min 8 chars): ").strip()
+    while len(password) < 8:
+        password = getpass.getpass("Password too short. Enter at least 8 characters: ").strip()
 
     password_confirm = getpass.getpass("Confirm Superuser Password: ").strip()
     if password != password_confirm:
@@ -54,23 +55,10 @@ def reset_and_create_superuser():
         sys.exit(1)
 
     print("\nCleaning database tables...")
+    sync_schema(engine)
     db = SessionLocal()
     try:
-        # Wipe all child and parent tables
-        db.query(models.DeliveryItem).delete()
-        db.query(models.Delivery).delete()
-        db.query(models.Allocation).delete()
-        db.query(models.Assignment).delete()
-        db.query(models.Stock).delete()
-        db.query(models.InventoryType).delete()
-        db.query(models.Client).delete()
-        db.query(models.Vehicle).delete()
-        db.query(models.Route).delete()
-        db.query(models.GlassCollection).delete()
-        db.query(models.GlassSeparation).delete()
-        db.query(models.GlassVendorPickup).delete()
-        db.query(models.GlassInventory).delete()
-        db.query(models.User).delete()
+        crud.wipe_all_data(db)
 
         # Create new superuser
         superuser = models.User(

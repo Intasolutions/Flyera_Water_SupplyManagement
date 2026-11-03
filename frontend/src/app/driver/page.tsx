@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useStore } from "@/lib/StoreContext";
 import {
   getClients,
   Client as ApiClient,
@@ -22,8 +21,9 @@ import {
   TripExpense,
   createTripExpense,
   getExpensesForAssignment,
-  adjustBottleCredit,
-  getBottleCreditBalance
+  getBottleCreditBalance,
+  Delivery,
+  signOut
 } from "@/lib/api";
 import { ThermalReceiptModal, ReceiptData } from "@/components/ThermalReceiptModal";
 import { Button } from "@/components/ui/Button";
@@ -42,8 +42,6 @@ import {
   Navigation,
   Route as RouteIcon,
   Truck,
-  Sparkles,
-  ArrowRight,
   Crosshair,
   RefreshCw,
   ExternalLink,
@@ -53,7 +51,6 @@ import {
   Clock,
   Receipt,
   Flag,
-  ShieldCheck,
   RotateCcw,
   LogOut,
   Fuel,
@@ -63,7 +60,6 @@ import {
 } from "lucide-react";
 
 export default function DriverApp() {
-  const { completeDelivery } = useStore();
   const [clients, setClients] = useState<ApiClient[]>([]);
   const [activeClient, setActiveClient] = useState<string | null>(null);
 
@@ -344,7 +340,7 @@ export default function DriverApp() {
   // Core assignment loader supporting both DRIVER and HELPER roles with intelligent delta sync
   const fetchAssignmentData = async (showFeedback: boolean = false, isBackgroundPoll: boolean = false) => {
     if (isSyncing) return;
-    
+
     // In background polling mode, pause if user switched tabs
     if (isBackgroundPoll && typeof document !== "undefined" && document.visibilityState !== "visible") {
       return;
@@ -354,7 +350,7 @@ export default function DriverApp() {
 
     try {
       const cacheExpired = Date.now() - masterDataCache.current.lastFetched > 300000; // 5 min TTL
-      let assignments: any[] = [];
+      let assignments: any[] | null = null;
       let allClients = masterDataCache.current.allClients;
       let allRoutes = masterDataCache.current.allRoutes;
       let invTypes = masterDataCache.current.invTypes;
@@ -366,7 +362,7 @@ export default function DriverApp() {
       if (!isBackgroundPoll || cacheExpired || masterDataCache.current.lastFetched === 0) {
         // Full initial / manual refresh: load master data
         const [aData, cData, rData, iData, uData, vData, sData, usersData] = await Promise.all([
-          getAssignments().catch(() => []),
+          getAssignments().catch(() => null),
           getClients().catch(() => []),
           getRoutes().catch(() => []),
           getInventoryTypes().catch(() => []),
@@ -403,7 +399,12 @@ export default function DriverApp() {
         };
       } else {
         // High-speed background poll: fetch ONLY assignments (1 request instead of 8!)
-        assignments = await getAssignments().catch(() => []);
+        assignments = await getAssignments().catch(() => null);
+      }
+
+      // A dropped connection must never look like "the route was closed".
+      if (!assignments) {
+        throw new Error("Could not load routes");
       }
 
       setInventoryTypes(invTypes || []);
@@ -436,7 +437,7 @@ export default function DriverApp() {
       }
 
       // 3. For ADMIN / Owner preview mode: if no direct assignment is linked to their ID, allow viewing active or pending runs
-      if (!active && (userRole === "ADMIN" || !currentUserId)) {
+      if (!active && (userRole === "ADMIN" || userRole === "Owner")) {
         active = (assignments as any[]).find((a: any) => a.status === "ACTIVE") || (assignments as any[]).find((a: any) => a.status === "PENDING");
       }
 
@@ -519,7 +520,7 @@ export default function DriverApp() {
 
         // Look for recently completed assignment to display summary on standby
         const recentCompleted = (assignments as any[])
-          .filter((a: any) => a.status === "COMPLETED" && (isUserAssigned(a) || userRole === "ADMIN"))
+          .filter((a: any) => a.status === "COMPLETED" && (isUserAssigned(a) || userRole === "ADMIN" || userRole === "Owner"))
           .sort((a: any, b: any) => new Date(b.date || b.created_at || 0).getTime() - new Date(a.date || a.created_at || 0).getTime())[0];
 
         if (recentCompleted) {
@@ -596,22 +597,8 @@ export default function DriverApp() {
     setIsSubmittingEndRoute(true);
 
     try {
-      const deliveredBottles = clients
-        .filter(c => (c as any).isCompleted)
-        .reduce((sum, c) => sum + ((c as any).deliveredCount || 0), 0);
-
-      const returned_stock = (activeAllocations || []).map((alloc: any) => {
-        const invId = alloc.inventory_type_id;
-        const returnedFull = Math.max(0, alloc.allocated_count - deliveredBottles);
-        return {
-          inventory_type_id: invId,
-          allocated_count: alloc.allocated_count,
-          returned_full: returnedFull,
-          returned_empty: 0
-        };
-      });
-
-      await completeAssignment(activeAssignmentId, returned_stock);
+      // The server works out returned jars and collected empties per product from the saved deliveries.
+      await completeAssignment(activeAssignmentId);
       toast.success("Route ended & reconciled! Returned to hub standby.");
       setIsEndRouteModalOpen(false);
       await fetchAssignmentData(false);
@@ -645,7 +632,7 @@ export default function DriverApp() {
     }
     try {
       if (activeAssignmentId) {
-        await revertDeliveryByClient(activeAssignmentId, clientId).catch(() => { });
+        await revertDeliveryByClient(activeAssignmentId, clientId);
       }
       setClients(prev => prev.map(c => c.id === clientId ? { ...c, isCompleted: false, deliveredCount: 0 } as any : c));
       setCurrentStock(prev => prev + deliveredCount);
@@ -653,9 +640,9 @@ export default function DriverApp() {
         setActiveClient(null);
       }
       toast.success(`Delivery for ${clientName} reverted to pending.`);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to undo delivery", err);
-      toast.error("Failed to revert delivery.");
+      toast.error(err?.message || "Failed to revert delivery.");
     }
   };
 
@@ -675,68 +662,59 @@ export default function DriverApp() {
     }
   };
 
-  const handlePayment = async (method: string, clearActive: boolean = true) => {
-    if (activeClient) {
-      const itemsPayload = Object.entries(deliveryItems)
-        .filter(([_, counts]) => counts.full > 0 || counts.empty > 0)
-        .map(([invId, counts]) => {
-          const inv = inventoryTypes.find(i => i.id === invId);
-          return {
-            inventory_type_id: invId,
-            delivered_full: counts.full,
-            collected_empty: counts.empty,
-            price_charged: getClientPrice(inv, clients.find(c => c.id === activeClient)?.tier)
-          };
-        });
-
-      if (activeAssignmentId) {
-        try {
-          await createDelivery({
-            assignment_id: activeAssignmentId,
-            client_id: activeClient,
-            total_amount: totalAmount,
-            payment_method: method,
-            status: method === "Skipped" ? "SKIPPED" : method.includes("Pay Later") ? "PENDING_PAYMENT" : "COMPLETED",
-            items: itemsPayload
-          });
-        } catch (e) {
-          console.error("Failed to sync delivery to backend", e);
-        }
-      } else {
-        completeDelivery("mock_assignment_id", activeClient, itemsPayload[0]?.delivered_full || 0, totalAmount, method);
-      }
-
-      const totalFullDelivered = itemsPayload.reduce((sum, item) => sum + item.delivered_full, 0);
-      const totalEmptyCollected = itemsPayload.reduce((sum, item) => sum + item.collected_empty, 0);
-      const netBottlesDiff = totalFullDelivered - totalEmptyCollected;
-
-      // Automatically sync bottle credit adjustment if customer took more/fewer bottles than returned
-      if (netBottlesDiff !== 0 && activeClient) {
-        try {
-          const invId = itemsPayload[0]?.inventory_type_id || selectedInventoryId || (activeAllocations[0]?.inventory_type_id) || "default";
-          await adjustBottleCredit(activeClient, {
-            quantity: netBottlesDiff,
-            inventory_type_id: invId,
-            assignment_id: activeAssignmentId || undefined,
-            notes: `Delivery stop: ${totalFullDelivered} delivered, ${totalEmptyCollected} empty returned (Net ${netBottlesDiff > 0 ? '+' : ''}${netBottlesDiff} bottles)`
-          });
-          setCustomerBottleBalance(prev => (prev ?? 0) + netBottlesDiff);
-        } catch (creditErr) {
-          console.warn("Failed to update bottle credit ledger:", creditErr);
-        }
-      }
-
-      setClients(prev => prev.map(c =>
-        c.id === activeClient ? { ...c, isCompleted: true, deliveredCount: totalFullDelivered } as any : c
-      ));
-
-      setCurrentStock(prev => Math.max(0, prev - totalFullDelivered));
-      toast.success("Delivery completed successfully!");
+  // Saves this stop. Returns the saved delivery, or null if it did not save, so the driver stays on this stop.
+  const handlePayment = async (method: string, clearActive: boolean = true): Promise<Delivery | null> => {
+    if (!activeClient) return null;
+    if (!activeAssignmentId) {
+      toast.error("No active route is assigned, so this stop cannot be saved.");
+      return null;
     }
+
+    const itemsPayload = method === "Skipped" ? [] : Object.entries(deliveryItems)
+      .filter(([_, counts]) => counts.full > 0 || counts.empty > 0)
+      .map(([invId, counts]) => ({
+        inventory_type_id: invId,
+        delivered_full: counts.full,
+        collected_empty: counts.empty
+      }));
+
+    let saved: Delivery;
+    try {
+      saved = await createDelivery({
+        assignment_id: activeAssignmentId,
+        client_id: activeClient,
+        payment_method: method,
+        items: itemsPayload
+      });
+    } catch (e: any) {
+      console.error("Failed to save delivery", e);
+      toast.error(e?.message || "This delivery did not save. Check your connection and try again.");
+      return null;
+    }
+
+    const savedItems = saved.items || [];
+    const totalFullDelivered = savedItems.reduce((sum, item) => sum + item.delivered_full, 0);
+    const totalEmptyCollected = savedItems.reduce((sum, item) => sum + item.collected_empty, 0);
+
+    setCustomerBottleBalance(prev => (prev ?? 0) + totalFullDelivered - totalEmptyCollected);
+    setClients(prev => prev.map(c =>
+      c.id === activeClient ? { ...c, isCompleted: true, deliveredCount: totalFullDelivered } as any : c
+    ));
+    setCurrentStock(prev => Math.max(0, prev - totalFullDelivered));
+    toast.success(saved.status === "PENDING_VERIFICATION"
+      ? "Delivery saved. The office will confirm the UPI payment."
+      : "Delivery completed successfully!");
+
     if (clearActive) {
       setActiveClient(null);
     }
+    return saved;
   };
+
+  const receiptNumber = (delivery: Delivery) => `FL-${delivery.id.slice(0, 6).toUpperCase()}`;
+
+  // Empty when no UPI ID is set, or it failed its integrity check, so no QR is shown for a doubtful account.
+  const trustedUpiId = systemSettings.upi_verified === false ? "" : (systemSettings.upi_id || "");
 
   const buildReceiptData = (method: string, paymentStatus: "PAID" | "PENDING" = "PAID"): ReceiptData => {
     const itemsPayload = Object.entries(deliveryItems)
@@ -768,9 +746,9 @@ export default function DriverApp() {
         hour12: true
       }),
       companyName: systemSettings.company_name || "Flyera - Water & Glass Logistics",
-      gstin: systemSettings.gstin || "GSTIN-27AAACH7409R1ZZ",
-      hotline: systemSettings.dispatch_hotline || "+91 98765 43210",
-      address: systemSettings.central_address || "Plot 42, Hinjewadi Industrial Zone Phase 2, Pune",
+      gstin: systemSettings.gstin || "",
+      hotline: systemSettings.dispatch_hotline || "",
+      address: systemSettings.central_address || "",
       vehiclePlate: vehicleDisplay,
       routeName: routeDisplay,
       driverName: driverName && driverName !== "Driver" ? driverName : (currentUser?.name || currentUser?.username || "Driver"),
@@ -786,19 +764,24 @@ export default function DriverApp() {
       netDueAmount: (Number(clientDetails?.credit_amount) || 0) + totalAmount,
       paymentMethod: method,
       paymentStatus: paymentStatus,
-      upiId: systemSettings.upi_id || "flyera@okhdfcbank"
+      upiId: trustedUpiId
     };
   };
 
   const handleSelectCash = async () => {
     const rData = buildReceiptData("Cash", "PAID");
-    setReceiptData(rData);
-    await handlePayment("Cash", false);
+    const saved = await handlePayment("Cash", false);
+    if (!saved) return;
+    setReceiptData({ ...rData, receiptNo: receiptNumber(saved) });
     setReceiptModalMode("success_receipt");
     setIsReceiptModalOpen(true);
   };
 
   const handleSelectUPI = () => {
+    if (!trustedUpiId) {
+      toast.error("UPI is not available: ask the office to check the UPI ID in Settings. Use Cash or Pay Later.");
+      return;
+    }
     const rData = buildReceiptData("UPI / QR", "PAID");
     setReceiptData(rData);
     setReceiptModalMode("qr_collect");
@@ -807,8 +790,9 @@ export default function DriverApp() {
 
   const handleSelectPayLaterSlip = async () => {
     const rData = buildReceiptData("Pay Later (Slip QR)", "PENDING");
-    setReceiptData(rData);
-    await handlePayment("Pay Later (Slip QR)", false);
+    const saved = await handlePayment("Pay Later (Slip QR)", false);
+    if (!saved) return;
+    setReceiptData({ ...rData, receiptNo: receiptNumber(saved) });
     setReceiptModalMode("success_receipt");
     setIsReceiptModalOpen(true);
   };
@@ -1012,10 +996,7 @@ export default function DriverApp() {
 
   const handleSignOut = () => {
     if (window.confirm("Are you sure you want to sign out of the Driver app?")) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-      localStorage.removeItem("flyera_user");
-      window.location.href = "/login";
+      signOut();
     }
   };
 
@@ -2420,8 +2401,9 @@ export default function DriverApp() {
           mode={receiptModalMode}
           data={receiptData}
           onConfirmPayment={async () => {
-            await handlePayment("UPI / QR", false);
-            setReceiptData(prev => prev ? { ...prev, paymentMethod: "UPI / QR" } : null);
+            const saved = await handlePayment("UPI / QR", false);
+            if (!saved) return;
+            setReceiptData(prev => prev ? { ...prev, paymentMethod: "UPI / QR", receiptNo: receiptNumber(saved) } : null);
             setReceiptModalMode("success_receipt");
           }}
           onNextStop={() => {

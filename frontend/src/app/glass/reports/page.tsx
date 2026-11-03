@@ -1,23 +1,20 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Sidebar } from "@/components/ui/Sidebar";
 import {
   FileText,
   Printer,
   Download,
   Calendar,
-  Building2,
   TrendingUp,
   TrendingDown,
   RefreshCw,
   Truck,
   Layers,
-  CheckCircle2,
   DollarSign,
   Fuel,
-  Receipt,
-  Sparkles
+  Receipt
 } from "lucide-react";
 import { getGlassReport, GlassReportData } from "@/lib/api";
 import toast from "react-hot-toast";
@@ -126,7 +123,7 @@ export default function GlassCaReportsPage() {
   const handleExportAllCsv = () => {
     if (!report) return;
 
-    let csv = `FLYERA TRADERS - CA FINANCIAL AUDIT STATEMENT\n`;
+    let csv = `${report.company_name.toUpperCase()} - CA FINANCIAL AUDIT STATEMENT\n`;
     csv += `Division: Glass Logistics & Circular Cullet Recycling Division\n`;
     csv += `Audit Period: ${report.period.label}\n`;
     csv += `Fiscal Calendar: ${report.fiscal_calendar}\n`;
@@ -349,7 +346,7 @@ export default function GlassCaReportsPage() {
           <div className="hidden print-header">
             <div className="flex justify-between items-start border-b-2 border-slate-900 pb-4">
               <div>
-                <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900">FLYERA TRADERS</h1>
+                <h1 className="text-2xl font-black uppercase tracking-tight text-slate-900">{report?.company_name}</h1>
                 <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                   Glass Logistics & Circular Cullet Recycling Division
                 </p>

@@ -1,8 +1,9 @@
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, declarative_base
-import os
 
-SQLALCHEMY_DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./water_supply.db")
+from app.core.config import DATABASE_URL
+
+SQLALCHEMY_DATABASE_URL = DATABASE_URL
 
 is_sqlite = SQLALCHEMY_DATABASE_URL.startswith("sqlite")
 

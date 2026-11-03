@@ -6,27 +6,15 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import {
   Truck,
-  MapPin,
   Calendar,
-  UserPlus,
-  X,
-  AlertTriangle,
   CheckCircle2,
-  Phone,
-  Navigation,
   Zap,
   Trash2,
   Search,
-  Filter,
   Recycle,
-  IndianRupee,
-  Clock,
-  Sparkles,
-  ChevronRight,
   RefreshCw,
   RotateCcw,
   Edit2,
-  Check,
   Building2,
   Map,
   Plus,
@@ -55,6 +43,7 @@ import {
   User,
   createTripExpense
 } from "@/lib/api";
+import { localDateStr } from "@/lib/dates";
 import { toast } from "react-hot-toast";
 import { useConfirm } from "@/lib/useConfirm";
 
@@ -76,7 +65,7 @@ export default function GlassDispatchPage() {
 
   // Assign Run Modal States
   const [assignModalOpen, setAssignModalOpen] = useState(false);
-  const [assignDate, setAssignDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [assignDate, setAssignDate] = useState(() => localDateStr());
   const [assignDriver, setAssignDriver] = useState("");
   const [assignVehicle, setAssignVehicle] = useState("");
   const [assignRoute, setAssignRoute] = useState("");
@@ -570,7 +559,7 @@ export default function GlassDispatchPage() {
 
                           <span className="text-xs font-semibold text-slate-400 flex items-center gap-1">
                             <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                            {a.date ? a.date.slice(0, 10) : "Today"}
+                            {a.date ? localDateStr(new Date(a.date)) : "Today"}
                           </span>
                         </div>
 
@@ -851,7 +840,7 @@ export default function GlassDispatchPage() {
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white"
                 >
                   <option value="">-- Select Driver --</option>
-                  {users.map(u => (
+                  {users.filter(u => u.role === "GLASS_DRIVER" && u.is_active !== false).map(u => (
                     <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
                   ))}
                 </select>
@@ -903,7 +892,7 @@ export default function GlassDispatchPage() {
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white"
                 >
                   <option value="">-- No Helper Assigned --</option>
-                  {users.map(u => (
+                  {users.filter(u => u.is_active !== false && !["ADMIN", "Owner"].includes(u.role)).map(u => (
                     <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
                   ))}
                 </select>

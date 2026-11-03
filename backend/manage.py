@@ -31,5 +31,6 @@ if __name__ == "__main__":
         sys.exit(1)
 
     print(f"[Flyera Backend] Starting FastAPI server on http://{host}:{port} with auto-reload...")
-    uvicorn.run("main:app", host=host, port=port, reload=True)
+    # Keeps idle connections open longer, to reduce the chance of the Next.js proxy reusing one as it closes.
+    uvicorn.run("main:app", host=host, port=port, reload=True, timeout_keep_alive=75)
 

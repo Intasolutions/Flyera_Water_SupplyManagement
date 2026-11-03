@@ -18,7 +18,6 @@ import {
   Factory,
   Warehouse,
   LogOut,
-  ChevronRight,
   Download,
   Smartphone,
   MoreHorizontal,
@@ -26,7 +25,8 @@ import {
   PlusSquare,
   FileText
 } from "lucide-react";
-import { useStore, AppRole, AppBusiness } from "@/lib/StoreContext";
+import { useStore } from "@/lib/StoreContext";
+import { signOut } from "@/lib/api";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -35,7 +35,7 @@ export function Sidebar() {
   const [isStandalone, setIsStandalone] = useState(false);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [isIos, setIsIos] = useState(false);
-  const { currentUserRole, activeBusiness, setCurrentUserRole, setActiveBusiness } = useStore();
+  const { currentUserRole, activeBusiness, setActiveBusiness } = useStore();
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -134,10 +134,7 @@ export function Sidebar() {
   });
 
   const handleSignOut = () => {
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
-    localStorage.removeItem("flyera_user");
-    window.location.href = "/login";
+    signOut();
   };
 
   // Quick bottom bar links for mobile phone navigation
@@ -323,7 +320,7 @@ export function Sidebar() {
                 </div>
                 <div className="text-left">
                   <p className="text-xs font-bold text-slate-800 leading-none">Install Flyera App</p>
-                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">Offline PWA Standalone</p>
+                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">Add to your home screen</p>
                 </div>
               </div>
               <Download className="w-4 h-4 text-primary group-hover:translate-y-0.5 transition-transform" />
@@ -436,7 +433,7 @@ export function Sidebar() {
             <div>
               <h3 className="text-lg font-black text-slate-900">Install Flyera App</h3>
               <p className="text-xs font-semibold text-slate-500 mt-1">
-                Install Flyera on your device home screen for fast full-screen access and offline support.
+                Install Flyera on your device home screen for fast full-screen access. An internet connection is needed to save work.
               </p>
             </div>
 

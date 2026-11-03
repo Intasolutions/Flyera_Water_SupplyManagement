@@ -1,7 +1,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 from app import crud, schemas, models
 from app.database import get_db
@@ -22,7 +22,7 @@ def create_vehicle(
 @router.get("/", response_model=List[schemas.VehicleResponse])
 def read_vehicles(
     skip: int = 0,
-    limit: int = 100,
+    limit: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(deps.get_current_active_user)
 ):

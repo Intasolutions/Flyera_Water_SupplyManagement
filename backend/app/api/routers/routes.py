@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 from ... import crud, schemas, models
 from ...database import get_db
@@ -21,9 +21,9 @@ def create_route(
 @router.get("/", response_model=List[schemas.RouteResponse])
 def read_routes(
     skip: int = 0,
-    limit: int = 100,
+    limit: Optional[int] = None,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(deps.get_current_active_user)
+    current_user: models.User = Depends(deps.require_roles(deps.WATER_ALL))
 ):
     return crud.get_routes(db, skip=skip, limit=limit)
 
@@ -31,7 +31,7 @@ def read_routes(
 def read_route(
     route_id: str,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(deps.get_current_active_user)
+    current_user: models.User = Depends(deps.require_roles(deps.WATER_ALL))
 ):
     db_route = crud.get_route(db, route_id=route_id)
     if db_route is None:
@@ -59,9 +59,7 @@ def delete_route(
     db_route = crud.get_route(db, route_id=route_id)
     if db_route is None:
         raise HTTPException(status_code=404, detail="Route not found")
-    try:
-        crud.delete_route(db, route_id=route_id)
-        return {"message": "Route deleted successfully"}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to delete route: {str(e)}")
+    if crud.route_in_use(db, route_id):
+        raise HTTPException(status_code=400, detail="This route still has customers or delivery history. Move the customers off it first.")
+    crud.delete_route(db, route_id=route_id)
+    return {"message": "Route deleted successfully"}

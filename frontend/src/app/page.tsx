@@ -7,28 +7,24 @@ import { StatCard } from "@/components/ui/StatCard";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import Link from "next/link";
-import { 
-  TrendingUp, 
-  Package, 
-  Truck, 
+import {
+  TrendingUp,
+  Package,
+  Truck,
   IndianRupee,
   Calendar,
   RefreshCw,
   ArrowRight,
-  Sparkles,
-  MapPin,
   Clock,
-  CheckCircle2,
   QrCode,
   ShieldCheck,
   ShieldAlert,
-  Check,
   Edit2,
   Lock,
   KeyRound
 } from "lucide-react";
-import { getDashboardStats } from "@/lib/actions";
-import { getSettings, updateSettings, updateSecureUpi } from "@/lib/api";
+import { getDashboardStats, getSettings, updateSecureUpi } from "@/lib/api";
+import { localDateStr } from "@/lib/dates";
 import { useStore } from "@/lib/StoreContext";
 import QRCode from "qrcode";
 import { toast } from "react-hot-toast";
@@ -37,8 +33,8 @@ const UPI_VPA_REGEX = /^[a-zA-Z0-9.\-_]{2,100}@[a-zA-Z]{2,64}$/;
 
 export default function DashboardPage() {
   const { currentUserRole } = useStore();
-  const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
-  const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
+  const [startDate, setStartDate] = useState(() => localDateStr());
+  const [endDate, setEndDate] = useState(() => localDateStr());
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<any>({
     totalClients: 0,
@@ -167,8 +163,9 @@ export default function DashboardPage() {
       setLoading(true);
       const data = await getDashboardStats(startDate, endDate);
       if (data) setStats(data);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to load dashboard stats", err);
+      toast.error(err?.message || "Could not load dashboard figures.");
     } finally {
       setLoading(false);
     }
@@ -274,7 +271,7 @@ export default function DashboardPage() {
                       <span>{upiSecurityAlert} Please re-save with your Admin password immediately.</span>
                     </div>
                   )}
-                  
+
                   {/* Active UPI ID Display / Edit Input */}
                   <div className="mt-3 flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-bold text-slate-600">Active Merchant VPA:</span>
@@ -442,7 +439,7 @@ export default function DashboardPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  const today = new Date().toISOString().split("T")[0];
+                  const today = localDateStr();
                   setStartDate(today);
                   setEndDate(today);
                 }}
@@ -453,8 +450,8 @@ export default function DashboardPage() {
               <button
                 onClick={() => {
                   const now = new Date();
-                  const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
-                  const today = now.toISOString().split("T")[0];
+                  const firstDay = localDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
+                  const today = localDateStr(now);
                   setStartDate(firstDay);
                   setEndDate(today);
                 }}

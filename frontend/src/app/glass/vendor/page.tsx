@@ -5,25 +5,38 @@ import { Sidebar } from "@/components/ui/Sidebar";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Button } from "@/components/ui/Button";
-import { useStore } from "@/lib/StoreContext";
 import {
   Truck,
-  Info,
   ArrowUpRight,
   Sparkles,
   Layers,
-  CheckCircle2,
   Building2,
   AlertTriangle,
-  RefreshCw,
   Scale,
   IndianRupee
 } from "lucide-react";
-import { createGlassVendorPickup, getGlassVendorPickups, getGlassInventoryList } from "@/lib/api";
+import { createGlassVendorPickup, getGlassVendorPickups, getGlassInventoryList, GlassInventory, GlassVendorPickup } from "@/lib/api";
 import { toast } from "react-hot-toast";
 
 export default function GlassVendorPage() {
-  const { glassInventory, glassVendorPickups, recordVendorPickup } = useStore();
+  const [glassInventory, setGlassInventory] = useState<GlassInventory[]>([]);
+  const [glassVendorPickups, setGlassVendorPickups] = useState<GlassVendorPickup[]>([]);
+
+  const loadVendorData = async () => {
+    try {
+      const [inventory, pickups] = await Promise.all([getGlassInventoryList(), getGlassVendorPickups()]);
+      setGlassInventory(inventory);
+      setGlassVendorPickups(pickups);
+    } catch (err: any) {
+      console.warn("Vendor data load error:", err);
+      toast.error(err?.message || "Could not load vendor data.");
+    }
+  };
+
+  useEffect(() => {
+    loadVendorData();
+  }, []);
+
   const [vendorName, setVendorName] = useState("");
   const [glassType, setGlassType] = useState<"white" | "mixed">("white");
   const [tons, setTons] = useState("");
@@ -40,7 +53,7 @@ export default function GlassVendorPage() {
 
   const totalSalesRevenue = useMemo(() => {
     return glassVendorPickups.reduce((sum, p) => {
-      const rate = p.pricePerTon ?? p.price_per_ton ?? (p.type === "white" ? 5500 : 3800);
+      const rate = p.pricePerTon ?? p.price_per_ton ?? 0;
       return sum + ((p.tons || 0) * rate);
     }, 0);
   }, [glassVendorPickups]);
@@ -84,7 +97,6 @@ export default function GlassVendorPage() {
     }
 
     setIsSubmitting(true);
-    recordVendorPickup(glassType, t, vendorName.trim(), r);
 
     try {
       await createGlassVendorPickup({
@@ -96,9 +108,10 @@ export default function GlassVendorPage() {
       toast.success(`Vendor dispatch recorded! ${t.toFixed(1)} T @ ₹${r.toLocaleString("en-IN")}/T`);
       setVendorName("");
       setTons("");
+      await loadVendorData();
     } catch (err: any) {
       console.warn("Backend vendor pickup error:", err);
-      toast.error("Failed to record vendor pickup.");
+      setError(err?.message || "This dispatch did not save. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -314,7 +327,7 @@ export default function GlassVendorPage() {
                   </div>
                 ) : (
                   glassVendorPickups.map(pickup => {
-                    const rate = pickup.pricePerTon ?? pickup.price_per_ton ?? (pickup.type === "white" ? 5500 : 3800);
+                    const rate = pickup.pricePerTon ?? pickup.price_per_ton ?? 0;
                       const billAmt = (pickup.tons || 0) * rate;
                       return (
                       <div

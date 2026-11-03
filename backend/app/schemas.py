@@ -1,6 +1,12 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List, Any, Dict
+from pydantic import AfterValidator, BaseModel, Field, PlainSerializer
+from typing import Annotated, Optional, List, Any, Dict
 from datetime import datetime
+
+from app.core.timeutils import to_naive_utc, utc_iso
+
+# Outgoing timestamps carry a Z so browsers show local time. Incoming ones are stored as naive UTC.
+UTCDateTime = Annotated[datetime, PlainSerializer(utc_iso, return_type=str, when_used="json")]
+IncomingDateTime = Annotated[datetime, AfterValidator(to_naive_utc)]
 
 # --- Auth Schemas ---
 class Token(BaseModel):
@@ -37,7 +43,7 @@ class UserBase(BaseModel):
     token_version: Optional[int] = 1
 
 class UserCreate(UserBase):
-    password: str
+    password: str = Field(..., min_length=8)
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
@@ -49,7 +55,7 @@ class UserUpdate(BaseModel):
     assigned_vehicle_id: Optional[str] = None
     driving_license: Optional[str] = None
     is_active: Optional[bool] = None
-    token_version: Optional[int] = None
+    password: Optional[str] = Field(None, min_length=8)
 
 class UserResponse(BaseModel):
     id: str
@@ -63,8 +69,8 @@ class UserResponse(BaseModel):
     driving_license: Optional[str] = None
     is_active: Optional[bool] = True
     token_version: Optional[int] = 1
-    created_at: Optional[Any] = None
-    updated_at: Optional[Any] = None
+    created_at: Optional[UTCDateTime] = None
+    updated_at: Optional[UTCDateTime] = None
 
     class Config:
         from_attributes = True
@@ -83,8 +89,8 @@ class RouteUpdate(RouteBase):
 
 class RouteResponse(RouteBase):
     id: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
 
     class Config:
         from_attributes = True
@@ -120,14 +126,14 @@ class ClientUpdate(BaseModel):
 class ClientResponse(ClientBase):
     id: str
     bottle_balance: Optional[int] = 0
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
 
     class Config:
         from_attributes = True
 
 class ClientCreditAdjustRequest(BaseModel):
-    amount: float
+    amount: float = Field(..., ge=0)
     type: str = "SET" # "SET" | "ADD" | "DEDUCT"
     notes: Optional[str] = None
 
@@ -145,8 +151,8 @@ class VehicleUpdate(VehicleBase):
 
 class VehicleResponse(VehicleBase):
     id: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
 
     class Config:
         from_attributes = True
@@ -171,8 +177,8 @@ class InventoryTypeUpdate(BaseModel):
 
 class InventoryTypeResponse(InventoryTypeBase):
     id: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
     
     full: int = 0
     empty: int = 0
@@ -198,7 +204,7 @@ class StockCreate(StockBase):
 
 class StockResponse(StockBase):
     id: str
-    updated_at: datetime
+    updated_at: UTCDateTime
 
     class Config:
         from_attributes = True
@@ -211,7 +217,16 @@ class AllocationBase(BaseModel):
     returned_empty: int = 0
 
 class AllocationCreate(AllocationBase):
-    pass
+    allocated_count: int = Field(..., ge=0)
+    returned_full: int = Field(0, ge=0)
+    returned_empty: int = Field(0, ge=0)
+
+class AllocationReturn(BaseModel):
+    """One product's jars counted back at the end of a route."""
+    inventory_type_id: str
+    allocated_count: Optional[int] = None
+    returned_full: int = Field(0, ge=0)
+    returned_empty: int = Field(0, ge=0)
 
 class AllocationResponse(AllocationBase):
     id: str
@@ -222,7 +237,7 @@ class AllocationResponse(AllocationBase):
 
 # --- Assignment Schemas ---
 class AssignmentBase(BaseModel):
-    date: datetime
+    date: IncomingDateTime
     vehicle_id: str
     driver_id: str
     helper_id: Optional[str] = None
@@ -236,7 +251,7 @@ class AssignmentCreate(AssignmentBase):
     allocations: List[AllocationCreate] = []
 
 class AssignmentUpdate(BaseModel):
-    date: Optional[datetime] = None
+    date: Optional[IncomingDateTime] = None
     vehicle_id: Optional[str] = None
     driver_id: Optional[str] = None
     helper_id: Optional[str] = None
@@ -249,8 +264,9 @@ class AssignmentUpdate(BaseModel):
 
 class AssignmentResponse(AssignmentBase):
     id: str
-    created_at: datetime
-    updated_at: datetime
+    date: UTCDateTime
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
     allocations: List[AllocationResponse] = []
     deliveries_count: int = 0
     deliveries: List['DeliveryResponse'] = []
@@ -272,8 +288,11 @@ class DeliveryItemBase(BaseModel):
     collected_empty: int
     price_charged: float
 
-class DeliveryItemCreate(DeliveryItemBase):
-    pass
+class DeliveryItemCreate(BaseModel):
+    """The server sets the price from the customer's tier, so none is accepted here."""
+    inventory_type_id: str
+    delivered_full: int = Field(0, ge=0)
+    collected_empty: int = Field(0, ge=0)
 
 class DeliveryItemResponse(DeliveryItemBase):
     id: str
@@ -291,14 +310,19 @@ class DeliveryBase(BaseModel):
     payment_method: Optional[str] = None
     status: str = "COMPLETED"
 
-class DeliveryCreate(DeliveryBase):
+class DeliveryCreate(BaseModel):
+    """The server calculates the total and status, so only the facts from the stop are accepted."""
+    assignment_id: str
+    client_id: str
+    payment_method: Optional[str] = None
+    paid_amount: float = Field(0.0, ge=0)
     items: List[DeliveryItemCreate] = []
 
 class DeliveryResponse(DeliveryBase):
     id: str
-    created_at: datetime
+    created_at: UTCDateTime
     upi_reference: Optional[str] = None
-    verified_at: Optional[datetime] = None
+    verified_at: Optional[UTCDateTime] = None
     verified_by: Optional[str] = None
     notes: Optional[str] = None
     items: List[DeliveryItemResponse] = []
@@ -321,7 +345,7 @@ class GlassInventoryBase(BaseModel):
 
 class GlassInventoryResponse(GlassInventoryBase):
     id: str
-    updated_at: datetime
+    updated_at: UTCDateTime
     
     class Config:
         from_attributes = True
@@ -358,8 +382,8 @@ class GlassPropertyUpdate(BaseModel):
 
 class GlassPropertyResponse(GlassPropertyBase):
     id: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
     route_name: Optional[str] = None
     total_tons_collected: float = 0.0
 
@@ -381,7 +405,8 @@ class GlassCollectionBase(BaseModel):
     payment_amount: float = 0.0
 
 class GlassCollectionCreate(GlassCollectionBase):
-    pass
+    tons_collected: float = Field(..., gt=0)
+    payment_amount: float = Field(0.0, ge=0)
 
 class GlassCollectionUpdateStatus(BaseModel):
     status: str
@@ -392,7 +417,7 @@ class GlassDropoffAllRequest(BaseModel):
 class GlassCollectionResponse(GlassCollectionBase):
     id: str
     status: str
-    date: datetime
+    date: UTCDateTime
     
     class Config:
         from_attributes = True
@@ -403,13 +428,16 @@ class GlassSeparationBase(BaseModel):
     tons_separated: float
     white_tons: float
     mixed_tons: float
+    wastage_tons: Optional[float] = 0.0
 
 class GlassSeparationCreate(GlassSeparationBase):
-    pass
+    tons_separated: float = Field(..., gt=0)
+    white_tons: float = Field(..., ge=0)
+    mixed_tons: float = Field(..., ge=0)
 
 class GlassSeparationResponse(GlassSeparationBase):
     id: str
-    date: datetime
+    date: UTCDateTime
     
     class Config:
         from_attributes = True
@@ -421,11 +449,12 @@ class GlassVendorPickupBase(BaseModel):
     price_per_ton: float = 0.0
 
 class GlassVendorPickupCreate(GlassVendorPickupBase):
-    pass
+    tons: float = Field(..., gt=0)
+    price_per_ton: float = Field(..., gt=0)
 
 class GlassVendorPickupResponse(GlassVendorPickupBase):
     id: str
-    date: datetime
+    date: UTCDateTime
     
     class Config:
         from_attributes = True
@@ -435,9 +464,9 @@ class GlassVendorPickupResponse(GlassVendorPickupBase):
 class TripExpenseCreate(BaseModel):
     assignment_id: str
     category: str  # FUEL | TOLL | PARKING | MAINTENANCE | OTHER
-    amount: float
+    amount: float = Field(..., gt=0)
     paid_from_inhand: bool = True
-    inhand_amount: float = 0.0
+    inhand_amount: float = Field(0.0, ge=0)
     description: Optional[str] = None
     # reported_by is set server-side from auth token
 
@@ -451,7 +480,7 @@ class TripExpenseResponse(BaseModel):
     paid_from_inhand: bool = True
     inhand_amount: float = 0.0
     description: Optional[str] = None
-    created_at: datetime
+    created_at: UTCDateTime
 
     class Config:
         from_attributes = True
@@ -460,7 +489,7 @@ class TripExpenseResponse(BaseModel):
 # --- Bottle Credit Ledger Schemas ---
 
 class BottleCreditCreate(BaseModel):
-    quantity: int           # +ve = owed to customer, -ve = customer owes us
+    quantity: int           # +ve = jars gone to the customer, -ve = jars back from the customer
     inventory_type_id: str
     assignment_id: Optional[str] = None
     notes: Optional[str] = None
@@ -473,7 +502,7 @@ class BottleCreditResponse(BaseModel):
     inventory_name: Optional[str] = None
     quantity: int
     notes: Optional[str] = None
-    created_at: datetime
+    created_at: UTCDateTime
 
     class Config:
         from_attributes = True

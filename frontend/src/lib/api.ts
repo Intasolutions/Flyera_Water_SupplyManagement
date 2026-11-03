@@ -4,6 +4,12 @@ const API_BASE_URL = typeof window !== 'undefined'
   ? '/api'
   : (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api');
 
+const SESSION_KEYS = ['access_token', 'refresh_token', 'flyera_user', 'flyera_system_settings'];
+
+function clearSession() {
+  SESSION_KEYS.forEach(key => localStorage.removeItem(key));
+}
+
 // --- Token Rotation State ---
 let activeRefreshPromise: Promise<string | null> | null = null;
 
@@ -40,8 +46,7 @@ async function refreshAccessToken(): Promise<string | null> {
 
       if (!res.ok) {
         // Refresh token is expired or revoked
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
+        clearSession();
         return null;
       }
 
@@ -69,7 +74,7 @@ async function refreshAccessToken(): Promise<string | null> {
  */
 async function fetcher<T>(endpoint: string, options?: RequestInit, isRetry: boolean = false): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...options?.headers as any,
@@ -94,6 +99,12 @@ async function fetcher<T>(endpoint: string, options?: RequestInit, isRetry: bool
       throw new Error("Unable to connect to backend server. Please check server status or connection.");
     }
     throw netErr;
+  }
+
+  // A brief proxy or connection fault. Reads are safe to repeat once; writes are never repeated automatically.
+  if (response.status >= 500 && !isRetry && (!options?.method || options.method === 'GET')) {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    return fetcher<T>(endpoint, options, true);
   }
 
   if (!response.ok) {
@@ -136,9 +147,8 @@ async function fetcher<T>(endpoint: string, options?: RequestInit, isRetry: bool
     }
 
     if (isAuthError && typeof window !== 'undefined' && window.location.pathname !== '/login') {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      window.location.href = '/login';
+      clearSession();
+      window.location.replace('/login');
       // Return a never-resolving promise to pause execution until the browser navigates away
       return new Promise(() => {}) as any;
     }
@@ -149,8 +159,72 @@ async function fetcher<T>(endpoint: string, options?: RequestInit, isRetry: bool
   return response.json();
 }
 
+/** For requests fetcher cannot make: file uploads and file downloads. */
+async function fetchWithSession(url: string, init: RequestInit = {}): Promise<Response> {
+  const send = (token: string | null) => fetch(url, {
+    ...init,
+    headers: { ...init.headers, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  const response = await send(localStorage.getItem('access_token'));
+  if (response.status !== 401) return response;
+  const freshToken = await refreshAccessToken();
+  return freshToken ? send(freshToken) : response;
+}
+
+async function errorDetail(response: Response, fallback: string): Promise<string> {
+  try {
+    const body = await response.json();
+    return typeof body.detail === 'string' ? body.detail : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export const uploadIdProof = async (file: File): Promise<{ url: string }> => {
+  const body = new FormData();
+  body.append('file', file);
+  const response = await fetchWithSession(`${API_BASE_URL}/users/upload-id`, { method: 'POST', body });
+  if (!response.ok) throw new Error(await errorDetail(response, 'Failed to upload ID proof.'));
+  return response.json();
+};
+
+/** Opens a login-protected file in a new tab. Call this straight from a click, or pop-up blockers stop it. */
+export const openProtectedFile = async (url: string): Promise<void> => {
+  const tab = window.open('', '_blank');
+  const response = await fetchWithSession(url);
+  if (!response.ok) {
+    tab?.close();
+    throw new Error(await errorDetail(response, 'Could not open this document.'));
+  }
+  const objectUrl = URL.createObjectURL(await response.blob());
+  if (tab) {
+    tab.location.href = objectUrl;
+  } else {
+    window.location.assign(objectUrl);
+  }
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+};
+
+export const signOut = async (): Promise<void> => {
+  const refreshToken = localStorage.getItem('refresh_token');
+  clearSession();
+  if (refreshToken) {
+    try {
+      await fetch(`${API_BASE_URL}/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+    } catch {
+      // This device is already signed out. The server session expires by itself.
+    }
+  }
+  window.location.replace('/login');
+};
+
 // --- Dashboard Stats ---
-export const getDashboardStats = () => fetcher<any>('/dashboard-stats');
+export const getDashboardStats = (startDate?: string, endDate?: string) =>
+  fetcher<any>(`/dashboard/stats${startDate && endDate ? `?start_date=${startDate}&end_date=${endDate}` : ''}`);
 
 // --- Clients ---
 export interface Client {
@@ -171,7 +245,6 @@ export interface Client {
 }
 
 export const getClients = () => fetcher<Client[]>('/clients');
-export const getClient = (id: string) => fetcher<Client>(`/clients/${id}`);
 export const createClient = (data: Partial<Client>) => 
   fetcher<Client>('/clients', {
     method: 'POST',
@@ -180,11 +253,6 @@ export const createClient = (data: Partial<Client>) =>
 export const updateClient = (id: string, data: Partial<Client>) =>
   fetcher<Client>(`/clients/${id}`, {
     method: 'PUT',
-    body: JSON.stringify(data),
-  });
-export const adjustClientCredit = (id: string, data: { amount: number; type: "SET" | "ADD" | "DEDUCT"; notes?: string }) =>
-  fetcher<Client>(`/clients/${id}/credit-adjust`, {
-    method: 'POST',
     body: JSON.stringify(data),
   });
 export const deleteClient = (id: string) =>
@@ -231,12 +299,12 @@ export interface User {
   driving_license?: string | null;
   is_active?: boolean;
   token_version?: number;
+  password?: string;
   created_at: string;
   updated_at: string;
 }
 
 export const getUsers = () => fetcher<User[]>('/users');
-export const getUser = (id: string) => fetcher<User>(`/users/${id}`);
 export const createUser = (data: Partial<User>) => 
   fetcher<User>('/users', {
     method: 'POST',
@@ -337,14 +405,16 @@ export interface Assignment {
   updated_at?: string;
 }
 
-export const getAssignments = () => fetcher<Assignment[]>('/assignments');
-export const getAssignment = (id: string) => fetcher<Assignment>(`/assignments/${id}`);
+/** Routes from the given YYYY-MM-DD onward, plus any still open. */
+export const getAssignments = (since?: string) =>
+  fetcher<Assignment[]>(`/assignments${since ? `?since=${since}` : ''}`);
 export const createAssignment = (data: any) => 
   fetcher<Assignment>('/assignments', {
     method: 'POST',
     body: JSON.stringify(data),
   });
-export const completeAssignment = (id: string, returned_stock: any[]) =>
+/** With an empty list, the server works out returned stock per product from the route's deliveries. */
+export const completeAssignment = (id: string, returned_stock: any[] = []) =>
   fetcher<Assignment>(`/assignments/${id}/complete`, {
     method: 'PUT',
     body: JSON.stringify(returned_stock),
@@ -415,7 +485,7 @@ export const login = (username: string, password: string): Promise<Token> => {
   const formData = new URLSearchParams();
   formData.append('username', username);
   formData.append('password', password);
-  
+
   return fetch(`${API_BASE_URL}/auth/login`, {
     method: 'POST',
     headers: {
@@ -444,17 +514,6 @@ export const login = (username: string, password: string): Promise<Token> => {
     throw err;
   });
 };
-
-export const refreshToken = (refreshTokenStr: string): Promise<Token> =>
-  fetcher<Token>('/auth/refresh', {
-    method: 'POST',
-    body: JSON.stringify({ refresh_token: refreshTokenStr }),
-  });
-
-export const revokeAllUserTokens = (userId: string) =>
-  fetcher<{ message: string; token_version: number }>(`/auth/revoke-tokens?user_id=${encodeURIComponent(userId)}`, {
-    method: 'POST',
-  });
 
 export const getCurrentUser = () => fetcher<User>('/auth/me');
 
@@ -856,32 +915,10 @@ export const updateSecureUpi = (data: { upi_id: string; admin_password: string }
     body: JSON.stringify(data),
   });
 
-export const getSignedUpiQr = (params: { amount: number; note?: string; delivery_id?: string }) => {
-  const query = new URLSearchParams({
-    amount: params.amount.toString(),
-    ...(params.note ? { note: params.note } : {}),
-    ...(params.delivery_id ? { delivery_id: params.delivery_id } : {})
-  });
-  return fetcher<{
-    upi_uri: string;
-    upi_id: string;
-    amount: number;
-    company_name: string;
-    is_verified: boolean;
-  }>(`/settings/signed-upi-qr?${query.toString()}`);
-};
-
 // --- Production Setup & Reset ---
 export interface SetupStatus {
   is_clean: boolean;
-  total_users: number;
-  total_clients: number;
-  total_vehicles: number;
-  total_routes: number;
-  total_assignments: number;
-  total_deliveries: number;
-  total_inventory_types: number;
-  total_glass_collections: number;
+  master_key_required: boolean;
 }
 
 export interface SetupRequest {
@@ -953,7 +990,7 @@ export interface BottleCreditEntry {
   assignment_id: string | null;
   inventory_type_id: string;
   inventory_name?: string;
-  quantity: number;   // +ve = we owe customer bottles, -ve = customer owes us
+  quantity: number;   // +ve = jars gone to the customer, -ve = jars back from the customer
   notes: string | null;
   created_at: string;
 }
@@ -989,6 +1026,7 @@ export interface FinancialSummaryReport {
     total_cash_collected: number;
     total_upi_collected: number;
     total_credit_sales: number;
+    total_upi_unverified: number;
     total_deliveries_count: number;
     total_bottles_delivered: number;
     total_trips: number;
@@ -1015,6 +1053,7 @@ export interface FinancialSummaryReport {
     cash_collected: number;
     upi_collected: number;
     credit_sales: number;
+    upi_unverified: number;
     total_expenses: number;
     inhand_cash_spent: number;
     personal_expenses: number;
